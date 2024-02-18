@@ -1,5 +1,5 @@
 /* gtkdisplay.c: GTK routines for dealing with the Speccy screen
-   Copyright (c) 2000-2005 Philip Kendall
+   Copyright (c) 2000-2024 Philip Kendall
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -618,9 +618,7 @@ gtkdisplay_update_geometry( void )
 #ifdef GDK_WINDOWING_WAYLAND
   /* We don't calculate the window size enough accurately on wayland
      backend to force the window geometry (bug #367) */
-  GdkDisplay *display = gdk_display_get_default();
-
-  if( GDK_IS_WAYLAND_DISPLAY( display ) ) {
+  if( GDK_IS_WAYLAND_DISPLAY( gtkui_default_display ) ) {
     hints &= ~GDK_HINT_RESIZE_INC;
   }
 #endif                /* #ifdef GDK_WINDOWING_WAYLAND */

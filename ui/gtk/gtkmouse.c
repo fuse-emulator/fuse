@@ -1,6 +1,5 @@
 /* gtkmouse.c: GTK routines for emulating Spectrum mice
-   Copyright (c) 2004 Darren Salt
-   Copyright (c) 2015 Sergio Baldoví
+   Copyright (c) 2004-2024 Darren Salt, Sergio Baldoví, Philip Kendall
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -120,8 +119,7 @@ gtkmouse_reset_pointer( void )
 
 #ifdef GDK_WINDOWING_WAYLAND
 
-  GdkDisplay *display = gdk_display_get_default();
-  if( GDK_IS_WAYLAND_DISPLAY( display ) ) {
+  if( GDK_IS_WAYLAND_DISPLAY( gtkui_default_display ) ) {
     mouse_motion_fn = mouse_motion_relative;
     have_last_position = 0;
     return;

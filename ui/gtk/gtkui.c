@@ -1,5 +1,5 @@
 /* gtkui.c: GTK routines for dealing with the user interface
-   Copyright (c) 2000-2015 Philip Kendall, Russell Marks, Sergio Baldoví
+   Copyright (c) 2000-2024 Philip Kendall, Russell Marks, Sergio Baldoví
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -59,6 +59,8 @@ GtkWidget *gtkui_window;
 
 /* The area into which the screen will be drawn */
 GtkWidget *gtkui_drawing_area;
+
+GdkDisplay *gtkui_default_display;
 
 static GtkWidget *menu_bar;
 
@@ -234,6 +236,8 @@ ui_init( int *argc, char ***argv )
 
   gtk_widget_show_all( gtkui_window );
   gtkstatusbar_set_visibility( settings_current.statusbar );
+
+  gtkui_default_display = gdk_display_get_default();
 
   ui_mouse_present = 1;
 
