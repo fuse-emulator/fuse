@@ -176,6 +176,8 @@ scaler_family( scaler_type scaler )
   case SCALER_PALTV2X:
   case SCALER_PALTV3X:
   case SCALER_PALTV4X:
+  case SCALER_BLARGG_NTSC_2X:
+  case SCALER_BLARGG_NTSC_3X:
     return SDL2_SCALER_FAMILY_PALTV;
 
   case SCALER_ADVMAME2X:

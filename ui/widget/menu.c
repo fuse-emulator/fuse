@@ -442,6 +442,13 @@ menu_get_scaler( scaler_available_fn selector )
 }
 
 void
+menu_options_filteroptions( int action GCC_UNUSED )
+{
+  ui_error( UI_ERROR_ERROR,
+            "Filter options are only available with the GTK UI" );
+}
+
+void
 menu_file_exit( int action )
 {
   static int menu_exit_open = 0;

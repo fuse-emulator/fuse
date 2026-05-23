@@ -282,6 +282,8 @@ register_scalers( int force_scaler )
   }
   scaler_register( SCALER_NORMAL );
   scaler_register( SCALER_PALTV );
+  scaler_register( SCALER_BLARGG_NTSC_2X );
+  scaler_register( SCALER_BLARGG_NTSC_3X );
 
   scaler =
     scaler_is_supported( current_scaler ) ? current_scaler : SCALER_NORMAL;
@@ -307,6 +309,10 @@ register_scalers( int force_scaler )
 void
 uidisplay_frame_end( void )
 {
+  if( scaler_flags & SCALER_FLAGS_FULL_REFRESH ) {
+    uidisplay_area( 0, 0, image_width, image_height );
+  }
+
   if( !IsRectEmpty( &invalidated_area ) ) {
 
     InvalidateRect( fuse_hWnd, &invalidated_area, FALSE );

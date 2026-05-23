@@ -120,6 +120,8 @@ init_scalers( void )
   scaler_register( SCALER_DOTMATRIX );
   scaler_register( SCALER_PALTV );
   scaler_register( SCALER_HQ2X );
+  scaler_register( SCALER_BLARGG_NTSC_2X );
+  scaler_register( SCALER_BLARGG_NTSC_3X );
   if( machine_current->timex ) {
     scaler_register( SCALER_HALF ); 
     scaler_register( SCALER_HALFSKIP );
@@ -771,7 +773,8 @@ uidisplay_frame_end( void )
   }
 
   /* Force a full redraw if requested */
-  if ( sdldisplay_force_full_refresh ) {
+  if( sdldisplay_force_full_refresh ||
+      ( scaler_flags & SCALER_FLAGS_FULL_REFRESH ) ) {
     num_rects = 1;
 
     updated_rects[0].x = 0;
