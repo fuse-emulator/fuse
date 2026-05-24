@@ -305,6 +305,7 @@ register_scalers( int force_scaler )
   scaler_register( SCALER_PALTV );
   scaler_register( SCALER_BLARGG_NTSC_2X );
   scaler_register( SCALER_BLARGG_NTSC_3X );
+  scaler_register( SCALER_BLARGG_NTSC_4X );
 
   scaler =
     scaler_is_supported( current_scaler ) ? current_scaler : SCALER_NORMAL;

@@ -55,6 +55,7 @@ typedef enum scaler_type {
   SCALER_HQ4X,
   SCALER_BLARGG_NTSC_2X,
   SCALER_BLARGG_NTSC_3X,
+  SCALER_BLARGG_NTSC_4X,
   SCALER_NUM		/* End marker; do not remove */
 } scaler_type;
 

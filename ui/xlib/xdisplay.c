@@ -1,7 +1,7 @@
 /* xdisplay.c: Routines for dealing with drawing the Speccy's screen via Xlib
-   Copyright (c) 2000-2021 Philip Kendall, Darren Salt, Gergely Szász
+   Copyright (c) 2000-2021 Philip Kendall, Darren Salt, Gergely Szï¿½sz
    Copyright (c) 2015 Stuart Brady
-   Copyright (c) 2015-2024 Sergio Baldoví
+   Copyright (c) 2015-2024 Sergio Baldovï¿½
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -616,6 +616,7 @@ register_scalers( void )
       scaler_register( SCALER_PALTV );
       scaler_register( SCALER_BLARGG_NTSC_2X );
       scaler_register( SCALER_BLARGG_NTSC_3X );
+      scaler_register( SCALER_BLARGG_NTSC_4X );
       if( machine_current->timex ) {
         scaler_register( SCALER_HALF ); 
         scaler_register( SCALER_HALFSKIP );

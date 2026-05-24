@@ -93,6 +93,7 @@ init_scalers( void )
   scaler_register( SCALER_HQ2X );
   scaler_register( SCALER_BLARGG_NTSC_2X );
   scaler_register( SCALER_BLARGG_NTSC_3X );
+  scaler_register( SCALER_BLARGG_NTSC_4X );
   if( machine_current->timex ) {
     scaler_register( SCALER_HALF );
     scaler_register( SCALER_HALFSKIP );
