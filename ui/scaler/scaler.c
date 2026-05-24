@@ -67,6 +67,8 @@ static void expand_pal1( int *x, int *y, int *w, int *h,
 			int image_width, int image_height );
 static void expand_pal( int *x, int *y, int *w, int *h,
 			int image_width, int image_height );
+static void expand_full_width( int *x, int *y, int *w, int *h,
+			      int image_width, int image_height );
 static void expand_dotmatrix( int *x, int *y, int *w, int *h,
 			      int image_width, int image_height );
 
@@ -112,10 +114,10 @@ static const struct scaler_info available_scalers[] = {
     scaler_Normal2x_16,  scaler_Normal2x_32,    NULL                },
   { "PAL TV",	       "paltv",     SCALER_FLAGS_EXPAND,       1.0,
     scaler_PalTV_16,  	  scaler_PalTV_32,      expand_pal1         },
-  { "PAL TV 2x",       "paltv2x",   SCALER_FLAGS_FULL_REFRESH, 2.0,
-    scaler_PalTV2x_16,    scaler_PalTV2x_32,    NULL                },
-  { "PAL TV 3x",       "paltv3x",   SCALER_FLAGS_FULL_REFRESH, 3.0,
-    scaler_PalTV3x_16,    scaler_PalTV3x_32,    NULL                },
+  { "PAL TV 2x",       "paltv2x", SCALER_FLAGS_EXPAND,         2.0,
+    scaler_PalTV2x_16,    scaler_PalTV2x_32,    expand_full_width   },
+  { "PAL TV 3x",       "paltv3x", SCALER_FLAGS_EXPAND,         3.0,
+    scaler_PalTV3x_16,    scaler_PalTV3x_32,    expand_full_width   },
   { "PAL TV 4x",       "paltv4x",   SCALER_FLAGS_EXPAND,       4.0,
     scaler_PalTV4x_16,    scaler_PalTV4x_32,    expand_pal          },
   { "HQ 2x",           "hq2x",      SCALER_FLAGS_EXPAND,       2.0,
@@ -125,10 +127,10 @@ static const struct scaler_info available_scalers[] = {
   { "HQ 4x",           "hq4x",      SCALER_FLAGS_EXPAND,       4.0,
     scaler_HQ4x_16,       scaler_HQ4x_32,       expand_1            },
   { "blargg NTSC 2x",  "blarggntsc2x",
-    SCALER_FLAGS_FULL_REFRESH,                                2.0,
+    SCALER_FLAGS_FULL_REFRESH,                                 2.0,
     scaler_blargg_NTSC_2x_16, scaler_blargg_NTSC_2x_32, NULL        },
   { "blargg NTSC 3x",  "blarggntsc3x",
-    SCALER_FLAGS_FULL_REFRESH,                                3.0,
+    SCALER_FLAGS_FULL_REFRESH,                                 3.0,
     scaler_blargg_NTSC_3x_16, scaler_blargg_NTSC_3x_32, NULL        },
 };
 
@@ -282,6 +284,16 @@ static void
 expand_pal( int *x, int *y, int *w, int *h, int image_width, int image_height )
 {
   (*x)-=1; (*w)+=2;
+  clip( x, y, w, h, image_width, image_height );
+}
+
+/* Expand to the full source-line width */
+static void
+expand_full_width( int *x, int *y, int *w, int *h,
+                   int image_width, int image_height )
+{
+  *x = 0;
+  *w = image_width;
   clip( x, y, w, h, image_width, image_height );
 }
 
