@@ -279,9 +279,9 @@ register_scalers( int force_scaler )
     scaler_register( SCALER_SUPER2XSAI );
     scaler_register( SCALER_SUPEREAGLE );
     scaler_register( SCALER_DOTMATRIX );
-    scaler_register( SCALER_BLARGG_NTSC_2X );
-    scaler_register( SCALER_BLARGG_NTSC_3X );
-    scaler_register( SCALER_BLARGG_NTSC_4X );
+    scaler_register( SCALER_NTSC2X );
+    scaler_register( SCALER_NTSC3X );
+    scaler_register( SCALER_NTSC4X );
   }
   scaler_register( SCALER_NORMAL );
   scaler_register( SCALER_PALTV );

@@ -650,9 +650,9 @@ register_scalers( void )
         scaler_register( SCALER_PALTV4X );
         scaler_register( SCALER_HQ4X );
 
-        scaler_register( SCALER_BLARGG_NTSC_2X );
-        scaler_register( SCALER_BLARGG_NTSC_3X );
-        scaler_register( SCALER_BLARGG_NTSC_4X );
+        scaler_register( SCALER_NTSC2X );
+        scaler_register( SCALER_NTSC3X );
+        scaler_register( SCALER_NTSC4X );
       }
     }
   if( current_scaler != SCALER_NUM )

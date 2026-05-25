@@ -22,7 +22,8 @@ typedef enum sdl2_scaler_family {
   SDL2_SCALER_FAMILY_HQ,
   SDL2_SCALER_FAMILY_TIMEX,
   SDL2_SCALER_FAMILY_SPECIAL2X,
-  SDL2_SCALER_FAMILY_DOTMATRIX
+  SDL2_SCALER_FAMILY_DOTMATRIX,
+  SDL2_SCALER_FAMILY_NTSCTV
 } sdl2_scaler_family;
 
 static sdl2_scaler_family scaler_family( scaler_type scaler );
@@ -176,9 +177,6 @@ scaler_family( scaler_type scaler )
   case SCALER_PALTV2X:
   case SCALER_PALTV3X:
   case SCALER_PALTV4X:
-  case SCALER_BLARGG_NTSC_2X:
-  case SCALER_BLARGG_NTSC_3X:
-  case SCALER_BLARGG_NTSC_4X:
     return SDL2_SCALER_FAMILY_PALTV;
 
   case SCALER_ADVMAME2X:
@@ -203,6 +201,11 @@ scaler_family( scaler_type scaler )
 
   case SCALER_DOTMATRIX:
     return SDL2_SCALER_FAMILY_DOTMATRIX;
+
+  case SCALER_NTSC2X:
+  case SCALER_NTSC3X:
+  case SCALER_NTSC4X:
+    return SDL2_SCALER_FAMILY_NTSCTV;
 
   default:
     return SDL2_SCALER_FAMILY_NONE;

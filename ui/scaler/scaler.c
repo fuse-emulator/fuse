@@ -124,14 +124,11 @@ static const struct scaler_info available_scalers[] = {
     scaler_HQ3x_16,       scaler_HQ3x_32,       expand_1            },
   { "HQ 4x",           "hq4x",      SCALER_FLAGS_EXPAND,       4.0,
     scaler_HQ4x_16,       scaler_HQ4x_32,       expand_1            },
-  { "blargg NTSC 2x",  "blarggntsc2x",
-    SCALER_FLAGS_FULL_REFRESH,                                 2.0,
+  { "NTSC TV 2x",      "ntsctv2x",  SCALER_FLAGS_FULL_REFRESH, 2.0,
     scaler_blargg_NTSC_2x_16, scaler_blargg_NTSC_2x_32, NULL        },
-  { "blargg NTSC 3x",  "blarggntsc3x",
-    SCALER_FLAGS_FULL_REFRESH,                                 3.0,
+  { "NTSC TV 3x",      "ntsctv3x",  SCALER_FLAGS_FULL_REFRESH, 3.0,
     scaler_blargg_NTSC_3x_16, scaler_blargg_NTSC_3x_32, NULL        },
-  { "blargg NTSC 4x",  "blarggntsc4x",
-    SCALER_FLAGS_FULL_REFRESH,                                 4.0,
+  { "NTSC TV 4x",      "ntsctv4x",  SCALER_FLAGS_FULL_REFRESH, 4.0,
     scaler_blargg_NTSC_4x_16, scaler_blargg_NTSC_4x_32, NULL        },
 };
 
