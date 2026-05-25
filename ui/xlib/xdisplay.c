@@ -614,9 +614,6 @@ register_scalers( void )
     } else {
       scaler_register( SCALER_NORMAL );
       scaler_register( SCALER_PALTV );
-      scaler_register( SCALER_BLARGG_NTSC_2X );
-      scaler_register( SCALER_BLARGG_NTSC_3X );
-      scaler_register( SCALER_BLARGG_NTSC_4X );
       if( machine_current->timex ) {
         scaler_register( SCALER_HALF ); 
         scaler_register( SCALER_HALFSKIP );
@@ -652,6 +649,10 @@ register_scalers( void )
         scaler_register( SCALER_TV4X );
         scaler_register( SCALER_PALTV4X );
         scaler_register( SCALER_HQ4X );
+
+        scaler_register( SCALER_BLARGG_NTSC_2X );
+        scaler_register( SCALER_BLARGG_NTSC_3X );
+        scaler_register( SCALER_BLARGG_NTSC_4X );
       }
     }
   if( current_scaler != SCALER_NUM )

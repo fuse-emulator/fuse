@@ -120,9 +120,6 @@ init_scalers( void )
   scaler_register( SCALER_DOTMATRIX );
   scaler_register( SCALER_PALTV );
   scaler_register( SCALER_HQ2X );
-  scaler_register( SCALER_BLARGG_NTSC_2X );
-  scaler_register( SCALER_BLARGG_NTSC_3X );
-  scaler_register( SCALER_BLARGG_NTSC_4X );
   if( machine_current->timex ) {
     scaler_register( SCALER_HALF ); 
     scaler_register( SCALER_HALFSKIP );
@@ -141,6 +138,9 @@ init_scalers( void )
     scaler_register( SCALER_PALTV4X );
     scaler_register( SCALER_HQ3X );
     scaler_register( SCALER_HQ4X );
+    scaler_register( SCALER_BLARGG_NTSC_2X );
+    scaler_register( SCALER_BLARGG_NTSC_3X );
+    scaler_register( SCALER_BLARGG_NTSC_4X );
   }
   
   if( scaler_is_supported( current_scaler ) ) {
