@@ -71,6 +71,13 @@ static guchar scaled_image[ MAX_SCALE * DISPLAY_SCREEN_HEIGHT *
                             MAX_SCALE * DISPLAY_SCREEN_WIDTH * 2 ];
 static const ptrdiff_t scaled_pitch = MAX_SCALE * DISPLAY_SCREEN_WIDTH * 2;
 
+/* Composite scalers operate on RGB byte order, but Cairo RGB24 expects
+   native-endian x8r8g8b8 storage, which is BGR byte order on little-endian
+   hosts. Keep temporary RGB-ordered buffers for GTK composite filters and
+   swizzle only the affected region back into the Cairo surface buffer. */
+static guchar composite_rgb_image[ sizeof( rgb_image ) ];
+static guchar composite_scaled_image[ sizeof( scaled_image ) ];
+
 /* The colour palette */
 static const guchar rgb_colours[16][3] = {
 
@@ -118,6 +125,9 @@ static int init_colours( colour_format_t format );
 static void gtkdisplay_area(int x, int y, int width, int height);
 static void register_scalers( int force_scaler );
 static void gtkdisplay_load_gfx_mode( void );
+static int gtkdisplay_using_composite_scaler( void );
+static void gtkdisplay_copy_region_bgr_to_rgb( int x, int y, int w, int h );
+static void gtkdisplay_copy_region_rgb_to_bgr( int x, int y, int w, int h );
 
 /* Callbacks */
 
@@ -126,6 +136,59 @@ static gboolean gtkdisplay_draw( GtkWidget *widget, cairo_t *cr,
 
 static gint drawing_area_resize_callback( GtkWidget *widget, GdkEvent *event,
                                           gpointer data );
+
+static int
+gtkdisplay_using_composite_scaler( void )
+{
+  switch( current_scaler ) {
+  case SCALER_PALTV2X:
+  case SCALER_PALTV3X:
+  case SCALER_PALTV4X:
+  case SCALER_NTSC2X:
+  case SCALER_NTSC3X:
+  case SCALER_NTSC4X:
+    return 1;
+  default:
+    return 0;
+  }
+}
+
+static void
+gtkdisplay_copy_region_bgr_to_rgb( int x, int y, int w, int h )
+{
+  int xx, yy;
+
+  for( yy = y; yy < y + h; yy++ ) {
+    const guchar *src = rgb_image + ( yy + 2 ) * rgb_pitch + 4 * ( x + 1 );
+    guchar *dst = composite_rgb_image + ( yy + 2 ) * rgb_pitch +
+                  4 * ( x + 1 );
+
+    for( xx = 0; xx < w; xx++, src += 4, dst += 4 ) {
+      dst[0] = src[2];
+      dst[1] = src[1];
+      dst[2] = src[0];
+      dst[3] = src[3];
+    }
+  }
+}
+
+static void
+gtkdisplay_copy_region_rgb_to_bgr( int x, int y, int w, int h )
+{
+  int xx, yy;
+
+  for( yy = y; yy < y + h; yy++ ) {
+    const guchar *src = composite_scaled_image + yy * scaled_pitch + 4 * x;
+    guchar *dst = scaled_image + yy * scaled_pitch + 4 * x;
+
+    for( xx = 0; xx < w; xx++, src += 4, dst += 4 ) {
+      dst[0] = src[2];
+      dst[1] = src[1];
+      dst[2] = src[0];
+      dst[3] = src[3];
+    }
+  }
+}
 
 static int
 init_colours( colour_format_t format )
@@ -378,10 +441,22 @@ uidisplay_area( int x, int y, int w, int h )
   }
 
   /* Create scaled image */
-  scaler_proc32( &rgb_image[ ( y + 2 ) * rgb_pitch + 4 * ( x + 1 ) ],
-                 rgb_pitch,
-                 &scaled_image[ scaled_y * scaled_pitch + 4 * scaled_x ],
-                 scaled_pitch, w, h );
+  if( gtkdisplay_using_composite_scaler() ) {
+    gtkdisplay_copy_region_bgr_to_rgb( x, y, w, h );
+
+    scaler_proc32( &composite_rgb_image[ ( y + 2 ) * rgb_pitch + 4 * ( x + 1 ) ],
+                   rgb_pitch,
+                   &composite_scaled_image[ scaled_y * scaled_pitch + 4 * scaled_x ],
+                   scaled_pitch, w, h );
+
+    gtkdisplay_copy_region_rgb_to_bgr( scaled_x, scaled_y,
+                                       w * scale, h * scale );
+  } else {
+    scaler_proc32( &rgb_image[ ( y + 2 ) * rgb_pitch + 4 * ( x + 1 ) ],
+                   rgb_pitch,
+                   &scaled_image[ scaled_y * scaled_pitch + 4 * scaled_x ],
+                   scaled_pitch, w, h );
+  }
 
   w *= scale; h *= scale;
 

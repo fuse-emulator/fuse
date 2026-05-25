@@ -122,7 +122,7 @@ gtk_widget_set_size_request (dialog, 300, 600);
   for (option = options; option != options + sizeof(options)/sizeof(*options); ++option) {
     label = gtk_label_new(option->label);
     range = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, -100, 100, 1);
-    gtk_range_set_value(range, *(option->value));
+    gtk_range_set_value( GTK_RANGE( range ), *(option->value) );
     box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
     gtk_box_pack_start( GTK_BOX( box ), label, TRUE, TRUE, 5 );
     gtk_box_pack_start( GTK_BOX( box ), range, TRUE, TRUE, 5 );
