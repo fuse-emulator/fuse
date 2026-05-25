@@ -64,44 +64,44 @@ create_dialog( void )
   gint range_height = -1;
   struct option_t options[] = {
     {
-      .label = "hue",
-      .value = &settings_current.filter_blargg_hue
+      .label = "Hue",
+      .value = &settings_current.composite_filter_hue
     },
     {
-      .label = "saturation",
-      .value = &settings_current.filter_blargg_saturation
+      .label = "Saturation",
+      .value = &settings_current.composite_filter_saturation
     },
     {
-      .label = "contrast",
-      .value = &settings_current.filter_blargg_contrast
+      .label = "Contrast",
+      .value = &settings_current.composite_filter_contrast
     },
     {
-      .label = "brightness",
-      .value = &settings_current.filter_blargg_brightness
+      .label = "Brightness",
+      .value = &settings_current.composite_filter_brightness
     },
     {
-      .label = "sharpness",
-      .value = &settings_current.filter_blargg_sharpness
+      .label = "Sharpness",
+      .value = &settings_current.composite_filter_sharpness
     },
     {
-      .label = "gamma",
-      .value = &settings_current.filter_blargg_gamma
+      .label = "Gamma",
+      .value = &settings_current.composite_filter_gamma
     },
     {
-      .label = "resolution",
-      .value = &settings_current.filter_blargg_resolution
+      .label = "Resolution",
+      .value = &settings_current.composite_filter_resolution
     },
     {
-      .label = "artifacts",
-      .value = &settings_current.filter_blargg_artifacts
+      .label = "Artifacts",
+      .value = &settings_current.composite_filter_artifacts
     },
     {
-      .label = "fringing",
-      .value = &settings_current.filter_blargg_fringing
+      .label = "Fringing",
+      .value = &settings_current.composite_filter_fringing
     },
     {
-      .label = "bleed",
-      .value = &settings_current.filter_blargg_bleed
+      .label = "Bleed",
+      .value = &settings_current.composite_filter_bleed
     }
   };
   const struct option_t *option;

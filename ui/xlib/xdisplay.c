@@ -613,7 +613,6 @@ register_scalers( void )
       }
     } else {
       scaler_register( SCALER_NORMAL );
-      scaler_register( SCALER_PALTV );
       if( machine_current->timex ) {
         scaler_register( SCALER_HALF ); 
         scaler_register( SCALER_HALFSKIP );
@@ -670,17 +669,16 @@ register_scalers( void )
           new_timex_scaler = SCALER_HALFSKIP;
       } else {
         switch( current_scaler ) {
-        case SCALER_PALTV:
         case SCALER_PALTV2X:
         case SCALER_PALTV3X:
         case SCALER_PALTV4X:
-          new_scaler = SCALER_PALTV;
+          new_scaler = SCALER_NORMAL;
           new_timex_scaler = SCALER_HALF;
           break;
         case SCALER_TV2X:
         case SCALER_TV3X:
         case SCALER_TV4X:
-          new_scaler = SCALER_PALTV;
+          new_scaler = SCALER_NORMAL;
           new_timex_scaler = SCALER_HALF;
           break;
         default:
@@ -696,18 +694,17 @@ register_scalers( void )
           new_timex_scaler = SCALER_NORMAL;
       } else {
         switch( current_scaler ) {
-        case SCALER_PALTV:
         case SCALER_PALTV2X:
         case SCALER_PALTV3X:
         case SCALER_PALTV4X:
           new_scaler = SCALER_PALTV2X;
-          new_timex_scaler = SCALER_PALTV;
+          new_timex_scaler = SCALER_NORMAL;
           break;
         case SCALER_TV2X:
         case SCALER_TV3X:
         case SCALER_TV4X:
           new_scaler = SCALER_TV2X;
-          new_timex_scaler = SCALER_PALTV;
+          new_timex_scaler = SCALER_NORMAL;
           break;
         case SCALER_2XSAI:
         case SCALER_SUPER2XSAI:
@@ -736,7 +733,6 @@ register_scalers( void )
           new_timex_scaler = SCALER_TIMEX1_5X;
       } else {
         switch( current_scaler ) {
-        case SCALER_PALTV:
         case SCALER_PALTV2X:
         case SCALER_PALTV3X:
         case SCALER_PALTV4X:
@@ -776,7 +772,6 @@ register_scalers( void )
           new_timex_scaler = SCALER_TIMEX2X;
       } else {
         switch( current_scaler ) {
-        case SCALER_PALTV:
         case SCALER_PALTV2X:
         case SCALER_PALTV3X:
         case SCALER_PALTV4X:

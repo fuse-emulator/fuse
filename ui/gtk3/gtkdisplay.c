@@ -305,7 +305,6 @@ register_scalers( int force_scaler )
     scaler_register( SCALER_NTSC4X );
   }
   scaler_register( SCALER_NORMAL );
-  scaler_register( SCALER_PALTV );
 
   scaler =
     scaler_is_supported( current_scaler ) ? current_scaler : SCALER_NORMAL;

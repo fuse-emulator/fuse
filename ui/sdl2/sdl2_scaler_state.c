@@ -173,7 +173,6 @@ scaler_family( scaler_type scaler )
   case SCALER_TV4X:
     return SDL2_SCALER_FAMILY_TV;
 
-  case SCALER_PALTV:
   case SCALER_PALTV2X:
   case SCALER_PALTV3X:
   case SCALER_PALTV4X:

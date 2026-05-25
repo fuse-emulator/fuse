@@ -207,16 +207,16 @@ doublescan_mode, numeric, 1, 'D', doublescan-mode
 
 start_scaler_mode, string, "2x", 'g', graphics-filter
 
-filter_blargg_hue, numeric, 0
-filter_blargg_saturation, numeric, -27
-filter_blargg_contrast, numeric, 21
-filter_blargg_brightness, numeric, 10
-filter_blargg_sharpness, numeric, -10
-filter_blargg_gamma, numeric, 0
-filter_blargg_resolution, numeric, -16
-filter_blargg_artifacts, numeric, -59
-filter_blargg_fringing, numeric, 14
-filter_blargg_bleed, numeric, -71
+composite_filter_hue, numeric, 0
+composite_filter_saturation, numeric, -27
+composite_filter_contrast, numeric, 21
+composite_filter_brightness, numeric, 10
+composite_filter_sharpness, numeric, -10
+composite_filter_gamma, numeric, 0
+composite_filter_resolution, numeric, -16
+composite_filter_artifacts, numeric, -59
+composite_filter_fringing, numeric, 14
+composite_filter_bleed, numeric, -71
 
 speccyboot_tap, string, "tap0",
 

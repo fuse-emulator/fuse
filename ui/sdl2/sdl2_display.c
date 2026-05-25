@@ -89,7 +89,6 @@ init_scalers( void )
   scaler_register( SCALER_ADVMAME2X );
   scaler_register( SCALER_ADVMAME3X );
   scaler_register( SCALER_DOTMATRIX );
-  scaler_register( SCALER_PALTV );
   scaler_register( SCALER_HQ2X );
   if( machine_current->timex ) {
     scaler_register( SCALER_HALF );

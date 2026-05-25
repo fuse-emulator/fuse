@@ -63,8 +63,6 @@ static void expand_1( int *x, int *y, int *w, int *h,
 		      int image_width, int image_height );
 static void expand_sai( int *x, int *y, int *w, int *h,
 			int image_width, int image_height );
-static void expand_pal1( int *x, int *y, int *w, int *h,
-			int image_width, int image_height );
 static void expand_full_width( int *x, int *y, int *w, int *h,
 			      int image_width, int image_height );
 static void expand_dotmatrix( int *x, int *y, int *w, int *h,
@@ -110,8 +108,6 @@ static const struct scaler_info available_scalers[] = {
     scaler_Timex1_5x_16,  scaler_Timex1_5x_32,  NULL                },
   { "Timex 2x",        "timex2x",    SCALER_FLAGS_NONE,        2.0,
     scaler_Normal2x_16,  scaler_Normal2x_32,    NULL                },
-  { "PAL TV",	       "paltv",     SCALER_FLAGS_EXPAND,       1.0,
-    scaler_PalTV_16,  	  scaler_PalTV_32,      expand_pal1         },
   { "PAL TV 2x",       "paltv2x", SCALER_FLAGS_EXPAND,         2.0,
     scaler_PalTV2x_16,    scaler_PalTV2x_32,    expand_full_width   },
   { "PAL TV 3x",       "paltv3x", SCALER_FLAGS_EXPAND,         3.0,
@@ -170,6 +166,12 @@ int
 scaler_select_id( const char *id )
 {
   scaler_type i;
+
+  if( !strcmp( id, "paltv" ) ) {
+    ui_error( UI_ERROR_WARNING,
+              "Scaler id '%s' has been removed; using 'normal'", id );
+    return scaler_select_scaler( SCALER_NORMAL );
+  }
 
   for( i=0; i < SCALER_NUM; i++ ) {
     if( ! strcmp( available_scalers[i].id, id ) ) {
@@ -264,16 +266,6 @@ static void
 expand_sai( int *x, int *y, int *w, int *h, int image_width, int image_height )
 {
   (*x)-=2; (*y)-=2; (*w)+=3; (*h)+=3;
-  clip( x, y, w, h, image_width, image_height );
-}
-
-/* Expand two pixels left and right */
-static void
-expand_pal1( int *x, int *y, int *w, int *h, int image_width, int image_height )
-{
-  int w_mod = (*w) % 2;
-  (*x)-=2; (*w)+=4;
-  (*w)+=w_mod;		/* expand to even*/
   clip( x, y, w, h, image_width, image_height );
 }
 
