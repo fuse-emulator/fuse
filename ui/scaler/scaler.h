@@ -79,6 +79,13 @@ extern scaler_flags_t scaler_flags;
 extern scaler_expand_fn *scaler_expander;
 extern int scalers_registered;
 
+typedef enum scaler_bitformat_t {
+  BITFORMAT_555 = 555,
+  BITFORMAT_565 = 565,
+  BITFORMAT_X8B8G8R8,
+  BITFORMAT_X8R8G8B8,
+} scaler_bitformat_t;
+
 typedef int (*scaler_available_fn)( scaler_type scaler );
 
 int scaler_select_id( const char *scaler_mode );
@@ -94,6 +101,6 @@ scaler_flags_t scaler_get_flags( scaler_type scaler );
 float scaler_get_scaling_factor( scaler_type scaler );
 scaler_expand_fn* scaler_get_expander( scaler_type scaler );
 
-int scaler_select_bitformat( libspectrum_dword BitFormat );
+int scaler_select_bitformat( scaler_bitformat_t bitformat );
 
 #endif

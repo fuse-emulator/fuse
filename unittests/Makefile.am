@@ -27,6 +27,7 @@ noinst_HEADERS += unittests/unittests.h
 ## The display code tester
 
 noinst_PROGRAMS += unittests/displaytest
+noinst_PROGRAMS += unittests/gtkcompositeformattest
 noinst_PROGRAMS += unittests/sdl2displaytest
 noinst_PROGRAMS += unittests/sdl2scalerstatetest
 noinst_PROGRAMS += unittests/sdl2joysticktest
@@ -35,6 +36,16 @@ noinst_PROGRAMS += unittests/sdl2mousetest
 unittests_displaytest_SOURCES = unittests/displaytest.c display.c
 unittests_displaytest_LDADD = $(LIBSPECTRUM_LIBS) $(GLIB_LIBS)
 unittests_displaytest_CPPFLAGS = $(AM_CPPFLAGS) -DDISPLAYTEST
+
+unittests_gtkcompositeformattest_SOURCES = \
+        unittests/gtkcompositeformattest.c \
+        ui/scaler/scaler.c
+unittests_gtkcompositeformattest_LDADD = \
+        ui/scaler/scalers16.o \
+        ui/scaler/scalers32.o \
+        ui/scaler/snes_ntsc.o \
+        $(LIBSPECTRUM_LIBS)
+unittests_gtkcompositeformattest_CPPFLAGS = $(AM_CPPFLAGS)
 
 unittests_sdl2displaytest_SOURCES = \
         unittests/sdl2displaytest.c \

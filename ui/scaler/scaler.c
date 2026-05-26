@@ -163,6 +163,24 @@ scaler_select_scaler( scaler_type scaler )
 }
 
 int
+scaler_select_bitformat( scaler_bitformat_t bitformat )
+{
+  switch( bitformat ) {
+  case BITFORMAT_555:
+  case BITFORMAT_565:
+    return scaler_select_bitformat_16( bitformat );
+
+  case BITFORMAT_X8B8G8R8:
+  case BITFORMAT_X8R8G8B8:
+    return scaler_select_bitformat_32( bitformat );
+
+  default:
+    ui_error( UI_ERROR_ERROR, "unknown bitformat %d", bitformat );
+    return 1;
+  }
+}
+
+int
 scaler_select_id( const char *id )
 {
   scaler_type i;

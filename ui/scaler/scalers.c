@@ -83,9 +83,9 @@ static const libspectrum_word dotmatrix_555[16] = {
 static const libspectrum_word *dotmatrix;
 
 int 
-scaler_select_bitformat( libspectrum_dword BitFormat )
+scaler_select_bitformat_16( scaler_bitformat_t bitformat )
 {
-  switch( BitFormat ) {
+  switch( bitformat ) {
 
     /* FIXME(?): there is an assumption here that our colour fields
        are (*) xxxx|xyyy|yyyz|zzzz for the 565 mode
@@ -132,7 +132,7 @@ scaler_select_bitformat( libspectrum_dword BitFormat )
     break;
 
   default:
-    ui_error( UI_ERROR_ERROR, "unknown bitformat %d", BitFormat );
+    ui_error( UI_ERROR_ERROR, "unknown bitformat %d", bitformat );
     return 1;
 
   }
@@ -145,10 +145,12 @@ scaler_select_bitformat( libspectrum_dword BitFormat )
 typedef libspectrum_dword scaler_data_type;
 #define FUNCTION( name ) name##_32
 
-/* The assumption here is that the colour fields are laid out in
-   memory as (LSB) red|green|blue|padding (MSB). We wish to access
-   these as 32-bit entities, so make sure we get our masks the right
-   way round. */
+/* The default 32-bit scaler format stores pixels in memory as
+   red|green|blue|padding. Some frontends, such as GTK/Cairo RGB24,
+   instead use native-endian x8r8g8b8, which is blue|green|red|padding on
+   little-endian hosts and padding|red|green|blue on big-endian hosts.
+   The composite scalers need explicit channel-aware handling for both. */
+static scaler_bitformat_t scaler_32bit_bitformat = BITFORMAT_X8B8G8R8;
 
 #ifdef WORDS_BIGENDIAN
 
@@ -195,6 +197,21 @@ static const libspectrum_dword dotmatrix[16] = {
 };
 
 #endif				/* #ifdef WORDS_BIGENDIAN */
+
+int
+scaler_select_bitformat_32( scaler_bitformat_t bitformat )
+{
+  switch( bitformat ) {
+  case BITFORMAT_X8B8G8R8:
+  case BITFORMAT_X8R8G8B8:
+    scaler_32bit_bitformat = bitformat;
+    return 0;
+
+  default:
+    ui_error( UI_ERROR_ERROR, "unknown bitformat %d", bitformat );
+    return 1;
+  }
+}
 
 #else				/* #if SCALER_DATA_SIZE == 2 or 4 */
 #error Unknown SCALER_DATA_SIZE
@@ -1873,18 +1890,26 @@ FUNCTION( scaler_HQ4x ) ( const libspectrum_byte *srcPtr,
 static inline scaler_data_type
 blargg_ntsc_rgb_to_pixel( const uint8_t *rgb )
 {
+#if SCALER_DATA_SIZE == 2
   const uint8_t blue = rgb[0];
   const uint8_t green = rgb[1];
   const uint8_t red = rgb[2];
 
-#if SCALER_DATA_SIZE == 2
   return green6bit ? RGB_TO_PIXEL_565( red, green, blue ) :
                      RGB_TO_PIXEL_555( red, green, blue );
 #else
+  const uint8_t red = rgb[0];
+  const uint8_t green = rgb[1];
+  const uint8_t blue = rgb[2];
+
 #ifdef WORDS_BIGENDIAN
-  return blue << 24 | green << 16 | red << 8;
+  return scaler_32bit_bitformat == BITFORMAT_X8R8G8B8 ?
+         green << 8 | red << 16 | blue :
+         blue << 8 | green << 16 | red << 24;
 #else
-  return red | green << 8 | blue << 16;
+  return scaler_32bit_bitformat == BITFORMAT_X8R8G8B8 ?
+         blue | green << 8 | red << 16 :
+         red | green << 8 | blue << 16;
 #endif
 #endif
 }
@@ -1909,9 +1934,25 @@ blargg_ntsc_input_row( const libspectrum_byte *srcPtr, int width )
 }
 #else
 static const SNES_NTSC_IN_T*
-blargg_ntsc_input_row( const libspectrum_byte *srcPtr, int width GCC_UNUSED )
+blargg_ntsc_input_row( const libspectrum_byte *srcPtr, int width )
 {
-  return (const SNES_NTSC_IN_T *)srcPtr;
+  if( scaler_32bit_bitformat == BITFORMAT_X8B8G8R8 )
+    return (const SNES_NTSC_IN_T *)srcPtr;
+
+  static SNES_NTSC_IN_T input_buffer[ DISPLAY_SCREEN_WIDTH ];
+  const scaler_data_type *src = (const scaler_data_type *)srcPtr;
+  int x;
+
+  for( x = 0; x < width; x++ ) {
+    libspectrum_dword pixel = src[x];
+    libspectrum_byte red = ( pixel >> 16 ) & 0xff;
+    libspectrum_byte green = ( pixel >> 8 ) & 0xff;
+    libspectrum_byte blue = pixel & 0xff;
+
+    input_buffer[x] = red | green << 8 | blue << 16;
+  }
+
+  return input_buffer;
 }
 #endif
 
