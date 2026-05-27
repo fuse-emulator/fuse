@@ -59,9 +59,7 @@ gboolean value_change(GtkRange     *range,
 static int
 create_dialog( void )
 {
-  GtkWidget *scrolled_window, *content_area, *range, *label, *grid, *box;
-  gint range_width = 200;
-  gint range_height = -1;
+  GtkWidget *content_area, *range, *label, *box;
   struct option_t options[] = {
     {
       .label = "Hue",
