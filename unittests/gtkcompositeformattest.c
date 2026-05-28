@@ -28,16 +28,19 @@
 
 settings_info settings_current;
 
-void
-libspectrum_free( void *ptr )
-{
-  free( ptr );
-}
-
 char*
 utils_safe_strdup( const char *s )
 {
-  return s ? strdup( s ) : NULL;
+  char *copy;
+  size_t length;
+
+  if( !s ) return NULL;
+
+  length = strlen( s ) + 1;
+  copy = libspectrum_malloc( length );
+  memcpy( copy, s, length );
+
+  return copy;
 }
 
 int
