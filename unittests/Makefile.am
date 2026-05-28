@@ -70,3 +70,12 @@ unittests_sdl2mousetest_SOURCES = \
         ui/sdl2/sdl2_mouse_internal.c
 unittests_sdl2mousetest_LDADD = $(LIBSPECTRUM_LIBS)
 unittests_sdl2mousetest_CPPFLAGS = $(AM_CPPFLAGS)
+
+if COMPAT_WIN32
+unittests_displaytest_LDFLAGS = -mconsole
+unittests_gtkcompositeformattest_LDFLAGS = -mconsole
+unittests_sdl2displaytest_LDFLAGS = -mconsole
+unittests_sdl2scalerstatetest_LDFLAGS = -mconsole
+unittests_sdl2joysticktest_LDFLAGS = -mconsole
+unittests_sdl2mousetest_LDFLAGS = -mconsole
+endif
