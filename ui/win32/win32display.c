@@ -23,6 +23,8 @@
 
 #include "config.h"
 
+#include <string.h>
+
 #include "display.h"
 #include "fuse.h"
 #include "machine.h"
@@ -54,8 +56,8 @@ static const int rgb_pitch = ( DISPLAY_SCREEN_WIDTH + 3 ) * 4;
 
 /* The scaled image */
 static unsigned char scaled_image[ MAX_SCALE * DISPLAY_SCREEN_HEIGHT *
-                                   MAX_SCALE * DISPLAY_SCREEN_WIDTH * 2 ];
-static const ptrdiff_t scaled_pitch = MAX_SCALE * DISPLAY_SCREEN_WIDTH * 2;
+                                   MAX_SCALE * DISPLAY_SCREEN_WIDTH * 4 ];
+static const ptrdiff_t scaled_pitch = MAX_SCALE * DISPLAY_SCREEN_WIDTH * 4;
 
 /* Win32 specific variables */
 static void *win32_pixdata;
@@ -129,6 +131,8 @@ win32display_init( void )
   libspectrum_dword black;
 
   error = init_colours(); if( error ) return error;
+  error = scaler_select_bitformat( BITFORMAT_X8R8G8B8 );
+  if( error ) return error;
 
   black = settings_current.bw_tv ? bw_colours[0] : win32display_colours[0];
 
@@ -186,13 +190,13 @@ init_colours( void )
 
 #ifdef WORDS_BIGENDIAN
 
-    win32display_colours[i] =  red << 24 | green << 16 | blue << 8;
-              bw_colours[i] = grey << 24 |  grey << 16 | grey << 8;
+    win32display_colours[i] = blue << 24 | green << 16 | red << 8;
+              bw_colours[i] = grey << 24 | grey << 16 | grey << 8;
 
 #else                           /* #ifdef WORDS_BIGENDIAN */
 
-    win32display_colours[i] =  red | green << 8 | blue << 16;
-              bw_colours[i] = grey |  grey << 8 | grey << 16;
+    win32display_colours[i] = blue | green << 8 | red << 16;
+              bw_colours[i] = grey | grey << 8 | grey << 16;
 
 #endif                          /* #ifdef WORDS_BIGENDIAN */
 
@@ -367,24 +371,18 @@ uidisplay_area( int x, int y, int w, int h )
 void
 win32display_area(int x, int y, int width, int height)
 {
-  int disp_x,disp_y;
+  int disp_y;
   int bottom, right;
-  long ofs;
   RECT r;
-  char *pixdata = win32_pixdata;
+  unsigned char *pixdata = win32_pixdata;
 
   bottom = y + height;
   right = x + width;
 
   for( disp_y = y; disp_y < bottom; disp_y++ ) {
-    for( disp_x = x; disp_x < right; disp_x++ ) {
-      ofs = ( disp_x << 2 ) + ( disp_y * scaled_pitch );
-
-      pixdata[ ofs + 0 ] = scaled_image[ ofs + 2 ]; /* blue */
-      pixdata[ ofs + 1 ] = scaled_image[ ofs + 1 ]; /* green */
-      pixdata[ ofs + 2 ] = scaled_image[ ofs + 0 ]; /* red */
-      pixdata[ ofs + 3 ] = 0; /* unused */
-    }
+    memcpy( pixdata + ( disp_y * scaled_pitch ) + ( x << 2 ),
+            scaled_image + ( disp_y * scaled_pitch ) + ( x << 2 ),
+            width << 2 );
   }
 
   /* Mark area for updating */
