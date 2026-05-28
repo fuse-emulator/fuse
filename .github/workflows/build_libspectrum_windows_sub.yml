@@ -116,7 +116,7 @@ jobs:
             mingw64-i686-libgpg-error
             mingw64-i686-libpng
             mingw64-i686-win-iconv
-            mingw64-i686-winpthread
+            mingw64-i686-winpthreads
             mingw64-i686-zlib
             pkg-config
 
