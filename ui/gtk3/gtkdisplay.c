@@ -25,6 +25,7 @@
 
 #include "config.h"
 
+#include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -385,15 +386,45 @@ uidisplay_area( int x, int y, int w, int h )
   gtkdisplay_area( scaled_x, scaled_y, w, h );
 }
 
+/* Map the cairo surface onto the drawing area.
+   'scale' is set so the contents fit the drawing area.
+   'offset_x' and 'offset_y' are set so the contents are centred. */
+static void
+get_surface_placement( double *scale, int *offset_x, int *offset_y )
+{
+  int surface_width, surface_height, widget_width, widget_height;
+  double scale_x, scale_y, s;
+
+  surface_width = cairo_image_surface_get_width( surface );
+  surface_height = cairo_image_surface_get_height( surface );
+  widget_width = gtk_widget_get_allocated_width( gtkui_drawing_area );
+  widget_height = gtk_widget_get_allocated_height( gtkui_drawing_area );
+
+  scale_x = (double)widget_width  / surface_width;
+  scale_y = (double)widget_height / surface_height;
+  s = scale_x < scale_y ? scale_x : scale_y;
+
+  *offset_x = ( widget_width  - (int)( surface_width  * s ) ) / 2;
+  *offset_y = ( widget_height - (int)( surface_height * s ) ) / 2;
+  *scale = s;
+}
+
 static void gtkdisplay_area(int x, int y, int width, int height)
 {
-  int max_width, max_height, widget_width, widget_height;
+  int max_width, max_height;
   int offset_x, offset_y;
+  int wx, wy, ww, wh;
+  double scale;
 
   if( width <= 0 || height <= 0 ) return;
 
-  max_width = surface ? cairo_image_surface_get_width( surface ) : width;
-  max_height = surface ? cairo_image_surface_get_height( surface ) : height;
+  if( !surface ) {
+    gtk_widget_queue_draw_area( gtkui_drawing_area, x, y, width, height );
+    return;
+  }
+
+  max_width = cairo_image_surface_get_width( surface );
+  max_height = cairo_image_surface_get_height( surface );
 
   /* Expand the invalidated area slightly to avoid thin seams on scaled GTK
      redraws where Cairo clips right on a dirty-rect edge. */
@@ -402,15 +433,16 @@ static void gtkdisplay_area(int x, int y, int width, int height)
   if( x + width < max_width ) width++;
   if( y + height < max_height ) height++;
 
-  /* Translate surface coordinates into widget coordinates. The surface is
-     centred when the drawing area is larger than the cairo surface. */
-  widget_width = gtk_widget_get_allocated_width( gtkui_drawing_area );
-  widget_height = gtk_widget_get_allocated_height( gtkui_drawing_area );
-  offset_x = ( widget_width  - max_width  ) / 2;
-  offset_y = ( widget_height - max_height ) / 2;
+  /* Map the surface onto the drawing area */
+  get_surface_placement( &scale, &offset_x, &offset_y );
 
-  gtk_widget_queue_draw_area( gtkui_drawing_area, x + offset_x, y + offset_y,
-                              width, height );
+  /* Adjust the values according to the scale factor */
+  wx = (int)( x * scale ) + offset_x;
+  wy = (int)( y * scale ) + offset_y;
+  ww = (int)( ceil( ( x + width  ) * scale ) ) - (int)( x * scale );
+  wh = (int)( ceil( ( y + height ) * scale ) ) - (int)( y * scale );
+
+  gtk_widget_queue_draw_area( gtkui_drawing_area, wx, wy, ww, wh );
 }
 
 int
@@ -522,22 +554,17 @@ uidisplay_plot16( int x, int y, libspectrum_word data,
 
 /* Called by gtkui_drawing_area on "draw" event */
 static gboolean
-gtkdisplay_draw( GtkWidget *widget, cairo_t *cr, gpointer user_data )
+gtkdisplay_draw( GtkWidget *widget GCC_UNUSED, cairo_t *cr,
+                 gpointer user_data )
 {
-  int surface_width, surface_height, widget_width, widget_height;
   int offset_x, offset_y;
+  double scale;
 
   /* Create a new surface for this gfx mode */
   if( !surface ) ensure_appropriate_surface();
 
-  /* Centre the surface in the drawing area. */
-  surface_width = cairo_image_surface_get_width( surface );
-  surface_height = cairo_image_surface_get_height( surface );
-  widget_width = gtk_widget_get_allocated_width( widget );
-  widget_height = gtk_widget_get_allocated_height( widget );
-
-  offset_x = ( widget_width  - surface_width  ) / 2;
-  offset_y = ( widget_height - surface_height ) / 2;
+  /* Map the surface onto the drawing area */
+  get_surface_placement( &scale, &offset_x, &offset_y );
 
   /* Fill the drawing area with black. This clears the margins around
      the source if the drawing area is larger */
@@ -545,7 +572,9 @@ gtkdisplay_draw( GtkWidget *widget, cairo_t *cr, gpointer user_data )
   cairo_paint( cr );
 
   /* Repaint the surface on top */
-  cairo_set_source_surface( cr, surface, offset_x, offset_y );
+  cairo_translate( cr, offset_x, offset_y );
+  cairo_scale( cr, scale, scale );
+  cairo_set_source_surface( cr, surface, 0, 0 );
   cairo_paint( cr );
 
   return FALSE;
