@@ -51,6 +51,7 @@ ptrdiff_t win32display_pitch = DISPLAY_SCREEN_WIDTH *
 static unsigned char rgb_image[ 4 * 2 * ( DISPLAY_SCREEN_HEIGHT + 4 ) *
                                         ( DISPLAY_SCREEN_WIDTH  + 3 )   ];
 static const int rgb_pitch = ( DISPLAY_SCREEN_WIDTH + 3 ) * 4;
+static const ptrdiff_t scaled_pitch = MAX_SCALE * DISPLAY_SCREEN_WIDTH * 2;
 
 /* Win32 specific variables */
 static void *win32_pixdata;
