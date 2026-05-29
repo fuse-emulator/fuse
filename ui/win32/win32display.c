@@ -23,8 +23,6 @@
 
 #include "config.h"
 
-#include <string.h>
-
 #include "display.h"
 #include "fuse.h"
 #include "machine.h"
@@ -53,11 +51,6 @@ ptrdiff_t win32display_pitch = DISPLAY_SCREEN_WIDTH *
 static unsigned char rgb_image[ 4 * 2 * ( DISPLAY_SCREEN_HEIGHT + 4 ) *
                                         ( DISPLAY_SCREEN_WIDTH  + 3 )   ];
 static const int rgb_pitch = ( DISPLAY_SCREEN_WIDTH + 3 ) * 4;
-
-/* The scaled image */
-static unsigned char scaled_image[ MAX_SCALE * DISPLAY_SCREEN_HEIGHT *
-                                   MAX_SCALE * DISPLAY_SCREEN_WIDTH * 2 ];
-static const ptrdiff_t scaled_pitch = MAX_SCALE * DISPLAY_SCREEN_WIDTH * 2;
 
 /* Win32 specific variables */
 static void *win32_pixdata;
@@ -221,7 +214,6 @@ win32display_drawing_area_resize( int width, int height, int force_scaler )
 
   register_scalers( force_scaler );
 
-  memset( scaled_image, 0, sizeof( scaled_image ) );
   display_refresh_all();
 
   return 0;
@@ -359,7 +351,8 @@ uidisplay_area( int x, int y, int w, int h )
   /* Create scaled image */
   scaler_proc32( &rgb_image[ ( y + 2 ) * rgb_pitch + 4 * ( x + 1 ) ],
                  rgb_pitch,
-                 &scaled_image[ scaled_y * scaled_pitch + 4 * scaled_x ],
+                 (unsigned char *)win32_pixdata + scaled_y * scaled_pitch +
+                 4 * scaled_x,
                  scaled_pitch, w, h );
 
   w *= scale; h *= scale;
@@ -371,19 +364,11 @@ uidisplay_area( int x, int y, int w, int h )
 void
 win32display_area(int x, int y, int width, int height)
 {
-  int disp_y;
   int bottom, right;
   RECT r;
-  unsigned char *pixdata = win32_pixdata;
 
   bottom = y + height;
   right = x + width;
-
-  for( disp_y = y; disp_y < bottom; disp_y++ ) {
-    memcpy( pixdata + ( disp_y * scaled_pitch ) + ( x << 2 ),
-            scaled_image + ( disp_y * scaled_pitch ) + ( x << 2 ),
-            width << 2 );
-  }
 
   /* Mark area for updating */
   SetRect( &r, x, y, right, bottom );
