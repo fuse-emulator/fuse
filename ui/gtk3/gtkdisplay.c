@@ -601,7 +601,7 @@ gtkdisplay_update_geometry( void )
 
   scale = scaler_get_scaling_factor( current_scaler );
 
-  hints = GDK_HINT_MIN_SIZE | GDK_HINT_BASE_SIZE | GDK_HINT_RESIZE_INC;
+  hints = GDK_HINT_MIN_SIZE;
 
   /* Since GTK 3.20 it is intended that gtk_window_set_geometry_hints
      don't set geometry of widgets. See [bugs:#344] */
@@ -615,22 +615,8 @@ gtkdisplay_update_geometry( void )
     extra_height += gtkstatusbar_get_height();
   }
 
-#ifdef GDK_WINDOWING_WAYLAND
-  /* We don't calculate the window size enough accurately on wayland
-     backend to force the window geometry (bug #367) */
-  GdkDisplay *display = gdk_display_get_default();
-
-  if( GDK_IS_WAYLAND_DISPLAY( display ) ) {
-    hints &= ~GDK_HINT_RESIZE_INC;
-  }
-#endif                /* #ifdef GDK_WINDOWING_WAYLAND */
-
   geometry.min_width = DISPLAY_ASPECT_WIDTH;
   geometry.min_height = DISPLAY_SCREEN_HEIGHT + extra_height;
-  geometry.base_width = scale * image_width;
-  geometry.base_height = scale * image_height + extra_height;
-  geometry.width_inc = DISPLAY_ASPECT_WIDTH;
-  geometry.height_inc = DISPLAY_SCREEN_HEIGHT;
 
   if( settings_current.aspect_hint ) {
     hints |= GDK_HINT_ASPECT;
