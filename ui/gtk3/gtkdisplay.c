@@ -249,9 +249,6 @@ drawing_area_resize( int width, int height, int force_scaler )
   if( size > height / DISPLAY_SCREEN_HEIGHT )
     size = height / DISPLAY_SCREEN_HEIGHT;
 
-  /* Clamp the size of the cairo surface. Window managers can ignore
-     GDK_HINT_MAX_SIZE when tiling or maximizing the window, which
-     would otherwise limit us to MAX_SCALE. */
   if( size > MAX_SCALE ) size = MAX_SCALE;
   if( size < 1 ) size = 1;
 
@@ -604,8 +601,7 @@ gtkdisplay_update_geometry( void )
 
   scale = scaler_get_scaling_factor( current_scaler );
 
-  hints = GDK_HINT_MIN_SIZE | GDK_HINT_MAX_SIZE |
-          GDK_HINT_BASE_SIZE | GDK_HINT_RESIZE_INC;
+  hints = GDK_HINT_MIN_SIZE | GDK_HINT_BASE_SIZE | GDK_HINT_RESIZE_INC;
 
   /* Since GTK 3.20 it is intended that gtk_window_set_geometry_hints
      don't set geometry of widgets. See [bugs:#344] */
@@ -631,8 +627,6 @@ gtkdisplay_update_geometry( void )
 
   geometry.min_width = DISPLAY_ASPECT_WIDTH;
   geometry.min_height = DISPLAY_SCREEN_HEIGHT + extra_height;
-  geometry.max_width = MAX_SCALE * DISPLAY_ASPECT_WIDTH;
-  geometry.max_height = MAX_SCALE * DISPLAY_SCREEN_HEIGHT + extra_height;
   geometry.base_width = scale * image_width;
   geometry.base_height = scale * image_height + extra_height;
   geometry.width_inc = DISPLAY_ASPECT_WIDTH;
