@@ -68,6 +68,8 @@ int gtkui_picture( const char *filename, int border );
 
 extern void gtkui_popup_menu(void);
 
+void gtkui_fullscreen_toggle( void );
+
 GtkAccelGroup* gtkstock_add_accel_group( GtkWidget *widget );
 
 /* Set modifier=0 to use the first default accel key.

@@ -368,6 +368,18 @@ gtkui_gain_focus( GtkWidget *widget GCC_UNUSED,
   return TRUE;
 }
 
+void
+gtkui_fullscreen_toggle( void )
+{
+  GdkWindow *window = gtk_widget_get_window( gtkui_window );
+
+  if( window && ( gdk_window_get_state( window ) & GDK_WINDOW_STATE_FULLSCREEN ) ) {
+    gtk_window_unfullscreen( GTK_WINDOW( gtkui_window ) );
+  } else {
+    gtk_window_fullscreen( GTK_WINDOW( gtkui_window ) );
+  }
+}
+
 /* Called by the main window on a "delete-event" */
 static gboolean
 gtkui_delete( GtkWidget *widget GCC_UNUSED, GdkEvent *event GCC_UNUSED,
