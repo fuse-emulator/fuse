@@ -595,11 +595,8 @@ gtkdisplay_update_geometry( void )
   GdkGeometry geometry;
   GdkWindowHints hints;
   GtkWidget *geometry_widget;
-  float scale;
 
   if( !scalers_registered ) return;
-
-  scale = scaler_get_scaling_factor( current_scaler );
 
   hints = GDK_HINT_MIN_SIZE;
 
@@ -617,19 +614,6 @@ gtkdisplay_update_geometry( void )
 
   geometry.min_width = DISPLAY_ASPECT_WIDTH;
   geometry.min_height = DISPLAY_SCREEN_HEIGHT + extra_height;
-
-  if( settings_current.aspect_hint ) {
-    hints |= GDK_HINT_ASPECT;
-
-    geometry.min_aspect = geometry.max_aspect =
-      ( scale * DISPLAY_ASPECT_WIDTH ) /
-      ( scale * DISPLAY_SCREEN_HEIGHT + extra_height );
-
-    if( !settings_current.strict_aspect_hint ) {
-      geometry.min_aspect *= 0.9;
-      geometry.max_aspect *= 1.125;
-    }
-  }
 
   gtk_window_set_geometry_hints( GTK_WINDOW( gtkui_window ),
                                  geometry_widget,
