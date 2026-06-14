@@ -125,9 +125,6 @@ static void gtkdisplay_load_gfx_mode( void );
 static gboolean gtkdisplay_draw( GtkWidget *widget, cairo_t *cr,
                                  gpointer user_data );
 
-static gint drawing_area_resize_callback( GtkWidget *widget, GdkEvent *event,
-                                          gpointer data );
-
 static int
 init_colours( colour_format_t format )
 {
@@ -190,9 +187,6 @@ uidisplay_init( int width, int height )
                     G_CALLBACK( gtkdisplay_draw ), NULL );
 
   colour_format = FORMAT_x8r8g8b8;
-
-  g_signal_connect( G_OBJECT( gtkui_window ), "configure_event",
-                    G_CALLBACK( drawing_area_resize_callback ), NULL );
 
   error = init_colours( colour_format ); if( error ) return error;
   error = scaler_select_bitformat( BITFORMAT_X8R8G8B8 );
@@ -577,18 +571,6 @@ gtkdisplay_draw( GtkWidget *widget GCC_UNUSED, cairo_t *cr,
   return FALSE;
 }
 
-/* Called by gtkui_window on "configure_event".
-   On GTK 3 the window determines the size of the drawing area */
-static gint
-drawing_area_resize_callback( GtkWidget *widget GCC_UNUSED, GdkEvent *event,
-                              gpointer data GCC_UNUSED )
-{
-  drawing_area_resize( event->configure.width,
-                       event->configure.height - extra_height, 1 );
-
-  return FALSE;
-}
-
 void
 gtkdisplay_update_geometry( void )
 {
@@ -624,13 +606,19 @@ static void
 gtkdisplay_load_gfx_mode( void )
 {
   float scale;
+  int surface_width, surface_height;
 
   scale = scaler_get_scaling_factor( current_scaler );
 
   gtkdisplay_update_geometry();
 
-  gtk_window_resize( GTK_WINDOW( gtkui_window ), scale * image_width,
-                     scale * image_height + extra_height );
+  /* Rebuild the cairo surface for the new scaler */
+  surface_width = scale * image_width;
+  surface_height = scale * image_height;
+  drawing_area_resize( surface_width, surface_height, 0 );
+
+  gtk_window_resize( GTK_WINDOW( gtkui_window ), surface_width,
+                     surface_height + extra_height );
 
   /* Redraw the entire screen... */
   display_refresh_all();
