@@ -363,20 +363,33 @@ uidisplay_area( int x, int y, int w, int h )
 static void
 get_surface_placement( double *scale, int *offset_x, int *offset_y )
 {
-  int surface_width, surface_height, widget_width, widget_height;
+  int surface_width, surface_height, avail_width, avail_height, origin_y;
   double scale_x, scale_y, s;
+  GtkAllocation alloc;
 
   surface_width = cairo_image_surface_get_width( surface );
   surface_height = cairo_image_surface_get_height( surface );
-  widget_width = gtk_widget_get_allocated_width( gtkui_drawing_area );
-  widget_height = gtk_widget_get_allocated_height( gtkui_drawing_area );
 
-  scale_x = (double)widget_width  / surface_width;
-  scale_y = (double)widget_height / surface_height;
+  /* By default fit the image into the drawing area */
+  gtk_widget_get_allocation( gtkui_drawing_area, &alloc );
+  avail_width = alloc.width;
+  avail_height = alloc.height;
+  origin_y = 0;
+
+  /* In fullscreen fit the image into the whole window instead.
+     If the menu and status bars are hidden then we see the whole content.
+     If they are visible then those bars cover the edges of the image. */
+  if( settings_current.full_screen ) {
+    avail_height = gtk_widget_get_allocated_height( gtkui_window );
+    origin_y = -alloc.y;
+  }
+
+  scale_x = (double)avail_width  / surface_width;
+  scale_y = (double)avail_height / surface_height;
   s = scale_x < scale_y ? scale_x : scale_y;
 
-  *offset_x = ( widget_width  - (int)( surface_width  * s ) ) / 2;
-  *offset_y = ( widget_height - (int)( surface_height * s ) ) / 2;
+  *offset_x =            ( avail_width  - (int)( surface_width  * s ) ) / 2;
+  *offset_y = origin_y + ( avail_height - (int)( surface_height * s ) ) / 2;
   *scale = s;
 }
 
