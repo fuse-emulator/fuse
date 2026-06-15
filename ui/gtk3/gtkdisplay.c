@@ -311,6 +311,9 @@ uidisplay_frame_end( void )
   if( scaler_flags & SCALER_FLAGS_FULL_REFRESH ) {
     uidisplay_area( 0, 0, image_width, image_height );
   }
+
+  /* If the user changed the full screen option, apply it now */
+  gtkui_fullscreen_apply();
 }
 
 void
@@ -599,4 +602,14 @@ gtkdisplay_load_gfx_mode( void )
 
   /* Redraw the entire screen... */
   display_refresh_all();
+}
+
+/* The window's natural size for the current scaler */
+void
+gtkdisplay_get_window_size( int *width, int *height )
+{
+  float scale = scaler_get_scaling_factor( current_scaler );
+
+  *width = scale * image_width;
+  *height = scale * image_height + extra_height;
 }

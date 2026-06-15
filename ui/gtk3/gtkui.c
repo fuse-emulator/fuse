@@ -63,6 +63,10 @@ GtkWidget *gtkui_drawing_area;
 
 static GtkWidget *menu_bar;
 
+/* Wait until the window has reached its final size before applying
+   fullscreen changes. See gtkui_window_configure() for more details */
+static int fullscreen_ready = 0;
+
 /* The UIManager used to create the menu bar */
 GtkUIManager *ui_manager_menu = NULL;
 
@@ -92,6 +96,10 @@ static gboolean gtkui_make_menu(GtkAccelGroup **accel_group,
 
 static gboolean gtkui_lose_focus( GtkWidget*, GdkEvent*, gpointer );
 static gboolean gtkui_gain_focus( GtkWidget*, GdkEvent*, gpointer );
+static gboolean gtkui_window_state ( GtkWidget *, GdkEventWindowState *,
+				     gpointer );
+static gboolean gtkui_window_configure ( GtkWidget *,
+					 GdkEventConfigure *, gpointer );
 
 static gboolean gtkui_delete( GtkWidget *widget, GdkEvent *event,
 			      gpointer data );
@@ -175,6 +183,8 @@ ui_init( int *argc, char ***argv )
   gtk_widget_add_events( gtkui_window, GDK_KEY_RELEASE_MASK );
   g_signal_connect(G_OBJECT(gtkui_window), "key-release-event",
 		   G_CALLBACK(gtkkeyboard_keyrelease), NULL);
+  g_signal_connect(G_OBJECT(gtkui_window), "window-state-event",
+		   G_CALLBACK(gtkui_window_state), NULL);
 
   /* If we lose the focus, disable all keys */
   g_signal_connect( G_OBJECT( gtkui_window ), "focus-out-event",
@@ -226,6 +236,14 @@ ui_init( int *argc, char ***argv )
 
   gtk_widget_show_all( gtkui_window );
   gtkstatusbar_set_visibility( settings_current.statusbar );
+
+  /* Wait until the window gets its final size before going fullscreen,
+     so it can later restore its expected windowed size correctly. */
+  fullscreen_ready = !settings_current.full_screen;
+  if( settings_current.full_screen ) {
+    g_signal_connect( G_OBJECT( gtkui_window ), "configure-event",
+                      G_CALLBACK( gtkui_window_configure ), NULL );
+  }
 
   ui_mouse_present = 1;
 
@@ -369,15 +387,63 @@ gtkui_gain_focus( GtkWidget *widget GCC_UNUSED,
 }
 
 void
-gtkui_fullscreen_toggle( void )
+gtkui_fullscreen_apply( void )
 {
   GdkWindow *window = gtk_widget_get_window( gtkui_window );
+  int state;
 
-  if( window && ( gdk_window_get_state( window ) & GDK_WINDOW_STATE_FULLSCREEN ) ) {
-    gtk_window_unfullscreen( GTK_WINDOW( gtkui_window ) );
-  } else {
+  /* Don't touch the window until it has reached its final size at startup */
+  if( !fullscreen_ready || !window ) return;
+
+  /* Nothing to do if the window is already in the requested state */
+  state = gdk_window_get_state( window ) & GDK_WINDOW_STATE_FULLSCREEN;
+  if( !!state == !!settings_current.full_screen )
+    return;
+
+  if( settings_current.full_screen ) {
     gtk_window_fullscreen( GTK_WINDOW( gtkui_window ) );
+  } else {
+    gtk_window_unfullscreen( GTK_WINDOW( gtkui_window ) );
   }
+}
+
+static gboolean
+gtkui_window_state ( GtkWidget *widget, GdkEventWindowState *event,
+                     gpointer data GCC_UNUSED )
+{
+  if( event->changed_mask & GDK_WINDOW_STATE_FULLSCREEN )
+    settings_current.full_screen =
+      !!( event->new_window_state & GDK_WINDOW_STATE_FULLSCREEN );
+
+  return FALSE;
+}
+
+/* Go fullscreen at startup once the window has reached its final size.
+   This is necessary so, when we leave fullscreen, the window is restored
+   to the expected size according to the selected scaler, and not to
+   the initial size before the scaler was applied. */
+static gboolean
+gtkui_window_configure( GtkWidget *widget, GdkEventConfigure *event,
+			gpointer data GCC_UNUSED )
+{
+  int width, height;
+
+  /* Fuse resizes the window a few times during startup so we receive
+     several configure events. Wait until one where the window is as big
+     as it's supposed to according to the selected scaler. */
+  gtkdisplay_get_window_size( &width, &height );
+  if( event->width < width || event->height < height )
+    return FALSE;
+
+  /* Once the window has the final size we can stop listening to these
+   * events. */
+  g_signal_handlers_disconnect_by_func(
+    widget, G_CALLBACK( gtkui_window_configure ), NULL );
+
+  fullscreen_ready = 1;
+  gtkui_fullscreen_apply();
+
+  return FALSE;
 }
 
 /* Called by the main window on a "delete-event" */

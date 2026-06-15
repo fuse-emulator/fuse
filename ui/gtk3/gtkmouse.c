@@ -28,6 +28,7 @@
 #include <gdk/gdk.h>
 
 #include "gtkinternals.h"
+#include "settings.h"
 #include "ui/ui.h"
 
 #ifdef GDK_WINDOWING_WAYLAND
@@ -182,7 +183,6 @@ static gboolean
 hide_pointer( gpointer data GCC_UNUSED )
 {
   GdkWindow *window;
-  GdkWindow *toplevel;
   gint64 timeout = (gint64)POINTER_HIDE_TIMEOUT * G_USEC_PER_SEC;
   gint64 idle = g_get_monotonic_time() - pointer_last_activity;
 
@@ -206,9 +206,7 @@ hide_pointer( gpointer data GCC_UNUSED )
   }
 
   /* In fullscreen also hide the menu and status bars */
-  toplevel = gtk_widget_get_window( gtkui_window );
-  if( toplevel &&
-      ( gdk_window_get_state( toplevel ) & GDK_WINDOW_STATE_FULLSCREEN ) ) {
+  if( settings_current.full_screen ) {
     gtkui_set_bars_visible( 0 );
     bars_hidden = TRUE;
   }

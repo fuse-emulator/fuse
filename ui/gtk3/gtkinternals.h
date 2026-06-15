@@ -35,6 +35,7 @@
 extern libspectrum_dword gtkdisplay_colours[ 16 ];
 
 void gtkdisplay_update_geometry( void );
+void gtkdisplay_get_window_size( int *width, int *height );
 
 /*
  * Keyboard routines (gtkkeyboard.c)
@@ -68,7 +69,7 @@ int gtkui_picture( const char *filename, int border );
 
 extern void gtkui_popup_menu(void);
 
-void gtkui_fullscreen_toggle( void );
+void gtkui_fullscreen_apply( void );
 
 GtkAccelGroup* gtkstock_add_accel_group( GtkWidget *widget );
 
