@@ -82,8 +82,12 @@ gtkkeyboard_keypress( GtkWidget *widget GCC_UNUSED, GdkEvent *event,
 {
   input_event_t fuse_event;
 
-  if( event->key.keyval == GDK_KEY_F1 && event->key.state == 0 )
+  if( event->key.keyval == GDK_KEY_F1 && event->key.state == 0 ) {
     ui_mouse_suspend();
+    if( settings_current.full_screen ) {
+      gtkui_set_bars_visible( 1 );
+    }
+  }
 
   if( event->key.keyval == GDK_KEY_F11 && event->key.state == 0 ) {
     gtkui_fullscreen_toggle();

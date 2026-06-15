@@ -993,3 +993,11 @@ gtkui_menubar_get_height( void )
 
   return alloc.height;
 }
+
+void
+gtkui_set_bars_visible( int visible )
+{
+  gtk_widget_set_visible( menu_bar, visible );
+  /* The status bar is only shown if the user has it enabled */
+  gtkstatusbar_set_visibility( visible ? settings_current.statusbar : 0 );
+}

@@ -122,6 +122,9 @@ void gtkui_free_font( PangoFontDescription *font );
 
 int gtkui_menubar_get_height( void );
 
+/* Show/hide the menu bar and status bar */
+void gtkui_set_bars_visible( int visible );
+
 /*
  * The menu data (menu_data.c)
  */
