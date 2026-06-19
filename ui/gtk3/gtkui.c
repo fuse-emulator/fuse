@@ -110,40 +110,43 @@ static void gtkui_drag_data_received( GtkWidget *widget GCC_UNUSED,
                                       GtkSelectionData *data,
                                       guint info GCC_UNUSED, guint timestamp )
 {
-  static char uri_prefix[] = "file://";
-  char *filename, *selection_filename;
-  const guchar *selection_data, *data_begin, *data_end, *p;
+  gchar *filename, **uris;
   gint selection_length;
+  GdkAtom selection_target;
+  gboolean success = FALSE;
+
+  if( !data ) {
+    gtk_drag_finish( drag_context, FALSE, FALSE, timestamp );
+    return;
+  }
 
   selection_length = gtk_selection_data_get_length( data );
+  selection_target = gtk_selection_data_get_target( data );
 
-  if ( data && selection_length > (gint) sizeof( uri_prefix ) ) {
-    selection_data = gtk_selection_data_get_data( data );
-    data_begin = selection_data + sizeof( uri_prefix ) - 1;
-    data_end = selection_data + selection_length;
-    p = data_begin; 
-    do {
-      if ( *p == '\r' || *p == '\n' ) {
-        data_end = p;
-        break;
+  if ( selection_length > 0 &&
+       selection_target == gdk_atom_intern( "text/uri-list", FALSE ) ) {
+
+    uris = gtk_selection_data_get_uris( data );
+    if( uris ) {
+      if( uris[0] ) {
+        /* Convert URI to a local path (handles %20 spaces and translates
+           to the backend format) */
+        filename = g_filename_from_uri( uris[0], NULL, NULL );
+
+        if( filename ) {
+          fuse_emulation_pause();
+          utils_open_file( filename, settings_current.auto_load, NULL );
+          g_free( filename );
+          display_refresh_all();
+          fuse_emulation_unpause();
+          success = TRUE;
+        }
       }
-    } while ( p++ != data_end );
-
-    selection_filename = g_strndup( (const gchar *)data_begin,
-                                    data_end - data_begin );
-
-    filename = g_uri_unescape_string( selection_filename, NULL );
-    if ( filename ) {
-      fuse_emulation_pause();
-      utils_open_file( filename, settings_current.auto_load, NULL );
-      free( filename );
-      display_refresh_all();
-      fuse_emulation_unpause();
+      g_strfreev( uris );
     }
-
-    g_free( selection_filename );
   }
-  gtk_drag_finish( drag_context, FALSE, FALSE, timestamp );
+
+  gtk_drag_finish( drag_context, success, FALSE, timestamp );
 }
 
 int
