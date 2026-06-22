@@ -117,7 +117,7 @@ static int extra_height = 0;
 
 static int init_colours( colour_format_t format );
 static void gtkdisplay_area(int x, int y, int width, int height);
-static void register_scalers( void );
+static void register_scalers( int force_scaler );
 static void gtkdisplay_load_gfx_mode( void );
 
 /* Callbacks */
@@ -201,7 +201,7 @@ uidisplay_init( int width, int height )
   image_width = width; image_height = height;
   image_scale = width / DISPLAY_ASPECT_WIDTH;
 
-  register_scalers();
+  register_scalers( 0 );
 
   display_refresh_all();
 
@@ -235,7 +235,7 @@ ensure_appropriate_surface( void )
 }
 
 static int
-drawing_area_resize( int width, int height )
+drawing_area_resize( int width, int height, int force_scaler )
 {
   int size;
 
@@ -251,6 +251,8 @@ drawing_area_resize( int width, int height )
 
   gtkdisplay_surface_size = size;
 
+  register_scalers( force_scaler );
+
   memset( scaled_image, 0, sizeof( scaled_image ) );
 
   ensure_appropriate_surface();
@@ -261,9 +263,10 @@ drawing_area_resize( int width, int height )
 }
 
 static void
-register_scalers( void )
+register_scalers( int force_scaler )
 {
   scaler_type scaler;
+  float surface_scale, scaling_factor;
 
   scaler_register_clear();
 
@@ -300,6 +303,26 @@ register_scalers( void )
 
   scaler =
     scaler_is_supported( current_scaler ) ? current_scaler : SCALER_NORMAL;
+
+  surface_scale = (float)gtkdisplay_surface_size / image_scale;
+  scaling_factor = scaler_get_scaling_factor( current_scaler );
+
+  /* Override scaler if it doesn't match the surface scale */
+  if( force_scaler && surface_scale != scaling_factor ) {
+
+    switch( gtkdisplay_surface_size ) {
+    case 1: scaler = machine_current->timex ? SCALER_HALF : SCALER_NORMAL;
+      break;
+    case 2: scaler = machine_current->timex ? SCALER_NORMAL : SCALER_DOUBLESIZE;
+      break;
+    case 3: scaler = machine_current->timex ? SCALER_TIMEX1_5X :
+                                              SCALER_TRIPLESIZE;
+      break;
+    case 4: scaler = machine_current->timex ? SCALER_TIMEX2X :
+                                              SCALER_QUADSIZE;
+      break;
+    }
+  }
 
   /* Activate the scaler without trying to resize the GTK window */
   scaler_activate_scaler( scaler );
@@ -615,7 +638,7 @@ gtkdisplay_load_gfx_mode( void )
   /* Rebuild the cairo surface for the new scaler */
   surface_width = scale * image_width;
   surface_height = scale * image_height;
-  drawing_area_resize( surface_width, surface_height );
+  drawing_area_resize( surface_width, surface_height, 0 );
 
   gtk_window_resize( GTK_WINDOW( gtkui_window ), surface_width,
                      surface_height + extra_height );
