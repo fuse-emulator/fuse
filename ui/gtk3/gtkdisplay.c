@@ -50,10 +50,6 @@
    creating via the scalers */
 #define MAX_SCALE 4
 
-/* The size of a 1x1 image in units of
-   DISPLAY_ASPECT WIDTH x DISPLAY_SCREEN_HEIGHT */
-int image_scale;
-
 /* The height and width of a 1x1 image in pixels */
 int image_width, image_height;
 
@@ -108,8 +104,13 @@ typedef enum {
 
 static cairo_surface_t *surface = NULL;
 
-/* The current size of the cairo surface (in units of DISPLAY_SCREEN_*).
-   It may be smaller than the GTK drawing area if the window is maximized. */
+/* The scaler the current cairo surface was created for */
+static scaler_type surface_scaler = SCALER_NUM;
+
+/* The size the window has been resized to (in units of DISPLAY_SCREEN_*),
+   used to choose the scaler. The cairo surface is sized to the active
+   scaler instead, which may be smaller or larger than this when the
+   scaler's family has no variant for this size (see scaler_family_table). */
 static int gtkdisplay_surface_size=1;
 
 /* Extra height used for menu and status bars */
@@ -213,7 +214,6 @@ uidisplay_init( int width, int height )
       *(libspectrum_dword*)( rgb_image + y * rgb_pitch + 4 * x ) = black;
 
   image_width = width; image_height = height;
-  image_scale = width / DISPLAY_ASPECT_WIDTH;
 
   register_scalers( 0 );
 
@@ -236,8 +236,8 @@ uidisplay_init( int width, int height )
 static void
 ensure_appropriate_surface( void )
 {
-  /* Recreate the cairo surface to match the new size */
-  float scale = (float)gtkdisplay_surface_size / image_scale;
+  /* Recreate the cairo surface to match the active scaler */
+  float scale = scaler_get_scaling_factor( current_scaler );
   if( surface ) cairo_surface_destroy( surface );
 
   surface =
@@ -246,6 +246,8 @@ ensure_appropriate_surface( void )
                                            scale * image_width,
                                            scale * image_height,
                                            scaled_pitch );
+
+  surface_scaler = current_scaler;
 }
 
 static int
@@ -260,8 +262,9 @@ drawing_area_resize( int width, int height, int force_scaler )
   if( size > MAX_SCALE ) size = MAX_SCALE;
   if( size < 1 ) size = 1;
 
-  /* If we're the same size as before, no need to do anything else */
-  if( size == gtkdisplay_surface_size ) return 0;
+  /* If we're the same size and scaler as before, no need to do anything else */
+  if( size == gtkdisplay_surface_size && current_scaler == surface_scaler )
+    return 0;
 
   gtkdisplay_surface_size = size;
 
@@ -280,7 +283,6 @@ static void
 register_scalers( int force_scaler )
 {
   scaler_type scaler;
-  float surface_scale, scaling_factor;
 
   scaler_register_clear();
 
@@ -318,25 +320,10 @@ register_scalers( int force_scaler )
   scaler =
     scaler_is_supported( current_scaler ) ? current_scaler : SCALER_NORMAL;
 
-  surface_scale = (float)gtkdisplay_surface_size / image_scale;
-  scaling_factor = scaler_get_scaling_factor( current_scaler );
-
-  /* Override scaler if it doesn't match the surface scale */
-  if( force_scaler && surface_scale != scaling_factor ) {
-
-    switch( gtkdisplay_surface_size ) {
-    case 1: scaler = machine_current->timex ? SCALER_HALF : SCALER_NORMAL;
-      break;
-    case 2: scaler = machine_current->timex ? SCALER_NORMAL : SCALER_DOUBLESIZE;
-      break;
-    case 3: scaler = machine_current->timex ? SCALER_TIMEX1_5X :
-                                              SCALER_TRIPLESIZE;
-      break;
-    case 4: scaler = machine_current->timex ? SCALER_TIMEX2X :
-                                              SCALER_QUADSIZE;
-      break;
-    }
-  }
+  /* When the window is resized switch to the scaler of the same family
+     (e.g. PAL TV, HQ) that fits the new size */
+  if( force_scaler )
+    scaler = scaler_for_size( scaler, gtkdisplay_surface_size );
 
   /* Activate the scaler without trying to resize the GTK window */
   scaler_activate_scaler( scaler );
@@ -356,7 +343,7 @@ uidisplay_frame_end( void )
 void
 uidisplay_area( int x, int y, int w, int h )
 {
-  float scale = (float)gtkdisplay_surface_size / image_scale;
+  float scale = scaler_get_scaling_factor( current_scaler );
   int scaled_x, scaled_y, i, yy;
   libspectrum_dword *palette;
 

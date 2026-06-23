@@ -128,6 +128,27 @@ static const struct scaler_info available_scalers[] = {
     scaler_blargg_NTSC_4x_16, scaler_blargg_NTSC_4x_32, NULL        },
 };
 
+/* Scalers that share the same look but render the image at a different scale
+   belong to the same family. Single-size scalers (2xSaI, Dot Matrix, ...) are
+   not listed here and are left untouched when the display is resized.
+
+   Important: a machine cannot have a scaler listed in more than one family,
+   that is, a scaler cannot be in two different rows unless those two rows
+   are for different machines. In this case SCALER_NORMAL appears twice
+   precisely because no machine can use both families of scalers. */
+#define SCALER_SIZES 4
+static const scaler_type scaler_family_table[][ SCALER_SIZES ] = {
+  /*   1x                 2x                 3x                 4x          */
+  { SCALER_NORMAL,    SCALER_DOUBLESIZE, SCALER_TRIPLESIZE, SCALER_QUADSIZE  },
+  { SCALER_TV2X,      SCALER_TV2X,       SCALER_TV3X,       SCALER_TV4X      },
+  { SCALER_PALTV2X,   SCALER_PALTV2X,    SCALER_PALTV3X,    SCALER_PALTV4X   },
+  { SCALER_HQ2X,      SCALER_HQ2X,       SCALER_HQ3X,       SCALER_HQ4X      },
+  { SCALER_NTSC2X,    SCALER_NTSC2X,     SCALER_NTSC3X,     SCALER_NTSC4X    },
+  { SCALER_ADVMAME2X, SCALER_ADVMAME2X,  SCALER_ADVMAME3X,  SCALER_ADVMAME3X },
+  /* Timex sizes 1x-4x correspond to scaling factors 0.5x, 1x, 1.5x and 2x */
+  { SCALER_HALF,      SCALER_NORMAL,     SCALER_TIMEX1_5X,  SCALER_TIMEX2X   },
+};
+
 scaler_type current_scaler = SCALER_NUM;
 ScalerProc *scaler_proc16, *scaler_proc32;
 scaler_flags_t scaler_flags;
@@ -257,6 +278,41 @@ scaler_expand_fn*
 scaler_get_expander( scaler_type scaler )
 {
   return available_scalers[scaler].expander;
+}
+
+/* Return the scaler that should be used at the given size (1x to 4x)
+   from the same family as 'scaler' (e.g. PAL TV, HQ, etc.).
+
+   SCALER_NORMAL belongs to two families (the regular one and the Timex one),
+   so we only consider families whose scalers are all currently registered.
+   That is the family for the current machine. */
+scaler_type
+scaler_for_size( scaler_type scaler, int size )
+{
+  size_t family, i;
+
+  if( size < 1 ) size = 1;
+  if( size > SCALER_SIZES ) size = SCALER_SIZES;
+
+  for( family = 0; family < ARRAY_SIZE( scaler_family_table ); family++ ) {
+    int found = 0, supported = 1;
+
+    /* For every row of scalers, check if:
+       - The current one ('scaler') is there.
+       - All four scalers are supported by the current machine */
+    for( i = 0; i < SCALER_SIZES; i++ ) {
+      if( scaler_family_table[family][i] == scaler ) found = 1;
+      if( !scaler_is_supported( scaler_family_table[family][i] ) )
+        supported = 0;
+    }
+
+    /* If that's the case, select the best scaler for the given size */
+    if( found && supported )
+      return scaler_family_table[family][size - 1];
+  }
+
+  /* Single-size scaler (or not in any family): leave it as it is */
+  return scaler;
 }
 
 /* The expansion functions */
