@@ -115,10 +115,18 @@ static int gtkdisplay_surface_size=1;
 /* Extra height used for menu and status bars */
 static int extra_height = 0;
 
+/* If the user resizes the window, switch the scaler only after this
+   period of inactivity (i.e. without configure events). */
+#define RESIZE_TIMEOUT_MS 250
+static guint resize_timeout_id = 0;
+static gint64 resize_last_activity = 0;
+static int pending_width, pending_height;
+
 static int init_colours( colour_format_t format );
 static void gtkdisplay_area(int x, int y, int width, int height);
 static void register_scalers( int force_scaler );
 static void gtkdisplay_load_gfx_mode( void );
+static void cancel_pending_resize( void );
 
 /* Callbacks */
 
@@ -474,6 +482,8 @@ uidisplay_hotswap_gfx_mode( void )
 int
 uidisplay_end( void )
 {
+  cancel_pending_resize();
+
   return 0;
 }
 
@@ -600,14 +610,52 @@ gtkdisplay_draw( GtkWidget *widget GCC_UNUSED, cairo_t *cr,
   return FALSE;
 }
 
+static void
+cancel_pending_resize( void )
+{
+  if( resize_timeout_id ) {
+    g_source_remove( resize_timeout_id );
+    resize_timeout_id = 0;
+  }
+}
+
+/* Resize the drawing area when the user has finished resizing the window */
+static gboolean
+drawing_area_resize_timeout( gpointer data GCC_UNUSED )
+{
+  gint64 timeout = (gint64)RESIZE_TIMEOUT_MS * 1000;
+  gint64 idle = g_get_monotonic_time() - resize_last_activity;
+
+  /* Rearm the timer if more configure events arrived in the meantime */
+  if( idle < timeout ) {
+    resize_timeout_id = g_timeout_add( ( timeout - idle ) / 1000,
+                                       drawing_area_resize_timeout, NULL );
+    return G_SOURCE_REMOVE;
+  }
+
+  resize_timeout_id = 0;
+
+  drawing_area_resize( pending_width, pending_height, 1 );
+
+  return G_SOURCE_REMOVE;
+}
+
 /* Called by gtkui_window on "configure_event".
-   On GTK 3 the window determines the size of the drawing area */
+   On GTK 3 the window determines the size of the drawing area.
+
+   Wait for RESIZE_TIMEOUT_MS before changing the scaler to prevent
+   the window from flickering while it is being resized. */
 static gint
 drawing_area_resize_callback( GtkWidget *widget GCC_UNUSED, GdkEvent *event,
                               gpointer data GCC_UNUSED )
 {
-  drawing_area_resize( event->configure.width,
-                       event->configure.height - extra_height, 1 );
+  pending_width  = event->configure.width;
+  pending_height = event->configure.height - extra_height;
+  resize_last_activity = g_get_monotonic_time();
+
+  if( !resize_timeout_id )
+    resize_timeout_id =
+      g_timeout_add( RESIZE_TIMEOUT_MS, drawing_area_resize_timeout, NULL );
 
   return FALSE;
 }
@@ -651,6 +699,10 @@ gtkdisplay_load_gfx_mode( void )
   scale = scaler_get_scaling_factor( current_scaler );
 
   gtkdisplay_update_geometry();
+
+  /* This is a programmatic resize for a new scaler so apply it right away */
+  cancel_pending_resize();
+  drawing_area_resize( scale * image_width, scale * image_height, 0 );
 
   gtk_window_resize( GTK_WINDOW( gtkui_window ), scale * image_width,
                      scale * image_height + extra_height );
