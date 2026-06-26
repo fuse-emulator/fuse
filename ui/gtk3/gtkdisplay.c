@@ -559,7 +559,14 @@ gtkdisplay_draw( GtkWidget *widget GCC_UNUSED, cairo_t *cr,
   cairo_translate( cr, offset_x, offset_y );
   cairo_scale( cr, scale, scale );
   cairo_set_source_surface( cr, surface, 0, 0 );
-  cairo_paint( cr );
+
+  /* Paint the image over its own area and not the whole drawing area.
+     Otherwise it can bleed into the surrounding margins when the
+     scaling factor is not an integer, leaving a stale thin border. */
+  cairo_rectangle( cr, 0, 0,
+                   cairo_image_surface_get_width( surface ),
+                   cairo_image_surface_get_height( surface ) );
+  cairo_fill( cr );
 
   return FALSE;
 }
