@@ -1224,6 +1224,33 @@ libspectrum_byte test253_data[] = { 0xfd, 0xcb, 0x55, 0x07 };  /* LD A,RLC (IY+5
 /* DD CB undocumented: non-RLC rotation op to verify rotate_op() selection */
 libspectrum_byte test254_data[] = { 0xdd, 0xcb, 0x55, 0x38 };  /* LD B,SRL (IX+55) */
 
+/* DD/FD prefix: LD r,(IX/IY+d) — remaining registers C, D, E, H, L */
+libspectrum_byte test255_data[] = { 0xdd, 0x4e, 0x05 };  /* LD C,(IX+05) */
+libspectrum_byte test256_data[] = { 0xdd, 0x56, 0x05 };  /* LD D,(IX+05) */
+libspectrum_byte test257_data[] = { 0xdd, 0x5e, 0x05 };  /* LD E,(IX+05) */
+libspectrum_byte test258_data[] = { 0xdd, 0x66, 0x05 };  /* LD H,(IX+05) */
+libspectrum_byte test259_data[] = { 0xdd, 0x6e, 0x05 };  /* LD L,(IX+05) */
+libspectrum_byte test260_data[] = { 0xfd, 0x4e, 0x05 };  /* LD C,(IY+05) */
+libspectrum_byte test261_data[] = { 0xfd, 0x56, 0x05 };  /* LD D,(IY+05) */
+libspectrum_byte test262_data[] = { 0xfd, 0x5e, 0x05 };  /* LD E,(IY+05) */
+libspectrum_byte test263_data[] = { 0xfd, 0x66, 0x05 };  /* LD H,(IY+05) */
+libspectrum_byte test264_data[] = { 0xfd, 0x6e, 0x05 };  /* LD L,(IY+05) */
+libspectrum_byte test265_data[] = { 0xfd, 0x7e, 0x05 };  /* LD A,(IY+05) */
+
+/* DD/FD prefix: LD (IX/IY+d),r — remaining registers C, D, E, H, L, A */
+libspectrum_byte test266_data[] = { 0xdd, 0x71, 0x05 };  /* LD (IX+05),C */
+libspectrum_byte test267_data[] = { 0xdd, 0x72, 0x05 };  /* LD (IX+05),D */
+libspectrum_byte test268_data[] = { 0xdd, 0x73, 0x05 };  /* LD (IX+05),E */
+libspectrum_byte test269_data[] = { 0xdd, 0x74, 0x05 };  /* LD (IX+05),H */
+libspectrum_byte test270_data[] = { 0xdd, 0x75, 0x05 };  /* LD (IX+05),L */
+libspectrum_byte test271_data[] = { 0xdd, 0x77, 0x05 };  /* LD (IX+05),A */
+libspectrum_byte test272_data[] = { 0xfd, 0x71, 0x05 };  /* LD (IY+05),C */
+libspectrum_byte test273_data[] = { 0xfd, 0x72, 0x05 };  /* LD (IY+05),D */
+libspectrum_byte test274_data[] = { 0xfd, 0x73, 0x05 };  /* LD (IY+05),E */
+libspectrum_byte test275_data[] = { 0xfd, 0x74, 0x05 };  /* LD (IY+05),H */
+libspectrum_byte test276_data[] = { 0xfd, 0x75, 0x05 };  /* LD (IY+05),L */
+libspectrum_byte test277_data[] = { 0xfd, 0x77, 0x05 };  /* LD (IY+05),A */
+
 static int
 run_test( libspectrum_byte *data, size_t data_length, const char *expected )
 {
@@ -1614,6 +1641,33 @@ debugger_disassemble_unittest( void )
 
   /* DD CB: verify rotation-op selection (SRL) independent of destination */
   r += run_test( test254_data, sizeof( test254_data ), "LD B,SRL (IX+55)" );
+
+  /* DD/FD prefix: LD r,(IX/IY+d) — remaining registers C, D, E, H, L */
+  r += run_test( test255_data, sizeof( test255_data ), "LD C,(IX+05)" );
+  r += run_test( test256_data, sizeof( test256_data ), "LD D,(IX+05)" );
+  r += run_test( test257_data, sizeof( test257_data ), "LD E,(IX+05)" );
+  r += run_test( test258_data, sizeof( test258_data ), "LD H,(IX+05)" );
+  r += run_test( test259_data, sizeof( test259_data ), "LD L,(IX+05)" );
+  r += run_test( test260_data, sizeof( test260_data ), "LD C,(IY+05)" );
+  r += run_test( test261_data, sizeof( test261_data ), "LD D,(IY+05)" );
+  r += run_test( test262_data, sizeof( test262_data ), "LD E,(IY+05)" );
+  r += run_test( test263_data, sizeof( test263_data ), "LD H,(IY+05)" );
+  r += run_test( test264_data, sizeof( test264_data ), "LD L,(IY+05)" );
+  r += run_test( test265_data, sizeof( test265_data ), "LD A,(IY+05)" );
+
+  /* DD/FD prefix: LD (IX/IY+d),r — remaining registers C, D, E, H, L, A */
+  r += run_test( test266_data, sizeof( test266_data ), "LD (IX+05),C" );
+  r += run_test( test267_data, sizeof( test267_data ), "LD (IX+05),D" );
+  r += run_test( test268_data, sizeof( test268_data ), "LD (IX+05),E" );
+  r += run_test( test269_data, sizeof( test269_data ), "LD (IX+05),H" );
+  r += run_test( test270_data, sizeof( test270_data ), "LD (IX+05),L" );
+  r += run_test( test271_data, sizeof( test271_data ), "LD (IX+05),A" );
+  r += run_test( test272_data, sizeof( test272_data ), "LD (IY+05),C" );
+  r += run_test( test273_data, sizeof( test273_data ), "LD (IY+05),D" );
+  r += run_test( test274_data, sizeof( test274_data ), "LD (IY+05),E" );
+  r += run_test( test275_data, sizeof( test275_data ), "LD (IY+05),H" );
+  r += run_test( test276_data, sizeof( test276_data ), "LD (IY+05),L" );
+  r += run_test( test277_data, sizeof( test277_data ), "LD (IY+05),A" );
 
   return r;
 }
