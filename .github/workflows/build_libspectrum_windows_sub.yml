@@ -43,7 +43,7 @@ jobs:
       PKG_CONFIG_LIBDIR: "/usr/local/i686-w64-mingw32/lib/pkgconfig:/usr/i686-w64-mingw32/sys-root/mingw/lib/pkgconfig"
       CYGWIN_LIBDIR: "/usr/i686-w64-mingw32/sys-root/mingw/bin/"
       LIBSPECTRUM_DIR: libspectrum
-      LIBSPECTRUM_GIT_URL: https://git.code.sf.net/p/fuse-emulator/libspectrum
+      LIBSPECTRUM_GIT_URL: https://github.com/fuse-emulator/libspectrum
 
     steps:
       - name: (1) Prepare environment

@@ -38,7 +38,7 @@ jobs:
         shell: bash
     env:
       LIBSPECTRUM_DIR: libspectrum
-      LIBSPECTRUM_GIT_URL: https://git.code.sf.net/p/fuse-emulator/libspectrum
+      LIBSPECTRUM_GIT_URL: https://github.com/fuse-emulator/libspectrum
 
     steps:
       - name: (1) Prepare environment
