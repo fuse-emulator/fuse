@@ -104,9 +104,10 @@ static int critical_region_x = 0, critical_region_y = 0;
 /* Cache the most-recently computed beam position keyed on tstates.
    get_beam_position() is called once per dirty screen write, and attribute
    writes trigger eight consecutive calls all at the same tstates value.
-   Skipping the division when tstates hasn't changed saves ~7/8 of those. */
+   Caching the fully adjusted/clamped screen coordinates avoids the border
+   subtraction and clamping branches on each cache hit (~7/8 of calls). */
 static libspectrum_dword display_cached_beam_tstates = (libspectrum_dword)-1;
-static int display_cached_beam_x, display_cached_beam_y;
+static int display_cached_screen_x, display_cached_screen_y;
 
 /* The border colour changes which have occurred in this frame */
 struct border_change_t {
@@ -670,31 +671,32 @@ display_update_critical( int x, int y )
   int beam_x, beam_y;
 
   if( tstates != display_cached_beam_tstates ) {
-    get_beam_position( &display_cached_beam_x, &display_cached_beam_y );
+    get_beam_position( &beam_x, &beam_y );
     display_cached_beam_tstates = tstates;
+
+    beam_x -= DISPLAY_BORDER_WIDTH_COLS;
+    beam_y -= DISPLAY_BORDER_HEIGHT;
+
+    if( beam_y < 0 ) {
+      beam_x = beam_y = 0;
+    } else if( beam_y >= DISPLAY_HEIGHT ) {
+      beam_x = DISPLAY_WIDTH_COLS;
+      beam_y = DISPLAY_HEIGHT - 1;
+    }
+
+    if( beam_x < 0 ) {
+      beam_x = 0;
+    } else if( beam_x > DISPLAY_WIDTH_COLS ) {
+      beam_x = DISPLAY_WIDTH_COLS;
+    }
+
+    display_cached_screen_x = beam_x;
+    display_cached_screen_y = beam_y;
   }
-  beam_x = display_cached_beam_x;
-  beam_y = display_cached_beam_y;
 
-  beam_x -= DISPLAY_BORDER_WIDTH_COLS;
-  beam_y -= DISPLAY_BORDER_HEIGHT;
-
-  if( beam_y < 0 ) {
-    beam_x = beam_y = 0;
-  } else if( beam_y >= DISPLAY_HEIGHT ) {
-    beam_x = DISPLAY_WIDTH_COLS;
-    beam_y = DISPLAY_HEIGHT - 1;
-  }
-
-  if( beam_x < 0 ) {
-    beam_x = 0;
-  } else if( beam_x > DISPLAY_WIDTH_COLS ) {
-    beam_x = DISPLAY_WIDTH_COLS;
-  }
-
-  if(   y <  beam_y                 ||
-      ( y == beam_y && x < beam_x )    )
-    copy_critical_region( beam_x, beam_y );
+  if(   y <  display_cached_screen_y                              ||
+      ( y == display_cached_screen_y && x < display_cached_screen_x ) )
+    copy_critical_region( display_cached_screen_x, display_cached_screen_y );
 }
 
 /* Mark the 8-pixel chunk at (x,y) as maybe dirty and update the critical
