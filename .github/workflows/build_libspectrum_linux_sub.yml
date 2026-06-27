@@ -67,7 +67,22 @@ jobs:
           git -C "$LIBSPECTRUM_DIR" fetch --depth 1 origin "${{ inputs.libspectrum_ref }}"
           git -C "$LIBSPECTRUM_DIR" checkout FETCH_HEAD
 
+      - name: (2b) Capture libspectrum commit SHA for cache key
+        id: libspectrum-sha
+        run: |
+          sha=$(git -C "$LIBSPECTRUM_DIR" rev-parse HEAD)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Libspectrum SHA: $sha"
+
+      - name: (2c) Restore libspectrum build cache
+        id: libspectrum-cache
+        uses: actions/cache/restore@v5
+        with:
+          key: libspectrum-linux-${{ steps.libspectrum-sha.outputs.sha }}-z${{ inputs.use_zlib && '1' || '0' }}-b${{ inputs.use_bzip2 && '1' || '0' }}-g${{ inputs.use_libgcrypt && '1' || '0' }}-a${{ inputs.use_libaudiofile && '1' || '0' }}-f${{ inputs.use_fake_glib && '1' || '0' }}
+          path: ${{ env.LIBSPECTRUM_DIR }}/libspectrum-installed-linux.tar
+
       - name: (3) Install dependencies
+        if: steps.libspectrum-cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get -y install --no-install-recommends \
@@ -77,12 +92,14 @@ jobs:
             libglib2.0-dev
 
       - name: (4) Autogen.sh
+        if: steps.libspectrum-cache.outputs.cache-hit != 'true'
         working-directory: ${{ env.LIBSPECTRUM_DIR }}
         run: |
           echo "Running autogen.sh .."
           ./autogen.sh
 
       - name: (5) Configure for Linux
+        if: steps.libspectrum-cache.outputs.cache-hit != 'true'
         working-directory: ${{ env.LIBSPECTRUM_DIR }}
         run: |
           echo "Running configure .."
@@ -95,6 +112,7 @@ jobs:
           | tee ./configure.out
 
       - name: (6) Verify output from configure
+        if: steps.libspectrum-cache.outputs.cache-hit != 'true'
         working-directory: ${{ env.LIBSPECTRUM_DIR }}
         run: |
           .github/scripts/in_config.sh "libspectrum is ready to be compiled"
@@ -105,18 +123,21 @@ jobs:
           .github/scripts/in_config.sh "Internal GLib replacement: ${{ inputs.use_fake_glib && 'yes' || 'no' }}"
 
       - name: (7) Make
+        if: steps.libspectrum-cache.outputs.cache-hit != 'true'
         working-directory: ${{ env.LIBSPECTRUM_DIR }}
         run: |
           echo "Running make .."
           make
 
       - name: (8) Install
+        if: steps.libspectrum-cache.outputs.cache-hit != 'true'
         working-directory: ${{ env.LIBSPECTRUM_DIR }}
         run: |
           echo "Running make install .."
           sudo make install
 
       - name: (9) Run tests
+        if: steps.libspectrum-cache.outputs.cache-hit != 'true'
         id: run-tests
         working-directory: ${{ env.LIBSPECTRUM_DIR }}
         run: |
@@ -124,19 +145,27 @@ jobs:
           make check
 
       - name: (10) Verbose check tests (on failure)
-        if: failure() && steps.run-tests.outcome != 'success'
+        if: steps.libspectrum-cache.outputs.cache-hit != 'true' && failure() && steps.run-tests.outcome != 'success'
         working-directory: ${{ env.LIBSPECTRUM_DIR }}
         run: |
           echo "Listing all tests individually .."
           test/test
 
       - name: (11) Pack installed library files
+        if: steps.libspectrum-cache.outputs.cache-hit != 'true'
         working-directory: ${{ env.LIBSPECTRUM_DIR }}
         run: |
           find /usr/local | grep libspectrum > .tar_files
           sudo tar -cvf \
           libspectrum-installed-linux.tar \
           -C /usr/local/ -T.tar_files
+
+      - name: (11b) Save libspectrum build cache
+        if: steps.libspectrum-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          key: libspectrum-linux-${{ steps.libspectrum-sha.outputs.sha }}-z${{ inputs.use_zlib && '1' || '0' }}-b${{ inputs.use_bzip2 && '1' || '0' }}-g${{ inputs.use_libgcrypt && '1' || '0' }}-a${{ inputs.use_libaudiofile && '1' || '0' }}-f${{ inputs.use_fake_glib && '1' || '0' }}
+          path: ${{ env.LIBSPECTRUM_DIR }}/libspectrum-installed-linux.tar
 
       - name: (12) Upload generated tar file
         uses: actions/upload-artifact@v7
