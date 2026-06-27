@@ -101,6 +101,13 @@ static int display_redraw_all;
 /* The last point at which we updated the screen display */
 static int critical_region_x = 0, critical_region_y = 0;
 
+/* Cache the most-recently computed beam position keyed on tstates.
+   get_beam_position() is called once per dirty screen write, and attribute
+   writes trigger eight consecutive calls all at the same tstates value.
+   Skipping the division when tstates hasn't changed saves ~7/8 of those. */
+static libspectrum_dword display_cached_beam_tstates = (libspectrum_dword)-1;
+static int display_cached_beam_x, display_cached_beam_y;
+
 /* The border colour changes which have occurred in this frame */
 struct border_change_t {
   int x, y;
@@ -662,7 +669,12 @@ display_update_critical( int x, int y )
 {
   int beam_x, beam_y;
 
-  get_beam_position( &beam_x, &beam_y );
+  if( tstates != display_cached_beam_tstates ) {
+    get_beam_position( &display_cached_beam_x, &display_cached_beam_y );
+    display_cached_beam_tstates = tstates;
+  }
+  beam_x = display_cached_beam_x;
+  beam_y = display_cached_beam_y;
 
   beam_x -= DISPLAY_BORDER_WIDTH_COLS;
   beam_y -= DISPLAY_BORDER_HEIGHT;
@@ -957,6 +969,10 @@ update_ui_screen( void )
 int
 display_frame( void )
 {
+  /* Invalidate the beam position cache so get_beam_position() is called
+     fresh in the new frame (machine timing may have changed on reset). */
+  display_cached_beam_tstates = (libspectrum_dword)-1;
+
   /* Copy all the critical region to the display */
   copy_critical_region( DISPLAY_WIDTH_COLS, DISPLAY_HEIGHT - 1 );
   critical_region_x = critical_region_y = 0;
