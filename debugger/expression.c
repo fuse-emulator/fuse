@@ -837,6 +837,12 @@ debugger_expression_unittest( void )
   r += eval_unary_test( '~', 0, 0xFFFFFFFF, "bitwise-not-zero" );
   r += eval_unary_test( '~', 0xFFFFFFFF,  0, "bitwise-not-ones" );
 
+  /* Unary negation: unsigned arithmetic wraps modulo 2^32 */
+  r += eval_unary_test( '-',          0,          0, "negate-zero" );
+  r += eval_unary_test( '-',          1, 0xFFFFFFFF, "negate-one" );
+  r += eval_unary_test( '-', 0xFFFFFFFF,          1, "negate-maxuint" );
+  r += eval_unary_test( '-', 0x80000000, 0x80000000, "negate-midpoint" );
+
   /* Deparse tests: save and restore output base */
   saved_base = debugger_output_base;
   debugger_output_base = 16;
@@ -881,6 +887,33 @@ debugger_expression_unittest( void )
       debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
       MEMPOOL_UNTRACKED ),
     "( 0x3 * 0x4 ) % 0x5", "deparse-mod-non-assoc" );
+
+  /* Binary '-' is non-associative: 3-(4-2) must bracket the right operand */
+  r += deparse_test(
+    debugger_expression_new_binaryop( '-',
+      debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_binaryop( '-',
+        debugger_expression_new_number( 4, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 2, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x3 - ( 0x4 - 0x2 )", "deparse-sub-non-assoc" );
+
+  /* Unary negation deparse: plain integer and expression requiring brackets */
+  r += deparse_test(
+    debugger_expression_new_unaryop( '-',
+      debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "-0x5", "deparse-negate" );
+
+  r += deparse_test(
+    debugger_expression_new_unaryop( '-',
+      debugger_expression_new_binaryop( '+',
+        debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 4, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "-( 0x3 + 0x4 )", "deparse-negate-expr" );
 
   debugger_output_base = saved_base;
 
