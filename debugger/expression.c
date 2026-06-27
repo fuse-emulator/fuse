@@ -461,7 +461,7 @@ debugger_expression_deparse( char *buffer, size_t length,
 
   case DEBUGGER_EXPRESSION_TYPE_INTEGER:
     if( debugger_output_base == 10 ) {
-      snprintf( buffer, length, "%d", exp->types.integer );
+      snprintf( buffer, length, "%u", exp->types.integer );
     } else {
       snprintf( buffer, length, "0x%x", exp->types.integer );
     }
@@ -914,6 +914,19 @@ debugger_expression_unittest( void )
         MEMPOOL_UNTRACKED ),
       MEMPOOL_UNTRACKED ),
     "-( 0x3 + 0x4 )", "deparse-negate-expr" );
+
+  /* Deparse in decimal base: small value and a value > INT_MAX */
+  debugger_output_base = 10;
+
+  r += deparse_test(
+    debugger_expression_new_number( 42, MEMPOOL_UNTRACKED ),
+    "42", "deparse-decimal-small" );
+
+  /* 0x80000000 is 2147483648 as uint32_t but -2147483648 as int32_t.
+     Using %d (signed) would produce the wrong negative result; %u is correct. */
+  r += deparse_test(
+    debugger_expression_new_number( 0x80000000, MEMPOOL_UNTRACKED ),
+    "2147483648", "deparse-decimal-large" );
 
   debugger_output_base = saved_base;
 
