@@ -111,10 +111,6 @@ AC_CHECK_HEADERS(
   sys/audioio.h
 )
 
-dnl Checks for typedefs, structures, and compiler characteristics.
-AC_C_CONST
-AC_C_INLINE
-
 dnl Checks for library functions.
 AC_CHECK_FUNCS(dirname geteuid getopt_long fsync)
 AC_CHECK_LIB([m],[cos])
