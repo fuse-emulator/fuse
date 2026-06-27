@@ -231,9 +231,9 @@ memory_pool_allocate_persistent( size_t length, int persistent )
   memory_pool_entry_t *entry;
   libspectrum_byte *memory;
 
-  memory = libspectrum_new( libspectrum_byte, length );
+  memory = libspectrum_new0( libspectrum_byte, length );
 
-  entry = libspectrum_new( memory_pool_entry_t, 1 );
+  entry = libspectrum_new0( memory_pool_entry_t, 1 );
 
   entry->persistent = persistent;
   entry->memory = memory;
