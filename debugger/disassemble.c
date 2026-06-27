@@ -37,6 +37,9 @@
 #include "memory_pages.h"
 #include "ui/ui.h"
 
+/* Size of temporary string buffers used throughout the disassembler */
+#define DISASM_BUF_LEN 40
+
 /* Used to flag whether we're after a DD or FD prefix */
 enum hl_type { USE_HL, USE_IX, USE_IY };
 
@@ -109,7 +112,7 @@ disassemble_main( libspectrum_word address, char *buffer, size_t buflen,
 		  size_t *length, enum hl_type use_hl )
 {
   libspectrum_byte b;
-  char buffer2[40], buffer3[40];
+  char buffer2[DISASM_BUF_LEN], buffer3[DISASM_BUF_LEN];
   size_t prefix_length = 0;
 
   b = readbyte_internal( address );
@@ -130,16 +133,16 @@ disassemble_main( libspectrum_word address, char *buffer, size_t buflen,
   } else if( b < 0x80 ) {
 
     if( ( b & 0x07 ) == 0x06 ) {		 /* LD something,(HL) */
-      dest_reg( address, USE_HL, buffer2, 40 );
-      source_reg( address, use_hl, buffer3, 40 );
+      dest_reg( address, USE_HL, buffer2, DISASM_BUF_LEN );
+      source_reg( address, use_hl, buffer3, DISASM_BUF_LEN );
       *length = ( use_hl == USE_HL ? 1 : 2 );
     } else if( ( ( b >> 3 ) & 0x07 ) == 0x06 ) { /* LD (HL),something */
-      dest_reg( address, use_hl, buffer2, 40 );
-      source_reg( address, USE_HL, buffer3, 40 );
+      dest_reg( address, use_hl, buffer2, DISASM_BUF_LEN );
+      source_reg( address, USE_HL, buffer3, DISASM_BUF_LEN );
       *length = ( use_hl == USE_HL ? 1 : 2 );
     } else {				/* Does not involve (HL) at all */
-      dest_reg( address, use_hl, buffer2, 40 );
-      source_reg( address, use_hl, buffer3, 40 );
+      dest_reg( address, use_hl, buffer2, DISASM_BUF_LEN );
+      source_reg( address, use_hl, buffer3, DISASM_BUF_LEN );
       *length = 1;
     }
     /* Note LD (HL),(HL) does not exist */
@@ -147,7 +150,7 @@ disassemble_main( libspectrum_word address, char *buffer, size_t buflen,
     snprintf( buffer, buflen, "LD %s,%s", buffer2, buffer3 );
 
   } else if( b < 0xc0 ) {
-    *length = 1 + source_reg( address, use_hl, buffer2, 40 );
+    *length = 1 + source_reg( address, use_hl, buffer2, DISASM_BUF_LEN );
     snprintf( buffer, buflen, addition_op( b ), buffer2 );
   } else {
     disassemble_11xxxxxx( address, buffer, buflen, length, use_hl );
@@ -168,7 +171,7 @@ disassemble_00xxxxxx( libspectrum_word address, char *buffer, size_t buflen,
   const char *opcode_00xxx111[] = {
     "RLCA", "RRCA", "RLA", "RRA", "DAA", "CPL", "SCF", "CCF"
   };
-  char buffer2[40], buffer3[40];
+  char buffer2[DISASM_BUF_LEN], buffer3[DISASM_BUF_LEN];
 
   libspectrum_byte b = readbyte_internal( address );
 
@@ -178,14 +181,14 @@ disassemble_00xxxxxx( libspectrum_word address, char *buffer, size_t buflen,
     if( b <= 0x08 ) {
       snprintf( buffer, buflen, "%s", opcode_00xxx000[ b >> 3 ] ); *length = 1;
     } else {
-      get_offset( buffer2, 40, address + 2, readbyte_internal( address + 1 ) );
+      get_offset( buffer2, DISASM_BUF_LEN, address + 2, readbyte_internal( address + 1 ) );
       snprintf( buffer, buflen, "%s%s", opcode_00xxx000[ b >> 3 ], buffer2 );
       *length = 2;
     }
     break;
 
   case 0x01:
-    get_word( buffer2, 40, address + 1 );
+    get_word( buffer2, DISASM_BUF_LEN, address + 1 );
     snprintf( buffer, buflen, "LD %s,%s", reg_pair( b, use_hl ), buffer2 );
     *length = 3;
     break;
@@ -199,18 +202,18 @@ disassemble_00xxxxxx( libspectrum_word address, char *buffer, size_t buflen,
     break;
 
   case 0x04: case 0x0c:
-    *length = 1 + dest_reg( address, use_hl, buffer2, 40 );
+    *length = 1 + dest_reg( address, use_hl, buffer2, DISASM_BUF_LEN );
     snprintf( buffer, buflen, "INC %s", buffer2 );
     break;
 
   case 0x05: case 0x0d:
-    *length = 1 + dest_reg( address, use_hl, buffer2, 40 );
+    *length = 1 + dest_reg( address, use_hl, buffer2, DISASM_BUF_LEN );
     snprintf( buffer, buflen, "DEC %s", buffer2 );
     break;
 
   case 0x06: case 0x0e:
-    *length = 2 + dest_reg( address, use_hl, buffer2, 40 );
-    get_byte( buffer3, 40, readbyte_internal( address + *length - 1 ) );
+    *length = 2 + dest_reg( address, use_hl, buffer2, DISASM_BUF_LEN );
+    get_byte( buffer3, DISASM_BUF_LEN, readbyte_internal( address + *length - 1 ) );
     snprintf( buffer, buflen, "LD %s,%s", buffer2, buffer3 );
     break;
 
@@ -241,7 +244,7 @@ static void
 disassemble_00xxx010( libspectrum_word address, char *buffer, size_t buflen,
 		      size_t *length, enum hl_type use_hl )
 {
-  char buffer2[40];
+  char buffer2[DISASM_BUF_LEN];
   libspectrum_byte b = readbyte_internal( address );
 
   switch( b >> 4 ) {
@@ -252,13 +255,13 @@ disassemble_00xxx010( libspectrum_word address, char *buffer, size_t buflen,
     break;
 
   case 2:
-    get_word( buffer2, 40, address + 1 );
+    get_word( buffer2, DISASM_BUF_LEN, address + 1 );
     snprintf( buffer, buflen, "LD (%s),%s", buffer2, hl_ix_iy( use_hl ) );
     *length = 3;
     break;
 
   case 3:
-    get_word( buffer2, 40, address + 1 );
+    get_word( buffer2, DISASM_BUF_LEN, address + 1 );
     snprintf( buffer, buflen, "LD (%s),A", buffer2 ); *length = 3;
     break;
   }
@@ -269,7 +272,7 @@ static void
 disassemble_00xxx110( libspectrum_word address, char *buffer, size_t buflen,
 		      size_t *length, enum hl_type use_hl )
 {
-  char buffer2[40];
+  char buffer2[DISASM_BUF_LEN];
   libspectrum_byte b = readbyte_internal( address );
 
   switch( b >> 4 ) {
@@ -280,13 +283,13 @@ disassemble_00xxx110( libspectrum_word address, char *buffer, size_t buflen,
     break;
 
   case 2:
-    get_word( buffer2, 40, address + 1 );
+    get_word( buffer2, DISASM_BUF_LEN, address + 1 );
     snprintf( buffer, buflen, "LD %s,(%s)", hl_ix_iy( use_hl ), buffer2 );
     *length = 3;
     break;
 
   case 3:
-    get_word( buffer2, 40, address + 1 );
+    get_word( buffer2, DISASM_BUF_LEN, address + 1 );
     snprintf( buffer, buflen, "LD A,(%s)", buffer2 ); *length = 3;
     break;
   }
@@ -297,7 +300,7 @@ static void
 disassemble_11xxxxxx( libspectrum_word address, char *buffer, size_t buflen,
 		      size_t *length, enum hl_type use_hl )
 {
-  char buffer2[40];
+  char buffer2[DISASM_BUF_LEN];
   libspectrum_byte b = readbyte_internal( address );
 
   switch( b & 0x07 ) {
@@ -311,7 +314,7 @@ disassemble_11xxxxxx( libspectrum_word address, char *buffer, size_t buflen,
     break;
 
   case 0x02:
-    get_word( buffer2, 40, address + 1 );
+    get_word( buffer2, DISASM_BUF_LEN, address + 1 );
     snprintf( buffer, buflen, "JP %s,%s", condition( b ), buffer2 );
     *length = 3;
     break;
@@ -321,7 +324,7 @@ disassemble_11xxxxxx( libspectrum_word address, char *buffer, size_t buflen,
     break;
 
   case 0x04:
-    get_word( buffer2, 40, address + 1 );
+    get_word( buffer2, DISASM_BUF_LEN, address + 1 );
     snprintf( buffer, buflen, "CALL %s,%s", condition( b ), buffer2 );
     *length = 3;
     break;
@@ -331,7 +334,7 @@ disassemble_11xxxxxx( libspectrum_word address, char *buffer, size_t buflen,
     break;
 
   case 0x06:
-    get_byte( buffer2, 40, readbyte_internal( address + 1 ) );
+    get_byte( buffer2, DISASM_BUF_LEN, readbyte_internal( address + 1 ) );
     snprintf( buffer, buflen, addition_op( b ), buffer2 );
     *length = 2;
     break;
@@ -374,13 +377,13 @@ static void
 disassemble_11xxx011( libspectrum_word address, char *buffer, size_t buflen,
 		      size_t *length, enum hl_type use_hl )
 {
-  char buffer2[40];
+  char buffer2[DISASM_BUF_LEN];
   libspectrum_byte b = readbyte_internal( address );
 
   switch( ( b >> 3 ) - 0x18 ) {
 
   case 0x00:
-    get_word( buffer2, 40, address + 1 );
+    get_word( buffer2, DISASM_BUF_LEN, address + 1 );
     snprintf( buffer, buflen, "JP %s", buffer2 ); *length = 3;
     break;
 
@@ -396,12 +399,12 @@ disassemble_11xxx011( libspectrum_word address, char *buffer, size_t buflen,
     break;
 
   case 0x02:
-    get_byte( buffer2, 40, readbyte_internal( address + 1 ) );
+    get_byte( buffer2, DISASM_BUF_LEN, readbyte_internal( address + 1 ) );
     snprintf( buffer, buflen, "OUT (%s),A", buffer2 ); *length = 2;
     break;
 
   case 0x03:
-    get_byte( buffer2, 40, readbyte_internal( address + 1 ) );
+    get_byte( buffer2, DISASM_BUF_LEN, readbyte_internal( address + 1 ) );
     snprintf( buffer, buflen, "IN A,(%s)", buffer2 ); *length = 2;
     break;
 
@@ -429,7 +432,7 @@ static void
 disassemble_11xxx101( libspectrum_word address, char *buffer, size_t buflen,
 		      size_t *length, enum hl_type use_hl )
 {
-  char buffer2[40];
+  char buffer2[DISASM_BUF_LEN];
   libspectrum_byte b = readbyte_internal( address );
 
   switch( ( b >> 3 ) - 0x18 ) {
@@ -439,7 +442,7 @@ disassemble_11xxx101( libspectrum_word address, char *buffer, size_t buflen,
     break;
 
   case 0x01:
-    get_word( buffer2, 40, address + 1 );
+    get_word( buffer2, DISASM_BUF_LEN, address + 1 );
     snprintf( buffer, buflen, "CALL %s", buffer2 ); *length = 3;
     break;
 
@@ -466,10 +469,10 @@ static void
 disassemble_cb( libspectrum_word address, char *buffer, size_t buflen,
 		size_t *length )
 {
-  char buffer2[40];
+  char buffer2[DISASM_BUF_LEN];
   libspectrum_byte b = readbyte_internal( address );
 
-  source_reg( address, USE_HL, buffer2, 40 );
+  source_reg( address, USE_HL, buffer2, DISASM_BUF_LEN );
 
   if( b < 0x40 ) {
     snprintf( buffer, buflen, "%s %s", rotate_op( b ), buffer2 );
@@ -487,7 +490,7 @@ disassemble_ed( libspectrum_word address, char *buffer, size_t buflen,
 		size_t *length )
 {
   libspectrum_byte b;
-  char buffer2[40];
+  char buffer2[DISASM_BUF_LEN];
 
   const char *opcode_01xxx111[] = {
     "LD I,A", "LD R,A", "LD A,I", "LD A,R", "RRD", "RLD", "NOPD", "NOPD"
@@ -516,7 +519,7 @@ disassemble_ed( libspectrum_word address, char *buffer, size_t buflen,
       if( b == 0x70 ) {
 	snprintf( buffer, buflen, "IN F,(C)" ); *length = 1;
       } else {
-	dest_reg( address, USE_HL, buffer2, 40 );
+	dest_reg( address, USE_HL, buffer2, DISASM_BUF_LEN );
 	snprintf( buffer, buflen, "IN %s,(C)", buffer2 ); *length = 1;
       }
       break;
@@ -525,7 +528,7 @@ disassemble_ed( libspectrum_word address, char *buffer, size_t buflen,
       if( b == 0x71 ) {
 	snprintf( buffer, buflen, "OUT (C),0" ); *length = 1;
       } else {
-	dest_reg( address, USE_HL, buffer2, 40 );
+	dest_reg( address, USE_HL, buffer2, DISASM_BUF_LEN );
 	snprintf( buffer, buflen, "OUT (C),%s", buffer2 ); *length = 1;
       }
       break;
@@ -536,7 +539,7 @@ disassemble_ed( libspectrum_word address, char *buffer, size_t buflen,
       break;
 
     case 0x03:
-      get_word( buffer2, 40, address + 1 );
+      get_word( buffer2, DISASM_BUF_LEN, address + 1 );
       snprintf( buffer, buflen, "LD (%s),%s", buffer2, reg_pair( b, USE_HL ) );
       *length = 3;
       break;
@@ -569,7 +572,7 @@ disassemble_ed( libspectrum_word address, char *buffer, size_t buflen,
       break;
 
     case 0x0b:
-      get_word( buffer2, 40, address + 1 );
+      get_word( buffer2, DISASM_BUF_LEN, address + 1 );
       snprintf( buffer, buflen, "LD %s,(%s)", reg_pair( b, USE_HL ), buffer2 );
       *length = 3;
       break;
@@ -590,33 +593,33 @@ disassemble_ddfd_cb( libspectrum_word address, char offset,
 		     size_t *length )
 {
   libspectrum_byte b = readbyte_internal( address );
-  char buffer2[40], buffer3[40];
+  char buffer2[DISASM_BUF_LEN], buffer3[DISASM_BUF_LEN];
 
   if( b < 0x40 ) {
     if( ( b & 0x07 ) == 0x06 ) {
-      ix_iy_offset( buffer2, 40, use_hl, offset );
+      ix_iy_offset( buffer2, DISASM_BUF_LEN, use_hl, offset );
       snprintf( buffer, buflen, "%s %s", rotate_op( b ), buffer2 );
       *length = 1;
     } else {
-      source_reg( address, USE_HL, buffer2, 40 );
-      ix_iy_offset( buffer3, 40, use_hl, offset );
+      source_reg( address, USE_HL, buffer2, DISASM_BUF_LEN );
+      ix_iy_offset( buffer3, DISASM_BUF_LEN, use_hl, offset );
       snprintf( buffer, buflen, "LD %s,%s %s", buffer2,
 		rotate_op( b ), buffer3 );
       *length = 1;
     }
   } else if( b < 0x80 ) {
-    ix_iy_offset( buffer2, 40, use_hl, offset );
+    ix_iy_offset( buffer2, DISASM_BUF_LEN, use_hl, offset );
     snprintf( buffer, buflen, "%s %d,%s", bit_op( b ), bit_op_bit( b ), buffer2 );
     *length = 1;
   } else {
     if( ( b & 0x07 ) == 0x06 ) {
-      ix_iy_offset( buffer2, 40, use_hl, offset );
+      ix_iy_offset( buffer2, DISASM_BUF_LEN, use_hl, offset );
       snprintf( buffer, buflen, "%s %d,%s", bit_op( b ), bit_op_bit( b ),
 		buffer2 );
       *length = 1;
     } else {
-      source_reg( address, USE_HL, buffer2, 40 );
-      ix_iy_offset( buffer3, 40, use_hl, offset );
+      source_reg( address, USE_HL, buffer2, DISASM_BUF_LEN );
+      ix_iy_offset( buffer3, DISASM_BUF_LEN, use_hl, offset );
       snprintf( buffer, buflen, "LD %s,%s %d,%s", buffer2, bit_op( b ), bit_op_bit( b ), buffer3 );
       *length = 1;
     }
@@ -718,7 +721,7 @@ static int
 single_reg( int i, enum hl_type use_hl, libspectrum_byte offset,
 	    char *buffer, size_t buflen )
 {
-  char buffer2[40];
+  char buffer2[DISASM_BUF_LEN];
 
   if( i == 0x04 && use_hl != USE_HL ) {
     snprintf( buffer, buflen, "%sh", hl_ix_iy( use_hl ) );
@@ -727,7 +730,7 @@ single_reg( int i, enum hl_type use_hl, libspectrum_byte offset,
     snprintf( buffer, buflen, "%sl", hl_ix_iy( use_hl ) );
     return 0;
   } else if( i == 0x06 && use_hl != USE_HL ) {
-    ix_iy_offset( buffer2, 40, use_hl, offset );
+    ix_iy_offset( buffer2, DISASM_BUF_LEN, use_hl, offset );
     snprintf( buffer, buflen, "%s", buffer2 );
     return 1;
   } else {
@@ -1254,7 +1257,7 @@ libspectrum_byte test277_data[] = { 0xfd, 0x77, 0x05 };  /* LD (IY+05),A */
 static int
 run_test( libspectrum_byte *data, size_t data_length, const char *expected )
 {
-  char disassembly[40];
+  char disassembly[DISASM_BUF_LEN];
   size_t length;
 
   memcpy( memory_map_read[8].page, data, data_length );
