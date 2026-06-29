@@ -1254,6 +1254,37 @@ libspectrum_byte test275_data[] = { 0xfd, 0x74, 0x05 };  /* LD (IY+05),H */
 libspectrum_byte test276_data[] = { 0xfd, 0x75, 0x05 };  /* LD (IY+05),L */
 libspectrum_byte test277_data[] = { 0xfd, 0x77, 0x05 };  /* LD (IY+05),A */
 
+/* CB prefix: all 8 rotate/shift operations with register A (rrr = 111).
+   Together with the existing B tests (test72-79) these verify that
+   source_reg() returns the correct register name at both ends of
+   the register range used by disassemble_cb(). */
+static libspectrum_byte test278_data[] = { 0xcb, 0x07 };  /* RLC A */
+static libspectrum_byte test279_data[] = { 0xcb, 0x0f };  /* RRC A */
+static libspectrum_byte test280_data[] = { 0xcb, 0x17 };  /* RL A */
+static libspectrum_byte test281_data[] = { 0xcb, 0x1f };  /* RR A */
+static libspectrum_byte test282_data[] = { 0xcb, 0x27 };  /* SLA A */
+static libspectrum_byte test283_data[] = { 0xcb, 0x2f };  /* SRA A */
+static libspectrum_byte test284_data[] = { 0xcb, 0x37 };  /* SLL A (undocumented) */
+static libspectrum_byte test285_data[] = { 0xcb, 0x3f };  /* SRL A */
+
+/* CB prefix: all remaining rotate/shift operations with (HL) (rrr = 110).
+   RLC (HL) is already covered by test80; these add the other seven ops
+   to verify rotate_op() selects each mnemonic when the register is (HL). */
+static libspectrum_byte test286_data[] = { 0xcb, 0x0e };  /* RRC (HL) */
+static libspectrum_byte test287_data[] = { 0xcb, 0x16 };  /* RL (HL) */
+static libspectrum_byte test288_data[] = { 0xcb, 0x1e };  /* RR (HL) */
+static libspectrum_byte test289_data[] = { 0xcb, 0x26 };  /* SLA (HL) */
+static libspectrum_byte test290_data[] = { 0xcb, 0x2e };  /* SRA (HL) */
+static libspectrum_byte test291_data[] = { 0xcb, 0x36 };  /* SLL (HL) (undocumented) */
+static libspectrum_byte test292_data[] = { 0xcb, 0x3e };  /* SRL (HL) */
+
+/* CB prefix: BIT, RES and SET with bit 7 and (HL) (rrr = 110).
+   Exercises bit_op(), bit_op_bit() with the maximum bit number,
+   and source_reg() with the (HL) register in the >= 0x40 branch. */
+static libspectrum_byte test293_data[] = { 0xcb, 0x7e };  /* BIT 7,(HL) */
+static libspectrum_byte test294_data[] = { 0xcb, 0xbe };  /* RES 7,(HL) */
+static libspectrum_byte test295_data[] = { 0xcb, 0xfe };  /* SET 7,(HL) */
+
 static int
 run_test( libspectrum_byte *data, size_t data_length, const char *expected )
 {
@@ -1671,6 +1702,30 @@ debugger_disassemble_unittest( void )
   r += run_test( test275_data, sizeof( test275_data ), "LD (IY+05),H" );
   r += run_test( test276_data, sizeof( test276_data ), "LD (IY+05),L" );
   r += run_test( test277_data, sizeof( test277_data ), "LD (IY+05),A" );
+
+  /* CB prefix: all rotate/shift ops with register A */
+  r += run_test( test278_data, sizeof( test278_data ), "RLC A" );
+  r += run_test( test279_data, sizeof( test279_data ), "RRC A" );
+  r += run_test( test280_data, sizeof( test280_data ), "RL A" );
+  r += run_test( test281_data, sizeof( test281_data ), "RR A" );
+  r += run_test( test282_data, sizeof( test282_data ), "SLA A" );
+  r += run_test( test283_data, sizeof( test283_data ), "SRA A" );
+  r += run_test( test284_data, sizeof( test284_data ), "SLL A" );
+  r += run_test( test285_data, sizeof( test285_data ), "SRL A" );
+
+  /* CB prefix: remaining rotate/shift ops with (HL) */
+  r += run_test( test286_data, sizeof( test286_data ), "RRC (HL)" );
+  r += run_test( test287_data, sizeof( test287_data ), "RL (HL)" );
+  r += run_test( test288_data, sizeof( test288_data ), "RR (HL)" );
+  r += run_test( test289_data, sizeof( test289_data ), "SLA (HL)" );
+  r += run_test( test290_data, sizeof( test290_data ), "SRA (HL)" );
+  r += run_test( test291_data, sizeof( test291_data ), "SLL (HL)" );
+  r += run_test( test292_data, sizeof( test292_data ), "SRL (HL)" );
+
+  /* CB prefix: BIT, RES, SET with bit 7 and (HL) */
+  r += run_test( test293_data, sizeof( test293_data ), "BIT 7,(HL)" );
+  r += run_test( test294_data, sizeof( test294_data ), "RES 7,(HL)" );
+  r += run_test( test295_data, sizeof( test295_data ), "SET 7,(HL)" );
 
   return r;
 }
