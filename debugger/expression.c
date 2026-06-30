@@ -1001,6 +1001,29 @@ debugger_expression_unittest( void )
       MEMPOOL_UNTRACKED ),
     "0x3 - ( 0x4 - 0x2 )", "deparse-sub-non-assoc" );
 
+  /* '/' is non-associative: the right operand '/' at equal precedence always
+     needs brackets so 12/(4/2) is not confused with (12/4)/2 */
+  r += deparse_test(
+    debugger_expression_new_binaryop( '/',
+      debugger_expression_new_number( 12, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_binaryop( '/',
+        debugger_expression_new_number( 4, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 2, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0xc / ( 0x4 / 0x2 )", "deparse-div-non-assoc" );
+
+  /* '<<' is non-associative: 1 << (2 << 3) brackets the right operand */
+  r += deparse_test(
+    debugger_expression_new_binaryop( DEBUGGER_TOKEN_LEFT_SHIFT,
+      debugger_expression_new_number( 1, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_binaryop( DEBUGGER_TOKEN_LEFT_SHIFT,
+        debugger_expression_new_number( 2, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x1 << ( 0x2 << 0x3 )", "deparse-lshift-non-assoc" );
+
   /* Cross-precedence: lower-precedence child is bracketed inside a
      higher-precedence parent (add inside mul) */
   r += deparse_test(
@@ -1039,6 +1062,40 @@ debugger_expression_unittest( void )
         MEMPOOL_UNTRACKED ),
       MEMPOOL_UNTRACKED ),
     "-( 0x3 + 0x4 )", "deparse-negate-expr" );
+
+  /* Unary '!' deparse: plain integer (no brackets) and expression (brackets
+     needed because '+' has lower precedence than '!') */
+  r += deparse_test(
+    debugger_expression_new_unaryop( '!',
+      debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "!0x5", "deparse-logical-not" );
+
+  r += deparse_test(
+    debugger_expression_new_unaryop( '!',
+      debugger_expression_new_binaryop( '+',
+        debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 4, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "!( 0x3 + 0x4 )", "deparse-logical-not-expr" );
+
+  /* Unary '~' deparse: plain integer (no brackets) and expression (brackets
+     needed because '|' has lower precedence than '~') */
+  r += deparse_test(
+    debugger_expression_new_unaryop( '~',
+      debugger_expression_new_number( 15, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "~0xf", "deparse-bitwise-not" );
+
+  r += deparse_test(
+    debugger_expression_new_unaryop( '~',
+      debugger_expression_new_binaryop( '|',
+        debugger_expression_new_number( 0xF0, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 0x0F, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "~( 0xf0 | 0xf )", "deparse-bitwise-not-expr" );
 
   /* Deparse in decimal base: small value and a value > INT_MAX */
   debugger_output_base = 10;
