@@ -1304,6 +1304,18 @@ static libspectrum_byte test305_data[] = { 0xcb, 0x03 };  /* RLC E */
 static libspectrum_byte test306_data[] = { 0xcb, 0x04 };  /* RLC H */
 static libspectrum_byte test307_data[] = { 0xcb, 0x05 };  /* RLC L */
 
+/* CB prefix BIT/RES/SET: cover all non-A, non-(HL) register names.
+   The existing tests (test16-18) cover register A; test293-295 add (HL).
+   These six tests exercise source_reg() for B(0), C(1), D(2), E(3), H(4), L(5)
+   and bit_op_bit() for several mid-range bit numbers. */
+static libspectrum_byte test308_data[] = { 0xcb, 0x58 };  /* BIT 3,B */
+static libspectrum_byte test309_data[] = { 0xcb, 0x69 };  /* BIT 5,C */
+static libspectrum_byte test310_data[] = { 0xcb, 0xa2 };  /* RES 4,D */
+static libspectrum_byte test311_data[] = { 0xcb, 0x94 };  /* RES 2,H */
+static libspectrum_byte test312_data[] = { 0xcb, 0xf5 };  /* SET 6,L */
+static libspectrum_byte test313_data[] = { 0xcb, 0xdb };  /* SET 3,E */
+
+
 static int
 run_test( libspectrum_byte *data, size_t data_length, const char *expected )
 {
@@ -1369,6 +1381,14 @@ debugger_disassemble_unittest( void )
   r += run_test( test16_data, sizeof( test16_data ), "BIT 0,A" );
   r += run_test( test17_data, sizeof( test17_data ), "RES 0,A" );
   r += run_test( test18_data, sizeof( test18_data ), "SET 1,A" );
+
+  /* CB prefix BIT/RES/SET — remaining registers B, C, D, E, H, L */
+  r += run_test( test308_data, sizeof( test308_data ), "BIT 3,B" );
+  r += run_test( test309_data, sizeof( test309_data ), "BIT 5,C" );
+  r += run_test( test310_data, sizeof( test310_data ), "RES 4,D" );
+  r += run_test( test311_data, sizeof( test311_data ), "RES 2,H" );
+  r += run_test( test312_data, sizeof( test312_data ), "SET 6,L" );
+  r += run_test( test313_data, sizeof( test313_data ), "SET 3,E" );
 
   /* DD CB prefix BIT/RES/SET on (IX+d) */
   r += run_test( test19_data, sizeof( test19_data ), "BIT 0,(IX+55)" );
