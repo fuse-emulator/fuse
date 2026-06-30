@@ -888,6 +888,108 @@ debugger_expression_unittest( void )
       MEMPOOL_UNTRACKED ),
     "( 0x3 * 0x4 ) % 0x5", "deparse-mod-non-assoc" );
 
+  /* Plain arithmetic operators without deparse coverage yet */
+  r += deparse_test(
+    debugger_expression_new_binaryop( '-',
+      debugger_expression_new_number( 7, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x7 - 0x3", "deparse-sub" );
+
+  r += deparse_test(
+    debugger_expression_new_binaryop( '*',
+      debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 4, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x3 * 0x4", "deparse-mul" );
+
+  r += deparse_test(
+    debugger_expression_new_binaryop( '/',
+      debugger_expression_new_number( 12, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number(  4, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0xc / 0x4", "deparse-div" );
+
+  /* Comparison operators */
+  r += deparse_test(
+    debugger_expression_new_binaryop( DEBUGGER_TOKEN_EQUAL_TO,
+      debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 6, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x5 == 0x6", "deparse-eq" );
+
+  r += deparse_test(
+    debugger_expression_new_binaryop( DEBUGGER_TOKEN_NOT_EQUAL_TO,
+      debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 6, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x5 != 0x6", "deparse-ne" );
+
+  r += deparse_test(
+    debugger_expression_new_binaryop( '<',
+      debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x3 < 0x5", "deparse-lt" );
+
+  r += deparse_test(
+    debugger_expression_new_binaryop( '>',
+      debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x5 > 0x3", "deparse-gt" );
+
+  r += deparse_test(
+    debugger_expression_new_binaryop( DEBUGGER_TOKEN_LESS_THAN_OR_EQUAL_TO,
+      debugger_expression_new_number( 4, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x4 <= 0x5", "deparse-lte" );
+
+  r += deparse_test(
+    debugger_expression_new_binaryop( DEBUGGER_TOKEN_GREATER_THAN_OR_EQUAL_TO,
+      debugger_expression_new_number( 6, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x6 >= 0x5", "deparse-gte" );
+
+  /* Bitwise operators */
+  r += deparse_test(
+    debugger_expression_new_binaryop( '&',
+      debugger_expression_new_number( 0xF0, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 0xFF, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0xf0 & 0xff", "deparse-bitwise-and" );
+
+  r += deparse_test(
+    debugger_expression_new_binaryop( '^',
+      debugger_expression_new_number( 0xFF, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 0x0F, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0xff ^ 0xf", "deparse-bitwise-xor" );
+
+  r += deparse_test(
+    debugger_expression_new_binaryop( '|',
+      debugger_expression_new_number( 0x0F, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 0xF0, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0xf | 0xf0", "deparse-bitwise-or" );
+
+  /* Logical operators */
+  r += deparse_test(
+    debugger_expression_new_binaryop( DEBUGGER_TOKEN_LOGICAL_AND,
+      debugger_expression_new_number( 1, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 1, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x1 && 0x1", "deparse-logical-and" );
+
+  r += deparse_test(
+    debugger_expression_new_binaryop( DEBUGGER_TOKEN_LOGICAL_OR,
+      debugger_expression_new_number( 1, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 0, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x1 || 0x0", "deparse-logical-or" );
+
   /* Binary '-' is non-associative: 3-(4-2) must bracket the right operand */
   r += deparse_test(
     debugger_expression_new_binaryop( '-',
@@ -898,6 +1000,29 @@ debugger_expression_unittest( void )
         MEMPOOL_UNTRACKED ),
       MEMPOOL_UNTRACKED ),
     "0x3 - ( 0x4 - 0x2 )", "deparse-sub-non-assoc" );
+
+  /* Cross-precedence: lower-precedence child is bracketed inside a
+     higher-precedence parent (add inside mul) */
+  r += deparse_test(
+    debugger_expression_new_binaryop( '*',
+      debugger_expression_new_binaryop( '+',
+        debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 4, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "( 0x3 + 0x4 ) * 0x5", "deparse-add-inside-mul" );
+
+  /* Higher-precedence child of lower-precedence parent needs no brackets */
+  r += deparse_test(
+    debugger_expression_new_binaryop( '+',
+      debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_binaryop( '*',
+        debugger_expression_new_number( 4, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x3 + 0x4 * 0x5", "deparse-mul-inside-add" );
 
   /* Unary negation deparse: plain integer and expression requiring brackets */
   r += deparse_test(
