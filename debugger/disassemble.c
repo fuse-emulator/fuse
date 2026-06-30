@@ -1285,6 +1285,25 @@ static libspectrum_byte test293_data[] = { 0xcb, 0x7e };  /* BIT 7,(HL) */
 static libspectrum_byte test294_data[] = { 0xcb, 0xbe };  /* RES 7,(HL) */
 static libspectrum_byte test295_data[] = { 0xcb, 0xfe };  /* SET 7,(HL) */
 
+/* CB prefix: all eight rotation/shift ops for register C (rrr = 001).
+   Verifies that the dest_reg()/source_reg() lookup returns "C" for
+   every shift-group opcode.  Opcode = (op << 3) | 001. */
+static libspectrum_byte test296_data[] = { 0xcb, 0x01 };  /* RLC C */
+static libspectrum_byte test297_data[] = { 0xcb, 0x09 };  /* RRC C */
+static libspectrum_byte test298_data[] = { 0xcb, 0x11 };  /* RL  C */
+static libspectrum_byte test299_data[] = { 0xcb, 0x19 };  /* RR  C */
+static libspectrum_byte test300_data[] = { 0xcb, 0x21 };  /* SLA C */
+static libspectrum_byte test301_data[] = { 0xcb, 0x29 };  /* SRA C */
+static libspectrum_byte test302_data[] = { 0xcb, 0x31 };  /* SLL C (undocumented) */
+static libspectrum_byte test303_data[] = { 0xcb, 0x39 };  /* SRL C */
+
+/* CB prefix: one rotation op per remaining register to verify register
+   name lookup for rrr = 010 (D), 011 (E), 100 (H), 101 (L). */
+static libspectrum_byte test304_data[] = { 0xcb, 0x02 };  /* RLC D */
+static libspectrum_byte test305_data[] = { 0xcb, 0x03 };  /* RLC E */
+static libspectrum_byte test306_data[] = { 0xcb, 0x04 };  /* RLC H */
+static libspectrum_byte test307_data[] = { 0xcb, 0x05 };  /* RLC L */
+
 static int
 run_test( libspectrum_byte *data, size_t data_length, const char *expected )
 {
@@ -1726,6 +1745,22 @@ debugger_disassemble_unittest( void )
   r += run_test( test293_data, sizeof( test293_data ), "BIT 7,(HL)" );
   r += run_test( test294_data, sizeof( test294_data ), "RES 7,(HL)" );
   r += run_test( test295_data, sizeof( test295_data ), "SET 7,(HL)" );
+
+  /* CB prefix: all rotation/shift ops for register C (rrr = 001) */
+  r += run_test( test296_data, sizeof( test296_data ), "RLC C" );
+  r += run_test( test297_data, sizeof( test297_data ), "RRC C" );
+  r += run_test( test298_data, sizeof( test298_data ), "RL C" );
+  r += run_test( test299_data, sizeof( test299_data ), "RR C" );
+  r += run_test( test300_data, sizeof( test300_data ), "SLA C" );
+  r += run_test( test301_data, sizeof( test301_data ), "SRA C" );
+  r += run_test( test302_data, sizeof( test302_data ), "SLL C" );
+  r += run_test( test303_data, sizeof( test303_data ), "SRL C" );
+
+  /* CB prefix: RLC for registers D, E, H, L (rrr = 010, 011, 100, 101) */
+  r += run_test( test304_data, sizeof( test304_data ), "RLC D" );
+  r += run_test( test305_data, sizeof( test305_data ), "RLC E" );
+  r += run_test( test306_data, sizeof( test306_data ), "RLC H" );
+  r += run_test( test307_data, sizeof( test307_data ), "RLC L" );
 
   return r;
 }
