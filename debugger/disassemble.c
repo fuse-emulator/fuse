@@ -1315,6 +1315,45 @@ static libspectrum_byte test311_data[] = { 0xcb, 0x94 };  /* RES 2,H */
 static libspectrum_byte test312_data[] = { 0xcb, 0xf5 };  /* SET 6,L */
 static libspectrum_byte test313_data[] = { 0xcb, 0xdb };  /* SET 3,E */
 
+/* CB prefix: remaining 7 rotation/shift ops for each of D, E, H, L.
+   Completes single-register coverage so every op×register combination
+   in the rotate_op()/source_reg() dispatch path is exercised.
+   Opcode = (op_index << 3) | register_index, with:
+     op:  0=RLC 1=RRC 2=RL 3=RR 4=SLA 5=SRA 6=SLL 7=SRL
+     reg: 2=D  3=E  4=H  5=L */
+/* D (rrr = 010) */
+static libspectrum_byte test314_data[] = { 0xcb, 0x0a };  /* RRC D */
+static libspectrum_byte test315_data[] = { 0xcb, 0x12 };  /* RL  D */
+static libspectrum_byte test316_data[] = { 0xcb, 0x1a };  /* RR  D */
+static libspectrum_byte test317_data[] = { 0xcb, 0x22 };  /* SLA D */
+static libspectrum_byte test318_data[] = { 0xcb, 0x2a };  /* SRA D */
+static libspectrum_byte test319_data[] = { 0xcb, 0x32 };  /* SLL D (undocumented) */
+static libspectrum_byte test320_data[] = { 0xcb, 0x3a };  /* SRL D */
+/* E (rrr = 011) */
+static libspectrum_byte test321_data[] = { 0xcb, 0x0b };  /* RRC E */
+static libspectrum_byte test322_data[] = { 0xcb, 0x13 };  /* RL  E */
+static libspectrum_byte test323_data[] = { 0xcb, 0x1b };  /* RR  E */
+static libspectrum_byte test324_data[] = { 0xcb, 0x23 };  /* SLA E */
+static libspectrum_byte test325_data[] = { 0xcb, 0x2b };  /* SRA E */
+static libspectrum_byte test326_data[] = { 0xcb, 0x33 };  /* SLL E (undocumented) */
+static libspectrum_byte test327_data[] = { 0xcb, 0x3b };  /* SRL E */
+/* H (rrr = 100) */
+static libspectrum_byte test328_data[] = { 0xcb, 0x0c };  /* RRC H */
+static libspectrum_byte test329_data[] = { 0xcb, 0x14 };  /* RL  H */
+static libspectrum_byte test330_data[] = { 0xcb, 0x1c };  /* RR  H */
+static libspectrum_byte test331_data[] = { 0xcb, 0x24 };  /* SLA H */
+static libspectrum_byte test332_data[] = { 0xcb, 0x2c };  /* SRA H */
+static libspectrum_byte test333_data[] = { 0xcb, 0x34 };  /* SLL H (undocumented) */
+static libspectrum_byte test334_data[] = { 0xcb, 0x3c };  /* SRL H */
+/* L (rrr = 101) */
+static libspectrum_byte test335_data[] = { 0xcb, 0x0d };  /* RRC L */
+static libspectrum_byte test336_data[] = { 0xcb, 0x15 };  /* RL  L */
+static libspectrum_byte test337_data[] = { 0xcb, 0x1d };  /* RR  L */
+static libspectrum_byte test338_data[] = { 0xcb, 0x25 };  /* SLA L */
+static libspectrum_byte test339_data[] = { 0xcb, 0x2d };  /* SRA L */
+static libspectrum_byte test340_data[] = { 0xcb, 0x35 };  /* SLL L (undocumented) */
+static libspectrum_byte test341_data[] = { 0xcb, 0x3d };  /* SRL L */
+
 
 static int
 run_test( libspectrum_byte *data, size_t data_length, const char *expected )
@@ -1781,6 +1820,42 @@ debugger_disassemble_unittest( void )
   r += run_test( test305_data, sizeof( test305_data ), "RLC E" );
   r += run_test( test306_data, sizeof( test306_data ), "RLC H" );
   r += run_test( test307_data, sizeof( test307_data ), "RLC L" );
+
+  /* CB prefix: remaining rotation/shift ops for D (rrr = 010) */
+  r += run_test( test314_data, sizeof( test314_data ), "RRC D" );
+  r += run_test( test315_data, sizeof( test315_data ), "RL D" );
+  r += run_test( test316_data, sizeof( test316_data ), "RR D" );
+  r += run_test( test317_data, sizeof( test317_data ), "SLA D" );
+  r += run_test( test318_data, sizeof( test318_data ), "SRA D" );
+  r += run_test( test319_data, sizeof( test319_data ), "SLL D" );
+  r += run_test( test320_data, sizeof( test320_data ), "SRL D" );
+
+  /* CB prefix: remaining rotation/shift ops for E (rrr = 011) */
+  r += run_test( test321_data, sizeof( test321_data ), "RRC E" );
+  r += run_test( test322_data, sizeof( test322_data ), "RL E" );
+  r += run_test( test323_data, sizeof( test323_data ), "RR E" );
+  r += run_test( test324_data, sizeof( test324_data ), "SLA E" );
+  r += run_test( test325_data, sizeof( test325_data ), "SRA E" );
+  r += run_test( test326_data, sizeof( test326_data ), "SLL E" );
+  r += run_test( test327_data, sizeof( test327_data ), "SRL E" );
+
+  /* CB prefix: remaining rotation/shift ops for H (rrr = 100) */
+  r += run_test( test328_data, sizeof( test328_data ), "RRC H" );
+  r += run_test( test329_data, sizeof( test329_data ), "RL H" );
+  r += run_test( test330_data, sizeof( test330_data ), "RR H" );
+  r += run_test( test331_data, sizeof( test331_data ), "SLA H" );
+  r += run_test( test332_data, sizeof( test332_data ), "SRA H" );
+  r += run_test( test333_data, sizeof( test333_data ), "SLL H" );
+  r += run_test( test334_data, sizeof( test334_data ), "SRL H" );
+
+  /* CB prefix: remaining rotation/shift ops for L (rrr = 101) */
+  r += run_test( test335_data, sizeof( test335_data ), "RRC L" );
+  r += run_test( test336_data, sizeof( test336_data ), "RL L" );
+  r += run_test( test337_data, sizeof( test337_data ), "RR L" );
+  r += run_test( test338_data, sizeof( test338_data ), "SLA L" );
+  r += run_test( test339_data, sizeof( test339_data ), "SRA L" );
+  r += run_test( test340_data, sizeof( test340_data ), "SLL L" );
+  r += run_test( test341_data, sizeof( test341_data ), "SRL L" );
 
   return r;
 }
