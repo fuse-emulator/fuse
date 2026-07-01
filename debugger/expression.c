@@ -1097,6 +1097,21 @@ debugger_expression_unittest( void )
       MEMPOOL_UNTRACKED ),
     "~( 0xf0 | 0xf )", "deparse-bitwise-not-expr" );
 
+  r += deparse_test(
+    debugger_expression_new_unaryop( DEBUGGER_TOKEN_DEREFERENCE,
+      debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "[0x5]", "deparse-dereference" );
+
+  r += deparse_test(
+    debugger_expression_new_unaryop( DEBUGGER_TOKEN_DEREFERENCE,
+      debugger_expression_new_binaryop( '+',
+        debugger_expression_new_number( 0x100, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 0x0f, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "[0x100 + 0xf]", "deparse-dereference-expr" );
+
   /* Deparse in decimal base: small value and a value > INT_MAX */
   debugger_output_base = 10;
 
