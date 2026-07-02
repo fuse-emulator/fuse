@@ -703,6 +703,26 @@ eval_integer_test( libspectrum_dword value, libspectrum_dword expected )
 }
 
 static int
+eval_variable_test( const char *name, libspectrum_dword expected,
+                    const char *label )
+{
+  debugger_expression *expr;
+  libspectrum_dword result;
+
+  expr = debugger_expression_new_variable( name, MEMPOOL_UNTRACKED );
+  result = debugger_expression_evaluate( expr );
+  debugger_expression_delete( expr );
+
+  if( result != expected ) {
+    printf( "expression eval '%s': expected %u, got %u\n",
+            label, (unsigned)expected, (unsigned)result );
+    return 1;
+  }
+
+  return 0;
+}
+
+static int
 eval_binary_test( int op, libspectrum_dword v1, libspectrum_dword v2,
                   libspectrum_dword expected, const char *label )
 {
@@ -1111,6 +1131,44 @@ debugger_expression_unittest( void )
         MEMPOOL_UNTRACKED ),
       MEMPOOL_UNTRACKED ),
     "[0x100 + 0xf]", "deparse-dereference-expr" );
+
+  /* User-defined variable: deparse emits the name prefixed with '$' */
+  r += deparse_test(
+    debugger_expression_new_variable( "counter", MEMPOOL_UNTRACKED ),
+    "$counter", "deparse-variable" );
+
+  /* Variable inside a binary expression */
+  r += deparse_test(
+    debugger_expression_new_binaryop( '+',
+      debugger_expression_new_variable( "counter", MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 1, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "$counter + 0x1", "deparse-variable-in-binop" );
+
+  /* Variable evaluation: an unset variable returns 0 */
+  r += eval_variable_test( "zz_undefined", 0, "variable-undefined-returns-zero" );
+
+  /* Variable evaluation: set then get */
+  debugger_variable_set( "zz_counter", 42 );
+  r += eval_variable_test( "zz_counter", 42, "variable-get-after-set" );
+
+  /* Variable inside an arithmetic expression: $zz_x * 2 == 20 */
+  debugger_variable_set( "zz_x", 10 );
+  {
+    debugger_expression *var, *two, *prod;
+    libspectrum_dword result;
+
+    var  = debugger_expression_new_variable( "zz_x", MEMPOOL_UNTRACKED );
+    two  = debugger_expression_new_number( 2, MEMPOOL_UNTRACKED );
+    prod = debugger_expression_new_binaryop( '*', var, two, MEMPOOL_UNTRACKED );
+    result = debugger_expression_evaluate( prod );
+    debugger_expression_delete( prod );
+    if( result != 20 ) {
+      printf( "expression eval 'variable-in-binop-eval': expected 20, got %u\n",
+              (unsigned)result );
+      r++;
+    }
+  }
 
   /* Deparse in decimal base: small value and a value > INT_MAX */
   debugger_output_base = 10;
