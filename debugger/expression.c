@@ -784,6 +784,52 @@ deparse_test( debugger_expression *expr, const char *expected,
   return 0;
 }
 
+/* Copy-and-eval helper: takes ownership of expr, copies it, deletes
+   the original, evaluates the copy, and checks the result. */
+static int
+copy_eval_test( debugger_expression *expr, libspectrum_dword expected,
+                const char *label )
+{
+  debugger_expression *copy;
+  libspectrum_dword result;
+
+  copy = debugger_expression_copy( expr );
+  debugger_expression_delete( expr );
+  result = debugger_expression_evaluate( copy );
+  debugger_expression_delete( copy );
+
+  if( result != expected ) {
+    printf( "expression copy-eval '%s': expected %u, got %u\n",
+            label, (unsigned)expected, (unsigned)result );
+    return 1;
+  }
+
+  return 0;
+}
+
+/* Copy-and-deparse helper: takes ownership of expr, copies it, deletes
+   the original, deparses the copy, and checks the result. */
+static int
+copy_deparse_test( debugger_expression *expr, const char *expected,
+                   const char *label )
+{
+  debugger_expression *copy;
+  char buf[64];
+
+  copy = debugger_expression_copy( expr );
+  debugger_expression_delete( expr );
+  debugger_expression_deparse( buf, sizeof( buf ), copy );
+  debugger_expression_delete( copy );
+
+  if( strcmp( buf, expected ) ) {
+    printf( "expression copy-deparse '%s': expected '%s', got '%s'\n",
+            label, expected, buf );
+    return 1;
+  }
+
+  return 0;
+}
+
 int
 debugger_expression_unittest( void )
 {
@@ -1044,6 +1090,17 @@ debugger_expression_unittest( void )
       MEMPOOL_UNTRACKED ),
     "0x1 << ( 0x2 << 0x3 )", "deparse-lshift-non-assoc" );
 
+  /* '>>' is non-associative: 16 >> (4 >> 2) brackets the right operand */
+  r += deparse_test(
+    debugger_expression_new_binaryop( DEBUGGER_TOKEN_RIGHT_SHIFT,
+      debugger_expression_new_number( 16, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_binaryop( DEBUGGER_TOKEN_RIGHT_SHIFT,
+        debugger_expression_new_number( 4, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 2, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x10 >> ( 0x4 >> 0x2 )", "deparse-rshift-non-assoc" );
+
   /* Cross-precedence: lower-precedence child is bracketed inside a
      higher-precedence parent (add inside mul) */
   r += deparse_test(
@@ -1169,6 +1226,56 @@ debugger_expression_unittest( void )
       r++;
     }
   }
+
+  /* debugger_expression_copy() tests: verify each expression type is deep-
+     copied correctly.  The original is deleted before the copy is used so
+     a shallow copy would produce garbage or a use-after-free error. */
+
+  /* INTEGER copy: eval and deparse */
+  r += copy_eval_test(
+    debugger_expression_new_number( 99, MEMPOOL_UNTRACKED ),
+    99, "copy-eval-integer" );
+
+  r += copy_deparse_test(
+    debugger_expression_new_number( 7, MEMPOOL_UNTRACKED ),
+    "0x7", "copy-deparse-integer" );
+
+  /* UNARYOP copy: negate 5 → 0xFFFFFFFB */
+  r += copy_eval_test(
+    debugger_expression_new_unaryop( '-',
+      debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    (libspectrum_dword)-5, "copy-eval-unaryop" );
+
+  r += copy_deparse_test(
+    debugger_expression_new_unaryop( '-',
+      debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "-0x3", "copy-deparse-unaryop" );
+
+  /* BINARYOP copy: 6 + 7 = 13 */
+  r += copy_eval_test(
+    debugger_expression_new_binaryop( '+',
+      debugger_expression_new_number( 6, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 7, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    13, "copy-eval-binaryop" );
+
+  r += copy_deparse_test(
+    debugger_expression_new_binaryop( '+',
+      debugger_expression_new_number( 2, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x2 + 0x3", "copy-deparse-binaryop" );
+
+  /* VARIABLE copy: zz_counter was set to 42 above */
+  r += copy_eval_test(
+    debugger_expression_new_variable( "zz_counter", MEMPOOL_UNTRACKED ),
+    42, "copy-eval-variable" );
+
+  r += copy_deparse_test(
+    debugger_expression_new_variable( "zz_counter", MEMPOOL_UNTRACKED ),
+    "$zz_counter", "copy-deparse-variable" );
 
   /* Deparse in decimal base: small value and a value > INT_MAX */
   debugger_output_base = 10;
