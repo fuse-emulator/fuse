@@ -830,6 +830,12 @@ copy_deparse_test( debugger_expression *expr, const char *expected,
   return 0;
 }
 
+static libspectrum_dword
+get_sysvar_sentinel( void )
+{
+  return 42;
+}
+
 int
 debugger_expression_unittest( void )
 {
@@ -1276,6 +1282,42 @@ debugger_expression_unittest( void )
   r += copy_deparse_test(
     debugger_expression_new_variable( "zz_counter", MEMPOOL_UNTRACKED ),
     "$zz_counter", "copy-deparse-variable" );
+
+  /* SYSVAR: register a read-only test sentinel that returns 42 */
+  debugger_system_variable_register( "test", "sentinel", get_sysvar_sentinel,
+                                     NULL );
+
+  r += deparse_test(
+    debugger_expression_new_system_variable( "test", "sentinel",
+                                             MEMPOOL_UNTRACKED ),
+    "test:sentinel", "deparse-sysvar" );
+
+  /* System variable evaluation */
+  {
+    debugger_expression *expr;
+    libspectrum_dword result;
+
+    expr = debugger_expression_new_system_variable( "test", "sentinel",
+                                                    MEMPOOL_UNTRACKED );
+    result = debugger_expression_evaluate( expr );
+    debugger_expression_delete( expr );
+    if( result != 42 ) {
+      printf( "expression eval 'sysvar-eval': expected 42, got %u\n",
+              (unsigned)result );
+      r++;
+    }
+  }
+
+  /* SYSVAR copy: original deleted before copy is used */
+  r += copy_eval_test(
+    debugger_expression_new_system_variable( "test", "sentinel",
+                                             MEMPOOL_UNTRACKED ),
+    42, "copy-eval-sysvar" );
+
+  r += copy_deparse_test(
+    debugger_expression_new_system_variable( "test", "sentinel",
+                                             MEMPOOL_UNTRACKED ),
+    "test:sentinel", "copy-deparse-sysvar" );
 
   /* Deparse in decimal base: small value and a value > INT_MAX */
   debugger_output_base = 10;
