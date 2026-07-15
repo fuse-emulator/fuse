@@ -127,9 +127,6 @@ int current_border[ DISPLAY_SCREEN_HEIGHT ][ DISPLAY_SCREEN_WIDTH_COLS ];
 static void display_dirty8( libspectrum_word address );
 static void display_dirty64( libspectrum_word address );
 
-static void display_get_attr( int x, int y,
-			      libspectrum_byte *ink, libspectrum_byte *paper);
-
 static int border_changes_last = 0;
 static struct border_change_t *border_changes = NULL;
 
@@ -428,11 +425,15 @@ display_write_if_dirty_timex( int x, int y )
   index = beam_x + beam_y * DISPLAY_SCREEN_WIDTH_COLS;
   if( display_last_screen[ index ] != last_chunk_detail ) {
     libspectrum_byte ink, paper;
-    display_get_attr( x, y, &ink, &paper );
     if( scld_last_dec.name.hires ) {
+      /* In hires mode the attr byte is not in data2, so we must look it up. */
+      display_parse_attr( display_get_attr_byte( x, y ), &ink, &paper );
       libspectrum_word hires_data = (data << 8) + data2;
       uidisplay_plot16( beam_x, beam_y, hires_data, ink, paper );
     } else {
+      /* In lores mode data2 already holds the attr byte (set above), so
+         parse it directly instead of reading it a second time. */
+      display_parse_attr( data2, &ink, &paper );
       uidisplay_plot8( beam_x, beam_y, data, ink, paper );
     }
 
@@ -735,15 +736,6 @@ display_dirty64( libspectrum_word offset )
   y=display_dirty_ytable2[ offset - 0x1800 ];
 
   for( i = 0; i < 8; i++ ) display_dirty_chunk( x, y + i );
-}
-
-/* Get the attributes for the eight pixels starting at
-   ( (8*x) , y ) */
-static void
-display_get_attr( int x, int y,
-                  libspectrum_byte *ink, libspectrum_byte *paper )
-{
-  display_parse_attr( display_get_attr_byte( x, y ), ink, paper );
 }
 
 void
