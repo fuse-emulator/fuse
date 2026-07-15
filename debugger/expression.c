@@ -1025,6 +1025,67 @@ debugger_expression_unittest( void )
       MEMPOOL_UNTRACKED ),
     "0x6 >= 0x5", "deparse-gte" );
 
+  /* Comparison non-associativity: at equal precedence the result is always
+     bracketed (regardless of position) because comparison operators return
+     truth values and chaining them is almost always a mistake. */
+
+  /* 3 == (4 == 5): right operand at equal EQUALITY precedence — brackets */
+  r += deparse_test(
+    debugger_expression_new_binaryop( DEBUGGER_TOKEN_EQUAL_TO,
+      debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_binaryop( DEBUGGER_TOKEN_EQUAL_TO,
+        debugger_expression_new_number( 4, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x3 == ( 0x4 == 0x5 )", "deparse-eq-non-assoc" );
+
+  /* 3 < (4 < 5): right operand at equal COMPARISON precedence — brackets */
+  r += deparse_test(
+    debugger_expression_new_binaryop( '<',
+      debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_binaryop( '<',
+        debugger_expression_new_number( 4, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x3 < ( 0x4 < 0x5 )", "deparse-lt-non-assoc-right" );
+
+  /* (3 < 4) < 5: left operand at equal COMPARISON precedence — brackets */
+  r += deparse_test(
+    debugger_expression_new_binaryop( '<',
+      debugger_expression_new_binaryop( '<',
+        debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 4, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "( 0x3 < 0x4 ) < 0x5", "deparse-lt-non-assoc-left" );
+
+  /* (3 < 4) == 5: COMPARISON child of EQUALITY parent — higher prec, no
+     brackets needed; re-parsing preserves the original evaluation order */
+  r += deparse_test(
+    debugger_expression_new_binaryop( DEBUGGER_TOKEN_EQUAL_TO,
+      debugger_expression_new_binaryop( '<',
+        debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 4, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x3 < 0x4 == 0x5", "deparse-lt-inside-eq" );
+
+  /* 3 < (4 == 5): EQUALITY child of COMPARISON parent — lower prec forces
+     brackets so re-parsing does not swap to (3 < 4) == 5 */
+  r += deparse_test(
+    debugger_expression_new_binaryop( '<',
+      debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_binaryop( DEBUGGER_TOKEN_EQUAL_TO,
+        debugger_expression_new_number( 4, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x3 < ( 0x4 == 0x5 )", "deparse-eq-inside-lt" );
+
   /* Bitwise operators */
   r += deparse_test(
     debugger_expression_new_binaryop( '&',
