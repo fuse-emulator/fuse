@@ -68,14 +68,6 @@ static libspectrum_word
 static libspectrum_word
   display_dirty_xtable[ DISPLAY_WIDTH_COLS * DISPLAY_HEIGHT ];
 
-/* If you write to the byte at display_dirty_?table2[n+0x5800], then
-   the 64 pixels starting at (8*xtable2[n],ytable2[n]) must be
-   replotted */
-static libspectrum_word
-  display_dirty_ytable2[ DISPLAY_WIDTH_COLS * DISPLAY_HEIGHT_ROWS ];
-static libspectrum_word
-  display_dirty_xtable2[ DISPLAY_WIDTH_COLS * DISPLAY_HEIGHT_ROWS ];
-
 /* The number of frames mod 32 that have elapsed.
     0<=d_f_c<16 => Flashing characters are normal
    16<=d_f_c<32 => Flashing characters are reversed
@@ -183,12 +175,6 @@ display_init( int *argc, char ***argv )
     for(x=0;x<DISPLAY_WIDTH_COLS;x++) {
       display_dirty_ytable[ display_line_start[y]+x ] = y;
       display_dirty_xtable[ display_line_start[y]+x ] = x;
-    }
-
-  for(y=0;y<DISPLAY_HEIGHT_ROWS;y++)
-    for(x=0;x<DISPLAY_WIDTH_COLS;x++) {
-      display_dirty_ytable2[ (32*y) + x ] = y * 8;
-      display_dirty_xtable2[ (32*y) + x ] = x;
     }
 
   display_frame_count=0; display_flash_reversed=0;
@@ -731,9 +717,14 @@ static void
 display_dirty64( libspectrum_word offset )
 {
   int i, x, y;
+  int idx = offset - ( DISPLAY_HEIGHT * DISPLAY_WIDTH_COLS );
 
-  x=display_dirty_xtable2[ offset - 0x1800 ];
-  y=display_dirty_ytable2[ offset - 0x1800 ];
+  /* The attribute area is laid out linearly: column x, row y, so:
+     x = idx % DISPLAY_WIDTH_COLS
+     y = (idx / DISPLAY_WIDTH_COLS) * 8
+     Both divisions are exact powers of two and optimise to shifts/masks. */
+  x = idx & ( DISPLAY_WIDTH_COLS - 1 );
+  y = ( idx / DISPLAY_WIDTH_COLS ) * 8;
 
   for( i = 0; i < 8; i++ ) display_dirty_chunk( x, y + i );
 }

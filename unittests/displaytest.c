@@ -486,6 +486,27 @@ no_write_if_modified_area_ahead_of_critical_region( void )
   return 0;
 }
 
+static int
+attribute_write_marks_correct_cell( void )
+{
+  int y;
+
+  /* Arrange: the final attribute byte is column 31, character row 23. */
+
+  /* Act */
+  display_dirty_sinclair( 0x1aff );
+
+  /* Assert: mark column 31 in each of the cell's eight pixel rows only. */
+  for( y = 0; y < DISPLAY_HEIGHT; y++ ) {
+    libspectrum_dword expected =
+      y >= 184 ? ( (libspectrum_dword)1 << 31 ) : 0;
+
+    if( display_get_maybe_dirty( y ) != expected ) return 1;
+  }
+
+  return 0;
+}
+
 /* display_dirty_flashing_sinclair() tests */
 
 static int
@@ -869,6 +890,7 @@ static const struct test_t tests[] = {
     no_write_if_dirty_area_ahead_of_beam },
   { "no_write_if_modified_area_ahead_of_critical_region",
     no_write_if_modified_area_ahead_of_critical_region },
+  { "attribute_write_marks_correct_cell", attribute_write_marks_correct_cell },
 
   /* display_dirty_flashing_sinclair() tests */
   { "flash_dirty_no_flash_attrs", flash_dirty_no_flash_attrs },
