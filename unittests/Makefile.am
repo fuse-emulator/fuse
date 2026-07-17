@@ -31,6 +31,7 @@ noinst_PROGRAMS += unittests/sdl2displaytest
 noinst_PROGRAMS += unittests/sdl2scalerstatetest
 noinst_PROGRAMS += unittests/sdl2joysticktest
 noinst_PROGRAMS += unittests/sdl2mousetest
+noinst_PROGRAMS += unittests/aynoisetest
 
 unittests_displaytest_SOURCES = unittests/displaytest.c display.c
 unittests_displaytest_LDADD = $(LIBSPECTRUM_LIBS) $(GLIB_LIBS)
@@ -59,3 +60,6 @@ unittests_sdl2mousetest_SOURCES = \
         ui/sdl2/sdl2_mouse_internal.c
 unittests_sdl2mousetest_LDADD = $(LIBSPECTRUM_LIBS)
 unittests_sdl2mousetest_CPPFLAGS = $(AM_CPPFLAGS)
+
+unittests_aynoisetest_SOURCES = unittests/aynoisetest.c
+unittests_aynoisetest_CPPFLAGS = $(AM_CPPFLAGS)
