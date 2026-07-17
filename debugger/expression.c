@@ -1123,6 +1123,71 @@ debugger_expression_unittest( void )
       MEMPOOL_UNTRACKED ),
     "0x1 || 0x0", "deparse-logical-or" );
 
+  /* Precedence interactions involving logical operators */
+
+  /* && has higher precedence than ||: '||' parent with '&&' right child
+     needs no brackets because && binds more tightly */
+  r += deparse_test(
+    debugger_expression_new_binaryop( DEBUGGER_TOKEN_LOGICAL_OR,
+      debugger_expression_new_number( 1, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_binaryop( DEBUGGER_TOKEN_LOGICAL_AND,
+        debugger_expression_new_number( 1, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 0, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x1 || 0x1 && 0x0", "deparse-and-inside-or" );
+
+  /* '&&' parent with '||' left child: || has lower precedence than &&
+     so the left operand must be bracketed */
+  r += deparse_test(
+    debugger_expression_new_binaryop( DEBUGGER_TOKEN_LOGICAL_AND,
+      debugger_expression_new_binaryop( DEBUGGER_TOKEN_LOGICAL_OR,
+        debugger_expression_new_number( 1, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 0, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      debugger_expression_new_number( 1, MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "( 0x1 || 0x0 ) && 0x1", "deparse-or-inside-and" );
+
+  /* Comparison operators have higher precedence than &&: 'a < b && c > d'
+     needs no brackets around either comparison */
+  r += deparse_test(
+    debugger_expression_new_binaryop( DEBUGGER_TOKEN_LOGICAL_AND,
+      debugger_expression_new_binaryop( '<',
+        debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      debugger_expression_new_binaryop( '>',
+        debugger_expression_new_number( 6, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 4, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x3 < 0x5 && 0x6 > 0x4", "deparse-cmp-inside-and" );
+
+  /* '&&' inside a comparison: && has lower precedence than '<' so the
+     right operand must be bracketed */
+  r += deparse_test(
+    debugger_expression_new_binaryop( '<',
+      debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_binaryop( DEBUGGER_TOKEN_LOGICAL_AND,
+        debugger_expression_new_number( 1, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 1, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x3 < ( 0x1 && 0x1 )", "deparse-and-inside-cmp" );
+
+  /* '*' parent with '%' child: % is non-associative so even though both
+     have the same precedence, the child must be bracketed */
+  r += deparse_test(
+    debugger_expression_new_binaryop( '*',
+      debugger_expression_new_number( 3, MEMPOOL_UNTRACKED ),
+      debugger_expression_new_binaryop( '%',
+        debugger_expression_new_number( 4, MEMPOOL_UNTRACKED ),
+        debugger_expression_new_number( 5, MEMPOOL_UNTRACKED ),
+        MEMPOOL_UNTRACKED ),
+      MEMPOOL_UNTRACKED ),
+    "0x3 * ( 0x4 % 0x5 )", "deparse-mul-mod-non-assoc-right" );
+
   /* Binary '-' is non-associative: 3-(4-2) must bracket the right operand */
   r += deparse_test(
     debugger_expression_new_binaryop( '-',
