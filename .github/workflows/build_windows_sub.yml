@@ -233,7 +233,7 @@ jobs:
           --prefix=/usr/local/i686-w64-mingw32 \
           --disable-static \
           ${{ inputs.configure_params }} \
-          |& tee ./configure.out
+          2>&1 | tee ./configure.out
         shell: bash.exe --login --norc -eo pipefail -o igncr '{0}'
 
       - name: (6b) Check config.log (on configure failure)
