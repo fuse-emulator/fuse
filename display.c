@@ -156,10 +156,8 @@ display_init( int *argc, char ***argv )
   if(ui_init(argc, argv))
     return 1;
 
-  /* Set up the 'all pixels must be refreshed' marker */
-  display_all_dirty = 0;
-  for( i = 0; i < DISPLAY_SCREEN_WIDTH_COLS; i++ )
-    display_all_dirty = ( display_all_dirty << 1 ) | 0x01;
+  /* Set up the 'all pixels must be refreshed' marker: one bit per column */
+  display_all_dirty = ( (libspectrum_qword)1 << DISPLAY_SCREEN_WIDTH_COLS ) - 1;
 
   for(i=0;i<3;i++)
     for(j=0;j<8;j++)
