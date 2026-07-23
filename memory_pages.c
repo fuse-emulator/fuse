@@ -459,7 +459,7 @@ memory_display_dirty_pentagon_16_col( libspectrum_word address,
           ( mapping->page_num == 5 || mapping->page_num == 4 ) ) ||
         ( memory_current_screen  == 7 &&
           ( mapping->page_num == 7 || mapping->page_num == 6 ) ) ) &&
-      ( offset2 & 0xdfff ) < 0x1b00 &&
+      ( offset2 & 0xdfff ) < DISPLAY_FILE_SIZE &&
       memory[ offset ] != b )
     display_dirty_pentagon_16_col( offset2 );
 }
@@ -479,7 +479,7 @@ memory_display_dirty_sinclair( libspectrum_word address, libspectrum_byte b ) \
      the destination), redraw that bit */
   if( mapping->source == memory_source_ram && 
       mapping->page_num == memory_current_screen &&
-      ( offset2 & memory_screen_mask ) < 0x1b00 &&
+      ( offset2 & memory_screen_mask ) < DISPLAY_FILE_SIZE &&
       memory[ offset ] != b )
     display_dirty( offset2 );
 }
