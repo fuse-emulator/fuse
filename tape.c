@@ -106,7 +106,6 @@ static libspectrum_dword next_tape_edge_tstates;
 static int tape_autoload( libspectrum_machine hardware );
 static int trap_load_block( libspectrum_tape_block *block );
 static int tape_play( int autoplay );
-static void make_name( unsigned char *name, const unsigned char *data );
 static void
 tape_event_record_sample( libspectrum_dword last_tstates, int type,
 			  void *user_data );
@@ -992,7 +991,7 @@ tape_block_details( char *buffer, size_t length,
 		    libspectrum_tape_block *block )
 {
   libspectrum_byte *data;
-  const char *type; unsigned char name[11];
+  const char *type; char *name;
   int offset;
   size_t i;
   unsigned long total_pulses;
@@ -1020,9 +1019,10 @@ tape_block_details( char *buffer, size_t length,
     default: goto normal;
     }
     
-    make_name( name, &data[2] );
+    name = libspectrum_zx_string_to_utf8( &data[2], 10 );
 
     snprintf( buffer, length, "%s: \"%s\"", type, name );
+    libspectrum_free( name );
 
     break;
 
@@ -1107,20 +1107,4 @@ tape_block_details( char *buffer, size_t length,
   }
 
   return 0;
-}
-
-static void
-make_name( unsigned char *name, const unsigned char *data )
-{
-  size_t i;
-
-  for( i = 0; i < 10; i++, name++, data++ ) {
-    if( *data >= 32 && *data < 127 ) {
-      *name = *data;
-    } else {
-      *name = '?';
-    }
-  }
-
-  *name = '\0';
 }
