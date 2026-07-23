@@ -420,13 +420,8 @@ ay_do_tone( int level, unsigned int tone_count, int *var, int chan )
     ay_tone_high[ chan ] = !ay_tone_high[ chan ];
   }
 
-  if( level ) {
-    if( ay_tone_high[ chan ] )
-      *var = level;
-    else {
-      *var = 0;
-    }
-  }
+  if( level && ay_tone_high[ chan ] )
+    *var = level;
 }
 
 /* bitmasks for envelope */
