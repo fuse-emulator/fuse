@@ -487,6 +487,11 @@ check_scaler( ScalerProc *scaler_32, ScalerProc *scaler_16, int scale,
   return check_16_delay_line( BITFORMAT_555, scaler_16, scale, name );
 }
 
+#ifdef main
+/* SDL headers redefine main on Windows, but this test needs a normal entry point. */
+#undef main
+#endif
+
 int
 main( void )
 {
