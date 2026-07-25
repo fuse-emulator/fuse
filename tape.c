@@ -991,7 +991,7 @@ tape_block_details( char *buffer, size_t length,
 		    libspectrum_tape_block *block )
 {
   libspectrum_byte *data;
-  const char *type; char *name;
+  const char *type; char name[ 10 * 9 + 1 ];
   int offset;
   size_t i;
   unsigned long total_pulses;
@@ -1019,10 +1019,10 @@ tape_block_details( char *buffer, size_t length,
     default: goto normal;
     }
     
-    name = libspectrum_zx_string_to_utf8( &data[2], 10 );
+    if( libspectrum_zx_string_to_utf8( name, sizeof( name ), &data[2], 10 ) )
+      goto normal;
 
     snprintf( buffer, length, "%s: \"%s\"", type, name );
-    libspectrum_free( name );
 
     break;
 
