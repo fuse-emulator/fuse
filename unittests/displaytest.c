@@ -507,6 +507,55 @@ attribute_write_marks_correct_cell( void )
   return 0;
 }
 
+static int
+pixel_write_marks_correct_cells( void )
+{
+  /* Verify the display_dirty8() address decoder against a representative
+     sample of the ZX Spectrum pixel-area layout.
+
+     The screen is encoded as:
+       bits  4-0:  column x (0-31)
+       bits  7-5:  character row within third j (0-7)
+       bits 10-8:  pixel row within character k (0-7)
+       bits 12-11: third of screen i (0-2)
+     giving screen line y = 64*i + 8*j + k.
+
+     We write to a specific offset, then confirm that exactly bit x of
+     display_maybe_dirty[y] is set. */
+
+  static const struct {
+    libspectrum_word offset;
+    int expected_x, expected_y;
+  } cases[] = {
+    { 0x0000,  0,   0 },  /* col 0, first scan line of top third */
+    { 0x001f, 31,   0 },  /* col 31, first scan line of top third */
+    { 0x0020,  0,   8 },  /* col 0, first scan line of second char row */
+    { 0x0100,  0,   1 },  /* col 0, second scan line of top char row */
+    { 0x0800,  0,  64 },  /* col 0, first scan line of middle third */
+    { 0x17ff, 31, 191 },  /* col 31, last scan line of bottom third */
+  };
+  int c;
+
+  for( c = 0; c < (int)( sizeof cases / sizeof cases[0] ); c++ ) {
+    int y;
+    libspectrum_word offset = cases[c].offset;
+    int expected_x = cases[c].expected_x;
+    int expected_y = cases[c].expected_y;
+    libspectrum_dword expected_bit = (libspectrum_dword)1 << expected_x;
+
+    test_before();
+
+    display_dirty_sinclair( offset );
+
+    for( y = 0; y < DISPLAY_HEIGHT; y++ ) {
+      libspectrum_dword expected = ( y == expected_y ) ? expected_bit : 0;
+      if( display_get_maybe_dirty( y ) != expected ) return 1;
+    }
+  }
+
+  return 0;
+}
+
 /* display_dirty_flashing_sinclair() tests */
 
 static int
@@ -891,6 +940,7 @@ static const struct test_t tests[] = {
   { "no_write_if_modified_area_ahead_of_critical_region",
     no_write_if_modified_area_ahead_of_critical_region },
   { "attribute_write_marks_correct_cell", attribute_write_marks_correct_cell },
+  { "pixel_write_marks_correct_cells", pixel_write_marks_correct_cells },
 
   /* display_dirty_flashing_sinclair() tests */
   { "flash_dirty_no_flash_attrs", flash_dirty_no_flash_attrs },
