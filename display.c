@@ -717,7 +717,7 @@ static void
 display_dirty64( libspectrum_word offset )
 {
   int i, x, y;
-  int idx = offset - ( DISPLAY_HEIGHT * DISPLAY_WIDTH_COLS );
+  int idx = offset - DISPLAY_PIXEL_BYTES;
 
   /* The attribute area is laid out linearly: column x, row y, so:
      x = idx % DISPLAY_WIDTH_COLS
