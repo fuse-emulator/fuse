@@ -924,6 +924,91 @@ pentagon_page7_reads_correct_pages( void )
   return 0;
 }
 
+/* display_parse_attr() tests */
+
+/* Helper: parse attr and return non-zero if ink or paper don't match. */
+static int
+check_parse_attr( libspectrum_byte attr, libspectrum_byte expected_ink,
+                  libspectrum_byte expected_paper, const char *label )
+{
+  libspectrum_byte ink, paper;
+
+  display_parse_attr( attr, &ink, &paper );
+
+  if( ink != expected_ink ) {
+    fprintf( stderr, "%s: ink: expected %d, got %d\n",
+             label, (int)expected_ink, (int)ink );
+    return 1;
+  }
+  if( paper != expected_paper ) {
+    fprintf( stderr, "%s: paper: expected %d, got %d\n",
+             label, (int)expected_paper, (int)paper );
+    return 1;
+  }
+  return 0;
+}
+
+/* attr = 0x05: ink=5 (0b101), paper=0, bright=0, flash=0 */
+static int
+parse_attr_ink_only( void )
+{
+  display_set_flash_reversed( 0 );
+  return check_parse_attr( 0x05, 5, 0, "parse_attr_ink_only" );
+}
+
+/* attr = 0x28: ink=0, paper=5 (bits 3-5 = 0b101), bright=0, flash=0 */
+static int
+parse_attr_paper_only( void )
+{
+  display_set_flash_reversed( 0 );
+  return check_parse_attr( 0x28, 0, 5, "parse_attr_paper_only" );
+}
+
+/* attr = 0x45: ink=5, paper=0, bright=1 → both get +8 */
+static int
+parse_attr_bright( void )
+{
+  display_set_flash_reversed( 0 );
+  /* 0x45 = 0100 0101: ink=5, paper=0, bright=1, flash=0 */
+  return check_parse_attr( 0x45, 13, 8, "parse_attr_bright" );
+}
+
+/* attr = 0xa8: ink=0, paper=5, flash=1; flash_reversed=0 → no swap */
+static int
+parse_attr_flash_not_reversed( void )
+{
+  display_set_flash_reversed( 0 );
+  /* 0xa8 = 1010 1000: ink=0, paper=5 (0b101 in bits 3-5), flash=1 */
+  return check_parse_attr( 0xa8, 0, 5, "parse_attr_flash_not_reversed" );
+}
+
+/* Same attr but flash_reversed=1 → ink and paper are swapped */
+static int
+parse_attr_flash_reversed( void )
+{
+  int r;
+
+  display_set_flash_reversed( 1 );
+  /* ink and paper swap: expected ink=5, paper=0 */
+  r = check_parse_attr( 0xa8, 5, 0, "parse_attr_flash_reversed" );
+  display_set_flash_reversed( 0 );
+  return r;
+}
+
+/* attr = 0xed: ink=5, paper=5, bright=1, flash=1; flash_reversed=1 → swap
+   0xed = 1110 1101: bits 0-2=5 (ink), bits 3-5=5 (paper), bit6=1, bit7=1
+   normal ink = 5+8=13, paper = 5+8=13; swapped: still 13, 13 */
+static int
+parse_attr_flash_reversed_symmetric( void )
+{
+  int r;
+
+  display_set_flash_reversed( 1 );
+  r = check_parse_attr( 0xed, 13, 13, "parse_attr_flash_reversed_symmetric" );
+  display_set_flash_reversed( 0 );
+  return r;
+}
+
 static const struct test_t tests[] = {
   /* display_write_if_dirty_sinclair() tests */
   { "no_write_if_data_unchanged", no_write_if_data_unchanged },
@@ -977,6 +1062,14 @@ static const struct test_t tests[] = {
     pentagon_write_called_for_new_data },
   { "pentagon_page7_reads_correct_pages",
     pentagon_page7_reads_correct_pages },
+
+  /* display_parse_attr() tests */
+  { "parse_attr_ink_only", parse_attr_ink_only },
+  { "parse_attr_paper_only", parse_attr_paper_only },
+  { "parse_attr_bright", parse_attr_bright },
+  { "parse_attr_flash_not_reversed", parse_attr_flash_not_reversed },
+  { "parse_attr_flash_reversed", parse_attr_flash_reversed },
+  { "parse_attr_flash_reversed_symmetric", parse_attr_flash_reversed_symmetric },
 
   /* End marker */
   { NULL, NULL }
