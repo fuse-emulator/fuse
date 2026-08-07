@@ -39,9 +39,12 @@
 int ttx2000s_paged = 0;
 
 #ifdef BUILD_TTX2000S
+#define TTX2000S_RAM_SIZE 2048
+
 static memory_page ttx2000s_memory_map_romcs_rom[ MEMORY_PAGES_IN_8K ];
 static memory_page ttx2000s_memory_map_romcs_ram[ MEMORY_PAGES_IN_8K ];
-static libspectrum_byte ttx2000s_ram[2048];
+static libspectrum_byte *ttx2000s_ram;
+static int ttx2000s_ram_allocated;
 /* FIXME: our pages are really 1k but the minimum is currently 2k 
    this is fixed as far as the z80 is concerned by masking off the address
    in ttx2000s_sram_read and ttx2000s_sram_write, but the debugger etc. will
@@ -62,6 +65,7 @@ static void ttx2000s_write( libspectrum_word port, libspectrum_byte val );
 static void ttx2000s_change_channel( int channel );
 static void ttx2000s_reset( int hard_reset );
 static void ttx2000s_memory_map( void );
+static void ttx2000s_activate( void );
 
 static int field_event;
 static void ttx2000s_field_event( libspectrum_dword last_tstates, int event,
@@ -116,7 +120,7 @@ static const periph_t ttx2000s_periph = {
   /* .option = */ &settings_current.ttx2000s,
   /* .ports = */ ttx2000s_ports,
   /* .hard_reset = */ 1,
-  /* .activate = */ NULL,
+  /* .activate = */ ttx2000s_activate,
 };
 
 static int
@@ -215,6 +219,15 @@ ttx2000s_reset( int hard_reset GCC_UNUSED )
   ttx2000s_paged = 1;
   machine_current->memory_map();
   machine_current->ram.romcs = 1;
+}
+
+static void
+ttx2000s_activate( void )
+{
+  if( !ttx2000s_ram_allocated ) {
+    ttx2000s_ram = memory_pool_allocate_persistent( TTX2000S_RAM_SIZE, 1 );
+    ttx2000s_ram_allocated = 1;
+  }
 }
 
 static void
