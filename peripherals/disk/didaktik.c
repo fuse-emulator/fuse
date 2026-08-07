@@ -36,6 +36,7 @@
 #include "didaktik.h"
 #include "infrastructure/startup_manager.h"
 #include "machine.h"
+#include "memory_pages.h"
 #include "module.h"
 #include "peripherals/printer.h"
 #include "settings.h"
@@ -68,12 +69,14 @@ static wd_fdc *didaktik_fdc;
 static fdd_t didaktik_drives[ DIDAKTIK80_NUM_DRIVES ];
 static ui_media_drive_info_t didaktik_ui_drives[ DIDAKTIK80_NUM_DRIVES ];
 
-static libspectrum_byte ram[ RAM_SIZE ];
+static libspectrum_byte *ram;
+static int ram_allocated;
 
 /* AUX byte */
 static libspectrum_byte aux_register;
 
 static void didaktik_reset( int hard_reset );
+static void didaktik_activate( void );
 static void didaktik_memory_map( void );
 static void didaktik_enabled_snapshot( libspectrum_snap *snap );
 static void didaktik_from_snapshot( libspectrum_snap *snap );
@@ -123,7 +126,7 @@ static const periph_t didaktik_periph = {
   /* .option = */ &settings_current.didaktik80,
   /* .ports = */ didaktik_ports,
   /* .hard_reset = */ 1,
-  /* .activate = */ NULL,
+  /* .activate = */ didaktik_activate,
 };
 
 /* Debugger events */
@@ -258,7 +261,7 @@ didaktik_reset( int hard_reset )
   didaktik80_available = 1;
 
   if( hard_reset )
-    memset( ram, 0, sizeof( ram ) );
+    memset( ram, 0, RAM_SIZE );
 
   wd_fdc_master_reset( didaktik_fdc );
 
@@ -272,6 +275,15 @@ didaktik_reset( int hard_reset )
   fdd_select( &didaktik_drives[ 1 ], 0 );
   machine_current->memory_map();
 
+}
+
+static void
+didaktik_activate( void )
+{
+  if( !ram_allocated ) {
+    ram = memory_pool_allocate_persistent( RAM_SIZE, 1 );
+    ram_allocated = 1;
+  }
 }
 
 static void
