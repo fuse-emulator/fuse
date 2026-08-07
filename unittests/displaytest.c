@@ -508,6 +508,53 @@ attribute_write_marks_correct_cell( void )
 }
 
 static int
+attribute_write_marks_correct_cells( void )
+{
+  /* Verify the display_dirty64() attribute address decoder against
+     boundary and representative offsets.
+
+     The attribute area begins at DISPLAY_PIXEL_BYTES (0x1800) and is
+     laid out linearly: idx = offset - 0x1800, x = idx % 32,
+     char_row = idx / 32.  Each attribute covers eight pixel rows
+     (char_row*8 .. char_row*8+7), so eight consecutive dirty bits
+     must be set for column x. */
+
+  static const struct {
+    libspectrum_word offset;
+    int expected_x;
+    int expected_char_row;   /* y = expected_char_row * 8 */
+  } cases[] = {
+    { 0x1800,  0,  0 },  /* first attr byte: col 0, char row 0 */
+    { 0x181f, 31,  0 },  /* last col of first char row */
+    { 0x1820,  0,  1 },  /* first col of second char row */
+    { 0x1840,  0,  2 },  /* first col of third char row */
+    { 0x1ae0,  0, 23 },  /* first col of last char row */
+    { 0x1aff, 31, 23 },  /* last attr byte */
+  };
+  int c;
+
+  for( c = 0; c < (int)( sizeof cases / sizeof cases[0] ); c++ ) {
+    int y;
+    libspectrum_word offset = cases[c].offset;
+    int expected_x = cases[c].expected_x;
+    int first_y = cases[c].expected_char_row * 8;
+    libspectrum_dword expected_bit = (libspectrum_dword)1 << expected_x;
+
+    test_before();
+
+    display_dirty_sinclair( offset );
+
+    for( y = 0; y < DISPLAY_HEIGHT; y++ ) {
+      libspectrum_dword expected =
+        ( y >= first_y && y < first_y + 8 ) ? expected_bit : 0;
+      if( display_get_maybe_dirty( y ) != expected ) return 1;
+    }
+  }
+
+  return 0;
+}
+
+static int
 pixel_write_marks_correct_cells( void )
 {
   /* Verify the display_dirty8() address decoder against a representative
@@ -1025,6 +1072,8 @@ static const struct test_t tests[] = {
   { "no_write_if_modified_area_ahead_of_critical_region",
     no_write_if_modified_area_ahead_of_critical_region },
   { "attribute_write_marks_correct_cell", attribute_write_marks_correct_cell },
+  { "attribute_write_marks_correct_cells",
+    attribute_write_marks_correct_cells },
   { "pixel_write_marks_correct_cells", pixel_write_marks_correct_cells },
 
   /* display_dirty_flashing_sinclair() tests */
