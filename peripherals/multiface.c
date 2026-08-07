@@ -37,6 +37,7 @@
 #include "event.h"
 #include "infrastructure/startup_manager.h"
 #include "memory.h"
+#include "memory_pages.h"
 #include "module.h"
 #include "multiface.h"
 #include "options.h"
@@ -85,7 +86,8 @@ typedef struct multiface_t {
   libspectrum_byte xfdd_reg[4]; /* 74LS670 chip store low 4 bits of
                                    0x1ffd, 0x3ffd, 0x5ffd and 0x7ffd */
   periph_type type;		/* type of multiface: one/128/3 */
-  libspectrum_byte ram[8192];	/* 8k RAM */
+  libspectrum_byte *ram;	/* 8k RAM */
+  int ram_allocated;
   int *c_settings;		/* ptr to current_settings.multiface### */
   char **d_rom;
   char **c_rom;
@@ -110,6 +112,9 @@ static void multiface_page( int idx );
 static void multiface_unpage( int idx );
 static void multiface_reset( int hard_reset );
 static void multiface_memory_map( void );
+static void multiface_activate_1( void );
+static void multiface_activate_128( void );
+static void multiface_activate_3( void );
 
 static libspectrum_byte multiface_port_in1( libspectrum_word port,
                                             libspectrum_byte *attached );
@@ -163,21 +168,21 @@ static const periph_t multiface_periph_1 = {
   &settings_current.multiface1,
   multiface_ports_1,
   1,
-  NULL
+  multiface_activate_1
 };
 
 static const periph_t multiface_periph_128 = {
   &settings_current.multiface128,
   multiface_ports_128,
   1,
-  NULL
+  multiface_activate_128
 };
 
 static const periph_t multiface_periph_3 = {
   &settings_current.multiface3,
   multiface_ports_3,
   1,
-  NULL
+  multiface_activate_3
 };
 
 void
@@ -243,8 +248,8 @@ multiface_reset_real( int idx, int hard_reset )
   SET( multiface_activated, idx, 0 );
   SET( multiface_available, idx, 0 );
 
-  if( hard_reset ) memset( mf[idx].ram, 0, 8192 );
   if( !periph_is_active( mf[idx].type ) ) return;
+  if( hard_reset ) memset( mf[idx].ram, 0, MULTIFACE_RAM_SIZE );
 
   mf[idx].IC8a_Q = 1;
   mf[idx].IC8b_Q = 1;
@@ -281,6 +286,33 @@ multiface_reset_real( int idx, int hard_reset )
   SET( multiface_available, idx, 1 );
   periph_activate_type( mf[idx].type, 1 );
   ui_menu_activate( UI_MENU_ITEM_MACHINE_MULTIFACE, 1 );
+}
+
+static void
+multiface_activate( int idx )
+{
+  if( !mf[idx].ram_allocated ) {
+    mf[idx].ram = memory_pool_allocate_persistent( MULTIFACE_RAM_SIZE, 1 );
+    mf[idx].ram_allocated = 1;
+  }
+}
+
+static void
+multiface_activate_1( void )
+{
+  multiface_activate( MF_1 );
+}
+
+static void
+multiface_activate_128( void )
+{
+  multiface_activate( MF_128 );
+}
+
+static void
+multiface_activate_3( void )
+{
+  multiface_activate( MF_3 );
 }
 
 static void
