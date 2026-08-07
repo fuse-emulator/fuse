@@ -35,6 +35,7 @@
 #include "debugger/debugger.h"
 #include "infrastructure/startup_manager.h"
 #include "machine.h"
+#include "memory_pages.h"
 #include "module.h"
 #include "opus.h"
 #include "peripherals/printer.h"
@@ -65,7 +66,8 @@ static wd_fdc *opus_fdc;
 static fdd_t opus_drives[ OPUS_NUM_DRIVES ];
 static ui_media_drive_info_t opus_ui_drives[ OPUS_NUM_DRIVES ];
 
-static libspectrum_byte opus_ram[ OPUS_RAM_SIZE ];
+static libspectrum_byte *opus_ram;
+static int opus_ram_allocated;
 
 /* 6821 PIA internal registers */
 static libspectrum_byte data_reg_a, data_dir_a, control_a;
@@ -76,6 +78,7 @@ static void opus_memory_map( void );
 static void opus_enabled_snapshot( libspectrum_snap *snap );
 static void opus_from_snapshot( libspectrum_snap *snap );
 static void opus_to_snapshot( libspectrum_snap *snap );
+static void opus_activate( void );
 
 static module_info_t opus_module_info = {
 
@@ -91,7 +94,7 @@ static const periph_t opus_periph = {
   /* .option = */ &settings_current.opus,
   /* .ports = */ NULL,
   /* .hard_reset = */ 1,
-  /* .activate = */ NULL,
+  /* .activate = */ opus_activate,
 };
 
 /* Debugger events */
@@ -237,7 +240,7 @@ opus_reset( int hard_reset )
   opus_available = 1;
 
   if( hard_reset )
-    memset( opus_ram, 0, sizeof( opus_ram ) );
+    memset( opus_ram, 0, OPUS_RAM_SIZE );
 
   wd_fdc_master_reset( opus_fdc );
 
@@ -249,6 +252,15 @@ opus_reset( int hard_reset )
   opus_fdc->current_drive = &opus_drives[ 0 ];
   fdd_select( &opus_drives[ 0 ], 1 );
   machine_current->memory_map();
+}
+
+static void
+opus_activate( void )
+{
+  if( !opus_ram_allocated ) {
+    opus_ram = memory_pool_allocate_persistent( OPUS_RAM_SIZE, 1 );
+    opus_ram_allocated = 1;
+  }
 }
 
 /*
