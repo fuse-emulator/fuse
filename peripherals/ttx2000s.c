@@ -483,6 +483,23 @@ ttx2000s_unittest( void )
   int r = 0;
 
   #ifdef BUILD_TTX2000S
+  int was_active = periph_is_active( PERIPH_TYPE_TTX2000S );
+  int saved_line_counter = ttx2000s_line_counter;
+  libspectrum_byte saved_first;
+  libspectrum_byte saved_last;
+
+  if( !was_active )
+    periph_activate_type( PERIPH_TYPE_TTX2000S, 1 );
+
+  saved_first = ttx2000s_sram_read( 0x2000 );
+  saved_last = ttx2000s_sram_read( 0x23ff );
+
+  ttx2000s_sram_write( 0x2000, 0x55 );
+  ttx2000s_sram_write( 0x23ff, 0xaa );
+  if( ttx2000s_sram_read( 0x2400 ) != 0x55 ||
+      ttx2000s_sram_read( 0x27ff ) != 0xaa )
+    r++;
+
   ttx2000s_paged = 1;
   ttx2000s_memory_map();
   machine_current->ram.romcs = 1;
@@ -501,7 +518,13 @@ ttx2000s_unittest( void )
   machine_current->ram.romcs = 0;
 
   r += unittests_paging_test_48( 2 );
-  
+
+  ttx2000s_sram_write( 0x2000, saved_first );
+  ttx2000s_sram_write( 0x23ff, saved_last );
+  ttx2000s_line_counter = saved_line_counter;
+  if( !was_active )
+    periph_activate_type( PERIPH_TYPE_TTX2000S, 0 );
+
   #endif
 
   return r;
