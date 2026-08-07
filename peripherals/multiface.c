@@ -27,6 +27,7 @@
 #include "config.h"
 
 #include <string.h>
+#include <stdio.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -536,7 +537,69 @@ multiface_setic8( void )
 int
 multiface_unittest( void )
 {
+  static const char rom_filename[] = "unittests-multiface.rom";
+  libspectrum_byte *test_rom;
+  libspectrum_snap *snap = NULL;
+  libspectrum_byte saved_128_first, saved_128_last;
+  libspectrum_byte saved_3_first, saved_3_last;
+  char *saved_rom = settings_current.rom_multiface1;
   int r = 0;
+  int was_active_1 = periph_is_active( PERIPH_TYPE_MULTIFACE_1 );
+  int was_active_128 = periph_is_active( PERIPH_TYPE_MULTIFACE_128 );
+  int was_active_3 = periph_is_active( PERIPH_TYPE_MULTIFACE_3 );
+
+  test_rom = libspectrum_new0( libspectrum_byte, MULTIFACE_ROM_SIZE );
+  if( utils_write_file( rom_filename, test_rom, MULTIFACE_ROM_SIZE ) ) {
+    libspectrum_free( test_rom );
+    return 1;
+  }
+  libspectrum_free( test_rom );
+
+  settings_current.rom_multiface1 = (char *)rom_filename;
+  if( !was_active_1 )
+    periph_activate_type( PERIPH_TYPE_MULTIFACE_1, 1 );
+
+  multiface_reset( 1 );
+  if( !IS( multiface_available, MF_1 ) ) {
+    fprintf( stderr, "Multiface One unavailable for unit test\n" );
+    r++;
+    goto cleanup;
+  }
+
+  mf[MF_1].ram[ 0 ] = 0x55;
+  mf[MF_1].ram[ MULTIFACE_RAM_SIZE - 1 ] = 0xaa;
+
+  multiface_reset( 1 );
+
+  if( mf[MF_1].ram[ 0 ] != 0 ||
+      mf[MF_1].ram[ MULTIFACE_RAM_SIZE - 1 ] != 0 ) {
+    fprintf( stderr, "Multiface One RAM not cleared by hard reset\n" );
+    r++;
+  }
+
+  multiface_page( MF_1 );
+  mf[MF_1].ram[ 0 ] = 0x55;
+  mf[MF_1].ram[ MULTIFACE_RAM_SIZE - 1 ] = 0xaa;
+
+  snap = libspectrum_snap_alloc();
+  if( !snap ) {
+    fprintf( stderr, "Couldn't allocate Multiface unit test snapshot\n" );
+    r++;
+    goto cleanup;
+  }
+  multiface_to_snapshot( snap );
+
+  mf[MF_1].ram[ 0 ] = 0;
+  mf[MF_1].ram[ MULTIFACE_RAM_SIZE - 1 ] = 0;
+  multiface_unpage( MF_1 );
+  multiface_from_snapshot( snap );
+
+  if( mf[MF_1].ram[ 0 ] != 0x55 ||
+      mf[MF_1].ram[ MULTIFACE_RAM_SIZE - 1 ] != 0xaa ||
+      !IS( multiface_active, MF_1 ) ) {
+    fprintf( stderr, "Multiface One snapshot not restored correctly\n" );
+    r++;
+  }
 
   multiface_page( MF_1 );
 
@@ -549,6 +612,48 @@ multiface_unittest( void )
   multiface_unpage( MF_1 );
 
   r += unittests_paging_test_48( 2 );
+
+  if( !was_active_128 )
+    periph_activate_type( PERIPH_TYPE_MULTIFACE_128, 1 );
+  saved_128_first = mf[MF_128].ram[ 0 ];
+  saved_128_last = mf[MF_128].ram[ MULTIFACE_RAM_SIZE - 1 ];
+  mf[MF_128].ram[ 0 ] = 0x55;
+  mf[MF_128].ram[ MULTIFACE_RAM_SIZE - 1 ] = 0xaa;
+  if( mf[MF_128].ram[ 0 ] != 0x55 ||
+      mf[MF_128].ram[ MULTIFACE_RAM_SIZE - 1 ] != 0xaa ) {
+    fprintf( stderr, "Multiface 128 RAM is not accessible\n" );
+    r++;
+  }
+  mf[MF_128].ram[ 0 ] = saved_128_first;
+  mf[MF_128].ram[ MULTIFACE_RAM_SIZE - 1 ] = saved_128_last;
+
+  if( !was_active_3 )
+    periph_activate_type( PERIPH_TYPE_MULTIFACE_3, 1 );
+  saved_3_first = mf[MF_3].ram[ 0 ];
+  saved_3_last = mf[MF_3].ram[ MULTIFACE_RAM_SIZE - 1 ];
+  mf[MF_3].ram[ 0 ] = 0x55;
+  mf[MF_3].ram[ MULTIFACE_RAM_SIZE - 1 ] = 0xaa;
+  if( mf[MF_3].ram[ 0 ] != 0x55 ||
+      mf[MF_3].ram[ MULTIFACE_RAM_SIZE - 1 ] != 0xaa ) {
+    fprintf( stderr, "Multiface 3 RAM is not accessible\n" );
+    r++;
+  }
+  mf[MF_3].ram[ 0 ] = saved_3_first;
+  mf[MF_3].ram[ MULTIFACE_RAM_SIZE - 1 ] = saved_3_last;
+
+cleanup:
+  if( snap ) libspectrum_snap_free( snap );
+  if( !was_active_3 )
+    periph_activate_type( PERIPH_TYPE_MULTIFACE_3, 0 );
+  if( !was_active_128 )
+    periph_activate_type( PERIPH_TYPE_MULTIFACE_128, 0 );
+  if( !was_active_1 )
+    periph_activate_type( PERIPH_TYPE_MULTIFACE_1, 0 );
+  settings_current.rom_multiface1 = saved_rom;
+  if( remove( rom_filename ) ) {
+    fprintf( stderr, "Couldn't remove Multiface unit test ROM\n" );
+    r++;
+  }
 
   return r;
 }
