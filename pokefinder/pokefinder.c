@@ -120,3 +120,32 @@ pokefinder_decremented( void )
 
   return 0;
 }
+
+int
+pokefinder_unittest( void )
+{
+  size_t page, max_page;
+  libspectrum_byte value;
+
+  max_page = MEMORY_PAGES_IN_16K * machine_current->ram.valid_pages;
+  for( page = 0; page < max_page; page++ )
+    if( memory_map_ram[ page ].writable ) break;
+
+  if( page == max_page ) return 0;
+
+  value = memory_map_ram[ page ].page[ 0 ];
+  pokefinder_clear();
+  memory_map_ram[ page ].page[ 0 ] = value ^ 0xff;
+  pokefinder_search( value );
+
+  if( !( pokefinder_impossible[ page ][ 0 ] & 1 ) ) {
+    memory_map_ram[ page ].page[ 0 ] = value;
+    pokefinder_clear();
+    return 1;
+  }
+
+  memory_map_ram[ page ].page[ 0 ] = value;
+  pokefinder_clear();
+
+  return 0;
+}

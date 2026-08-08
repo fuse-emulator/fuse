@@ -52,6 +52,7 @@
 #include "peripherals/ttx2000s.h"
 #include "peripherals/ula.h"
 #include "peripherals/usource.h"
+#include "pokefinder/pokefinder.h"
 #include "settings.h"
 #include "snapshot.h"
 #include "bitmap.h"
@@ -1364,6 +1365,7 @@ unittests_run( void )
   r += bitmap_ops_test();
   r += mempool_test();
   r += paging_test();
+  r += pokefinder_unittest();
   r += debugger_disassemble_unittest();
   r += debugger_expression_unittest();
   r += rectangle_test();

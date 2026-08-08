@@ -34,5 +34,6 @@ void pokefinder_clear( void );
 int pokefinder_search( libspectrum_byte value );
 int pokefinder_incremented( void );
 int pokefinder_decremented( void );
+int pokefinder_unittest( void );
 
 #endif				/* #ifndef FUSE_POKEFINDER_H */
