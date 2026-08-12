@@ -57,6 +57,7 @@
 #include "snapshot.h"
 #include "bitmap.h"
 #include "rectangle.h"
+#include "compat.h"
 #include "ui/scaler/scaler.h"
 #include "unittests.h"
 #include "utils.h"
@@ -1350,6 +1351,56 @@ scaler_for_size_test( void )
   return r;
 }
 
+static FILE compat_file_test_file;
+static int compat_file_test_calls[ 6 ];
+
+static compat_fd compat_file_test_open( const char *path GCC_UNUSED,
+                                        int write GCC_UNUSED )
+{ compat_file_test_calls[ 0 ]++; return &compat_file_test_file; }
+static off_t compat_file_test_get_length( compat_fd fd GCC_UNUSED )
+{ compat_file_test_calls[ 1 ]++; return 42; }
+static int compat_file_test_read( compat_fd fd GCC_UNUSED,
+                                  utils_file *file GCC_UNUSED )
+{ compat_file_test_calls[ 2 ]++; return 0; }
+static int compat_file_test_write( compat_fd fd GCC_UNUSED,
+                                   const unsigned char *buffer GCC_UNUSED,
+                                   size_t length GCC_UNUSED )
+{ compat_file_test_calls[ 3 ]++; return 0; }
+static int compat_file_test_close( compat_fd fd GCC_UNUSED )
+{ compat_file_test_calls[ 4 ]++; return 0; }
+static int compat_file_test_exists( const char *path GCC_UNUSED )
+{ compat_file_test_calls[ 5 ]++; return 1; }
+
+static int
+compat_file_vtable_test( void )
+{
+  compat_file_vtable_t vtable = {
+    compat_file_test_open, compat_file_test_get_length, compat_file_test_read,
+    compat_file_test_write, compat_file_test_close, compat_file_test_exists
+  };
+  compat_file_vtable_t previous_vtable;
+  utils_file file;
+  unsigned char buffer = 0;
+  compat_fd fd;
+  int i, r = 0;
+
+  memset( compat_file_test_calls, 0, sizeof( compat_file_test_calls ) );
+  compat_file_get_vtable( &previous_vtable );
+  compat_file_set_vtable( &vtable );
+  vtable.open = NULL; /* The setter copies operations, like libspectrum's. */
+
+  fd = compat_file_open( "test", 0 );
+  if( fd != &compat_file_test_file || compat_file_get_length( fd ) != 42 ||
+      compat_file_read( fd, &file ) ||
+      compat_file_write( fd, &buffer, 1 ) || compat_file_close( fd ) ||
+      !compat_file_exists( "test" ) ) r++;
+
+  compat_file_set_vtable( &previous_vtable );
+  for( i = 0; i < 6; i++ ) if( compat_file_test_calls[ i ] != 1 ) r++;
+  if( r ) printf( "compat_file_vtable_test failed\n" );
+  return r;
+}
+
 int
 unittests_run( void )
 {
@@ -1371,6 +1422,7 @@ unittests_run( void )
   r += rectangle_test();
   r += rectangle_realloc_test();
   r += scaler_for_size_test();
+  r += compat_file_vtable_test();
 
   printf("Final return value: %d (should be 0)\n", r);
 
