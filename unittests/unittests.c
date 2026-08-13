@@ -25,7 +25,9 @@
 
 #include "config.h"
 
+#include <fcntl.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "libspectrum.h"
 
@@ -36,10 +38,12 @@
 #include "mempool.h"
 #include "periph.h"
 #include "peripherals/disk/beta.h"
+#include "peripherals/disk/disk.h"
 #include "peripherals/disk/didaktik.h"
 #include "peripherals/disk/disciple.h"
 #include "peripherals/disk/opus.h"
 #include "peripherals/disk/plusd.h"
+#include "peripherals/dck.h"
 #include "peripherals/ide/divide.h"
 #include "peripherals/ide/divmmc.h"
 #include "peripherals/ide/zxatasp.h"
@@ -55,6 +59,7 @@
 #include "pokefinder/pokefinder.h"
 #include "settings.h"
 #include "snapshot.h"
+#include "tape.h"
 #include "bitmap.h"
 #include "rectangle.h"
 #include "compat.h"
@@ -1351,6 +1356,315 @@ scaler_for_size_test( void )
   return r;
 }
 
+static compat_file_vtable_t utils_file_previous_vtable;
+static const char *utils_file_test_path;
+static int utils_file_open_count;
+static int utils_file_read_count;
+static int utils_file_total_open_count;
+static int utils_file_total_read_count;
+
+static compat_fd
+utils_file_test_open( const char *path, int write )
+{
+  utils_file_total_open_count++;
+  if( !strcmp( path, utils_file_test_path ) ) utils_file_open_count++;
+  return utils_file_previous_vtable.open( path, write );
+}
+
+static int
+utils_file_test_read( compat_fd fd, utils_file *file )
+{
+  utils_file_total_read_count++;
+  if( file->filename && !strcmp( file->filename, utils_file_test_path ) )
+    utils_file_read_count++;
+  return utils_file_previous_vtable.read( fd, file );
+}
+
+static compat_fd
+utils_file_test_open_failure( const char *path GCC_UNUSED, int write GCC_UNUSED )
+{
+  return COMPAT_FILE_OPEN_FAILED;
+}
+
+static int
+utils_file_read_failure_test( void )
+{
+  compat_file_vtable_t vtable;
+  utils_file file;
+  int r = 0;
+
+  compat_file_get_vtable( &utils_file_previous_vtable );
+  vtable = utils_file_previous_vtable;
+  vtable.open = utils_file_test_open_failure;
+  compat_file_set_vtable( &vtable );
+  utils_file_init( &file, "missing" );
+  if( !utils_file_read( &file ) || file.buffer || file.length ) r++;
+  utils_file_free( &file );
+  compat_file_set_vtable( &utils_file_previous_vtable );
+  if( r ) printf( "utils_file_read_failure_test failed\n" );
+  return r;
+}
+
+static int
+utils_file_lifecycle_test( void )
+{
+  char filename[] = "/tmp/fuse-utils-file-XXXXXX";
+  compat_file_vtable_t vtable;
+  utils_file file;
+  unsigned char data[] = { 0x01, 0x00, 0x00 };
+  int fd, r = 0;
+
+  fd = mkstemp( filename );
+  if( fd < 0 || write( fd, data, sizeof( data ) ) != sizeof( data ) ) {
+    if( fd >= 0 ) close( fd );
+    unlink( filename );
+    printf( "utils_file_lifecycle_test: failed to create fixture\n" );
+    return 1;
+  }
+  close( fd );
+
+  compat_file_get_vtable( &utils_file_previous_vtable );
+  vtable = utils_file_previous_vtable;
+  vtable.open = utils_file_test_open;
+  vtable.read = utils_file_test_read;
+  utils_file_test_path = filename;
+  utils_file_open_count = utils_file_read_count = 0;
+  utils_file_total_open_count = utils_file_total_read_count = 0;
+  compat_file_set_vtable( &vtable );
+
+  utils_file_init( &file, filename );
+  if( utils_file_identify( &file ) || utils_file_identify( &file ) ||
+      utils_file_open_count != 1 || utils_file_read_count != 1 ) r++;
+
+  utils_file_free( &file );
+  if( file.filename || file.buffer || file.length ||
+      file.type != LIBSPECTRUM_ID_UNKNOWN ||
+      file.class != LIBSPECTRUM_CLASS_UNKNOWN ) r++;
+
+  compat_file_set_vtable( &utils_file_previous_vtable );
+  unlink( filename );
+  if( r ) printf( "utils_file_lifecycle_test failed\n" );
+  return r;
+}
+
+static int
+utils_open_loaded_file_test( void )
+{
+  compat_file_vtable_t vtable;
+  utils_file file;
+  static const unsigned char tap[] = { 0x01, 0x00, 0x00 };
+  const char *filename = "already-loaded.tap";
+  int r = 0;
+
+  compat_file_get_vtable( &utils_file_previous_vtable );
+  vtable = utils_file_previous_vtable;
+  vtable.open = utils_file_test_open;
+  vtable.read = utils_file_test_read;
+  utils_file_test_path = filename;
+  utils_file_open_count = utils_file_read_count = 0;
+  compat_file_set_vtable( &vtable );
+
+  utils_file_init( &file, filename );
+  file.buffer = libspectrum_new( unsigned char, sizeof( tap ) );
+  memcpy( file.buffer, tap, sizeof( tap ) );
+  file.length = sizeof( tap );
+  file.type = LIBSPECTRUM_ID_TAPE_TAP;
+  file.class = LIBSPECTRUM_CLASS_TAPE;
+
+  if( utils_open_loaded_file( &file, 0, NULL ) ||
+      utils_file_open_count || utils_file_read_count ) r++;
+
+  utils_file_free( &file );
+  tape_close();
+  compat_file_set_vtable( &utils_file_previous_vtable );
+  if( r ) printf( "utils_open_loaded_file_test failed\n" );
+  return r;
+}
+
+static int
+utils_open_loaded_if2_test( void )
+{
+  compat_file_vtable_t vtable;
+  utils_file file;
+  libspectrum_machine old_machine = machine_current->machine;
+  int old_interface2 = settings_current.interface2;
+  const char *filename = "already-loaded.rom";
+  int r = 0;
+
+  compat_file_get_vtable( &utils_file_previous_vtable );
+  vtable = utils_file_previous_vtable;
+  vtable.open = utils_file_test_open;
+  vtable.read = utils_file_test_read;
+  utils_file_test_path = filename;
+  utils_file_open_count = utils_file_read_count = 0;
+  compat_file_set_vtable( &vtable );
+
+  utils_file_init( &file, filename );
+  file.length = 0x4000;
+  file.buffer = libspectrum_new0( unsigned char, file.length );
+  if( machine_select( LIBSPECTRUM_MACHINE_48 ) ) r++;
+  settings_current.interface2 = 1;
+  periph_update();
+  if( if2_insert_loaded( &file ) || !if2_active ||
+      utils_file_open_count || utils_file_read_count ) r++;
+
+  if2_eject();
+  settings_current.interface2 = old_interface2;
+  if( machine_select( old_machine ) ) r++;
+  periph_update();
+  compat_file_set_vtable( &utils_file_previous_vtable );
+  utils_file_free( &file );
+  if( r ) printf( "utils_open_loaded_if2_test failed\n" );
+  return r;
+}
+
+static int
+utils_open_loaded_dck_test( void )
+{
+  compat_file_vtable_t vtable;
+  utils_file file;
+  libspectrum_machine old_machine = machine_current->machine;
+  const char *filename = "already-loaded.dck";
+  int r = 0;
+
+  compat_file_get_vtable( &utils_file_previous_vtable );
+  vtable = utils_file_previous_vtable;
+  vtable.open = utils_file_test_open;
+  vtable.read = utils_file_test_read;
+  utils_file_test_path = filename;
+  utils_file_open_count = utils_file_read_count = 0;
+  compat_file_set_vtable( &vtable );
+
+  utils_file_init( &file, filename );
+  file.length = 9; /* A valid DCK block: Dock bank with eight empty pages. */
+  file.buffer = libspectrum_new0( unsigned char, file.length );
+  file.buffer[ 0 ] = LIBSPECTRUM_DCK_BANK_DOCK;
+  if( machine_select( LIBSPECTRUM_MACHINE_TC2068 ) ||
+      dck_insert_loaded( &file ) || !dck_active ||
+      utils_file_open_count || utils_file_read_count ) r++;
+
+  dck_eject();
+  if( machine_select( old_machine ) ) r++;
+  compat_file_set_vtable( &utils_file_previous_vtable );
+  utils_file_free( &file );
+  if( r ) printf( "utils_open_loaded_dck_test failed\n" );
+  return r;
+}
+
+static int
+utils_open_loaded_microdrive_test( void )
+{
+  compat_file_vtable_t vtable;
+  utils_file file;
+  const char *filename = "lib/tests/success.mdr";
+  int r = 0;
+
+  if( utils_read_file( filename, &file ) ) {
+    printf( "utils_open_loaded_microdrive_test: failed to read fixture\n" );
+    return 1;
+  }
+
+  compat_file_get_vtable( &utils_file_previous_vtable );
+  vtable = utils_file_previous_vtable;
+  vtable.open = utils_file_test_open;
+  vtable.read = utils_file_test_read;
+  utils_file_test_path = filename;
+  utils_file_open_count = utils_file_read_count = 0;
+  compat_file_set_vtable( &vtable );
+
+  if( if1_mdr_insert_loaded( -1, &file ) ||
+      utils_file_open_count || utils_file_read_count ) r++;
+
+  if1_mdr_eject( 0 );
+  compat_file_set_vtable( &utils_file_previous_vtable );
+  utils_file_free( &file );
+  if( r ) printf( "utils_open_loaded_microdrive_test failed\n" );
+  return r;
+}
+
+static int
+utils_open_loaded_disk_test( void )
+{
+  compat_file_vtable_t vtable;
+  utils_file file;
+  disk_t disk;
+  const char *filename = "already-loaded.img";
+  int r = 0;
+
+  compat_file_get_vtable( &utils_file_previous_vtable );
+  vtable = utils_file_previous_vtable;
+  vtable.open = utils_file_test_open;
+  vtable.read = utils_file_test_read;
+  utils_file_test_path = filename;
+  utils_file_open_count = utils_file_read_count = 0;
+  compat_file_set_vtable( &vtable );
+
+  memset( &disk, 0, sizeof( disk ) );
+  utils_file_init( &file, filename );
+  file.length = 40 * 10 * 512;
+  file.buffer = libspectrum_new0( unsigned char, file.length );
+  if( disk_open_loaded( &disk, &file, 0, 0 ) != DISK_OK ||
+      utils_file_open_count || utils_file_read_count ) r++;
+
+  disk_close( &disk );
+  utils_file_free( &file );
+  compat_file_set_vtable( &utils_file_previous_vtable );
+  if( r ) printf( "utils_open_loaded_disk_test failed\n" );
+  return r;
+}
+
+static int
+utils_open_loaded_disk_merge_test( void )
+{
+  char directory[] = "/tmp/fuse-disk-merge-XXXXXX";
+  char filename_a[ PATH_MAX ], filename_b[ PATH_MAX ];
+  compat_file_vtable_t vtable;
+  utils_file file;
+  disk_t disk;
+  unsigned char *data;
+  int fd, saved_ask_merge, r = 0;
+
+  if( !mkdtemp( directory ) ) return 1;
+  snprintf( filename_a, sizeof( filename_a ), "%s/disk Side A.img", directory );
+  snprintf( filename_b, sizeof( filename_b ), "%s/disk Side B.img", directory );
+  data = libspectrum_new0( unsigned char, 40 * 10 * 512 );
+  fd = creat( filename_b, 0600 );
+  if( !data || fd < 0 || write( fd, data, 40 * 10 * 512 ) != 40 * 10 * 512 ) {
+    if( fd >= 0 ) close( fd );
+    libspectrum_free( data );
+    unlink( filename_b ); rmdir( directory );
+    return 1;
+  }
+  close( fd );
+
+  compat_file_get_vtable( &utils_file_previous_vtable );
+  vtable = utils_file_previous_vtable;
+  vtable.open = utils_file_test_open;
+  vtable.read = utils_file_test_read;
+  utils_file_test_path = filename_a;
+  utils_file_open_count = utils_file_read_count = 0;
+  utils_file_total_open_count = utils_file_total_read_count = 0;
+  compat_file_set_vtable( &vtable );
+
+  memset( &disk, 0, sizeof( disk ) );
+  utils_file_init( &file, filename_a );
+  file.buffer = data;
+  file.length = 40 * 10 * 512;
+  saved_ask_merge = settings_current.disk_ask_merge;
+  settings_current.disk_ask_merge = 0;
+  if( disk_open_loaded( &disk, &file, 0, 1 ) != DISK_OK ||
+      utils_file_open_count || utils_file_read_count ||
+      utils_file_total_open_count != 1 || utils_file_total_read_count != 1 ) r++;
+  settings_current.disk_ask_merge = saved_ask_merge;
+
+  disk_close( &disk );
+  utils_file_free( &file );
+  compat_file_set_vtable( &utils_file_previous_vtable );
+  unlink( filename_b ); rmdir( directory );
+  if( r ) printf( "utils_open_loaded_disk_merge_test failed\n" );
+  return r;
+}
+
 static FILE compat_file_test_file;
 static int compat_file_test_calls[ 6 ];
 
@@ -1423,6 +1737,14 @@ unittests_run( void )
   r += rectangle_realloc_test();
   r += scaler_for_size_test();
   r += compat_file_vtable_test();
+  r += utils_file_lifecycle_test();
+  r += utils_file_read_failure_test();
+  r += utils_open_loaded_file_test();
+  r += utils_open_loaded_if2_test();
+  r += utils_open_loaded_dck_test();
+  r += utils_open_loaded_microdrive_test();
+  r += utils_open_loaded_disk_test();
+  r += utils_open_loaded_disk_merge_test();
 
   printf("Final return value: %d (should be 0)\n", r);
 

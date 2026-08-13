@@ -25,6 +25,8 @@
 #ifndef FUSE_UIMEDIA_H
 #define FUSE_UIMEDIA_H
 
+#include "utils.h"
+
 struct fdd_t;
 struct fdd_params_t;
 struct disk_t;
@@ -71,6 +73,8 @@ int ui_media_drive_eject_all( void );
 
 int ui_media_drive_insert( const ui_media_drive_info_t *drive,
                            const char *filename, int autoload );
+int ui_media_drive_insert_file( const ui_media_drive_info_t *drive,
+                                const utils_file *file, int autoload );
 int ui_media_drive_save( int controller, int which, int saveas );
 int ui_media_drive_eject( int controller, int which );
 int ui_media_drive_flip( int controller, int which, int flip );

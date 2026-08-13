@@ -1107,8 +1107,9 @@ if1_mdr_new( microdrive_t *mdr )
 
 }
 
-int
-if1_mdr_insert( int which, const char *filename )
+static int
+if1_mdr_insert_internal( int which, const char *filename,
+                         const utils_file *file )
 {
   microdrive_t *mdr;
   int m, i;
@@ -1148,19 +1149,27 @@ if1_mdr_insert( int which, const char *filename )
     return 0;
   }
 
-  if( utils_read_file( filename, &mdr->file ) ) {
-    ui_error( UI_ERROR_ERROR, "Failed to open cartridge image" );
-    return 1;
-  }
+  if( file ) {
+    if( libspectrum_microdrive_mdr_read( mdr->cartridge, file->buffer,
+                                         file->length ) ) {
+      ui_error( UI_ERROR_ERROR, "Failed to open cartridge image" );
+      return 1;
+    }
+  } else {
+    if( utils_read_file( filename, &mdr->file ) ) {
+      ui_error( UI_ERROR_ERROR, "Failed to open cartridge image" );
+      return 1;
+    }
 
-  if( libspectrum_microdrive_mdr_read( mdr->cartridge, mdr->file.buffer,
-				       mdr->file.length ) ) {
+    if( libspectrum_microdrive_mdr_read( mdr->cartridge, mdr->file.buffer,
+                                         mdr->file.length ) ) {
+      utils_close_file( &mdr->file );
+      ui_error( UI_ERROR_ERROR, "Failed to open cartridge image" );
+      return 1;
+    }
+
     utils_close_file( &mdr->file );
-    ui_error( UI_ERROR_ERROR, "Failed to open cartridge image" );
-    return 1;
   }
-
-  utils_close_file( &mdr->file );
 
   mdr->inserted = 1;
   mdr->modified = 0;
@@ -1173,6 +1182,19 @@ if1_mdr_insert( int which, const char *filename )
   update_menu( UMENU_MDRV1 + which );
 
   return 0;
+}
+
+int
+if1_mdr_insert( int which, const char *filename )
+{
+  return if1_mdr_insert_internal( which, filename, NULL );
+}
+
+int
+if1_mdr_insert_loaded( int which, const utils_file *file )
+{
+  if( !file || !file->filename || !file->buffer ) return 1;
+  return if1_mdr_insert_internal( which, file->filename, file );
 }
 
 int

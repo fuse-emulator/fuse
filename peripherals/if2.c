@@ -37,6 +37,7 @@
 #include "settings.h"
 #include "ui/ui.h"
 #include "unittests/unittests.h"
+#include "utils.h"
 
 /* A 16KB memory chunk accessible by the Z80 when /ROMCS is low */
 static memory_page if2_memory_map_romcs[MEMORY_PAGES_IN_16K];
@@ -46,6 +47,7 @@ int if2_active = 0;
 
 /* IF2 memory source */
 static int if2_memory_source;
+static const utils_file *if2_loaded_file;
 
 static void if2_reset( int hard_reset );
 static void if2_memory_map( void );
@@ -98,8 +100,8 @@ if2_register_startup( void )
                             ARRAY_SIZE( dependencies ), if2_init, NULL, NULL );
 }
 
-int
-if2_insert( const char *filename )
+static int
+if2_insert_internal( const char *filename, const utils_file *file )
 {
   if ( !periph_is_active( PERIPH_TYPE_INTERFACE2 ) ) {
     ui_error( UI_ERROR_ERROR,
@@ -109,9 +111,24 @@ if2_insert( const char *filename )
 
   settings_set_string( &settings_current.if2_file, filename );
 
+  if2_loaded_file = file;
   machine_reset( 0 );
+  if2_loaded_file = NULL;
 
   return 0;
+}
+
+int
+if2_insert( const char *filename )
+{
+  return if2_insert_internal( filename, NULL );
+}
+
+int
+if2_insert_loaded( const utils_file *file )
+{
+  if( !file || !file->filename || !file->buffer ) return 1;
+  return if2_insert_internal( file->filename, file );
 }
 
 void
@@ -145,9 +162,15 @@ if2_reset( int hard_reset GCC_UNUSED )
 
   if ( !periph_is_active( PERIPH_TYPE_INTERFACE2 ) ) return;
 
-  if ( machine_load_rom_bank( if2_memory_map_romcs, 0,
-			      settings_current.if2_file,
-			      NULL, 0x4000 ) )
+  if( if2_loaded_file ) {
+    if( if2_loaded_file->length != 0x4000 ||
+        machine_load_rom_bank_from_buffer( if2_memory_map_romcs, 0,
+                                           if2_loaded_file->buffer,
+                                           if2_loaded_file->length, 1 ) )
+      return;
+  } else if( machine_load_rom_bank( if2_memory_map_romcs, 0,
+                                    settings_current.if2_file,
+                                    NULL, 0x4000 ) )
     return;
 
   machine_current->ram.romcs = 1;

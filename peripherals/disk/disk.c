@@ -2218,9 +2218,10 @@ disk_update_tlens( disk_t *d )
  * if preindex != 0 we generate preindex gap if needed
  */
 static int
-disk_open2( disk_t *d, const char *filename, int preindex )
+disk_open_buffer( disk_t *d, const utils_file *file, int preindex )
 {
   buffer_t buffer;
+  const char *filename = file->filename;
   libspectrum_id_t type;
   int error;
 
@@ -2233,13 +2234,11 @@ disk_open2( disk_t *d, const char *filename, int preindex )
     d->wrprot = 0;
 #endif			/* #ifdef GEKKO */
 
-  if( utils_read_file( filename, &buffer.file ) )
-    return d->status = DISK_OPEN;
-
+  buffer.file = *file;              /* borrowed: never close this buffer */
   buffer.index = 0;
 
   error = libspectrum_identify_file_raw( &type, filename,
-					 buffer.file.buffer, buffer.file.length );
+                                         buffer.file.buffer, buffer.file.length );
   if( error ) return d->status = DISK_OPEN;
   d->type = DISK_TYPE_NONE;
 #ifdef CPC_DEBUG
@@ -2289,13 +2288,11 @@ fprintf( stderr, "\n::::%s:::: ", filename );
     open_d40_d80( &buffer, d );
     break;
   default:
-    utils_close_file( &buffer.file );
     return d->status = DISK_OPEN;
   }
   if( d->status != DISK_OK ) {
     if( d->data != NULL )
       libspectrum_free( d->data );
-    utils_close_file( &buffer.file );
 #ifdef CPC_DEBUG
 fprintf( stderr, "\n!!!!error opening: %s!!!!\n", filename );
 #ifdef CPC_DEBUG_EXIT
@@ -2304,7 +2301,6 @@ fuse_exiting = 1;
 #endif
     return d->status;
   }
-  utils_close_file( &buffer.file );
   d->dirty = 0;
   update_tracks_mode( d );
   d->filename = utils_safe_strdup( filename );
@@ -2312,6 +2308,19 @@ fuse_exiting = 1;
 fuse_exiting = 1;
 #endif
   return d->status = DISK_OK;
+}
+
+static int
+disk_open2( disk_t *d, const char *filename, int preindex )
+{
+  utils_file file;
+  int error;
+
+  utils_file_init( &file, filename );
+  if( utils_file_read( &file ) ) return d->status = DISK_OPEN;
+  error = disk_open_buffer( d, &file, preindex );
+  utils_file_free( &file );
+  return error;
 }
 
 /*--------------------- other fuctions -----------------------*/
@@ -2369,8 +2378,34 @@ disk_merge_sides( disk_t *d, disk_t *d1, disk_t *d2, int autofill )
   return d->status = DISK_OK;
 }
 
+static int disk_open_internal( disk_t *d, const char *filename, int preindex,
+                               int merge_disks, const utils_file *file );
+
+static int
+disk_open_initial( disk_t *d, const char *filename, int preindex,
+                   const utils_file *file )
+{
+  if( file ) return disk_open_buffer( d, file, preindex );
+  return disk_open2( d, filename, preindex );
+}
+
+int
+disk_open_loaded( disk_t *d, const utils_file *file, int preindex,
+                  int merge_disks )
+{
+  if( !file || !file->filename || !file->buffer ) return d->status = DISK_OPEN;
+  return disk_open_internal( d, file->filename, preindex, merge_disks, file );
+}
+
 int
 disk_open( disk_t *d, const char *filename, int preindex, int merge_disks )
+{
+  return disk_open_internal( d, filename, preindex, merge_disks, NULL );
+}
+
+static int
+disk_open_internal( disk_t *d, const char *filename, int preindex,
+                    int merge_disks, const utils_file *file )
 {
   char *filename2;
   char c = ' ';
@@ -2384,7 +2419,7 @@ disk_open( disk_t *d, const char *filename, int preindex, int merge_disks )
   l = strlen( filename );
 
   if( !merge_disks || l < 7 )	/* if we do not want to open two separated disk image as one double sided disk */
-    return disk_open2( d, filename, preindex );
+    return disk_open_initial( d, filename, preindex, file );
 
   filename2 = (char *)filename + ( l - 1 );
   while( l ) {				/* [Ss]ide[ _][abAB12][ _.]*[ _.] */
@@ -2420,7 +2455,7 @@ disk_open( disk_t *d, const char *filename, int preindex, int merge_disks )
     filename2--;
   }
   if( g != 4 )
-    return d->status = disk_open2( d, filename, preindex );
+    return d->status = disk_open_initial( d, filename, preindex, file );
   d1.data = NULL; d1.flag = d->flag;
   d2.data = NULL; d2.flag = d->flag;
   filename2 = utils_safe_strdup( filename );
@@ -2429,14 +2464,14 @@ disk_open( disk_t *d, const char *filename, int preindex, int merge_disks )
   if( settings_current.disk_ask_merge &&
       !ui_query( "Try to merge 'B' side of this disk?" ) ) {
     libspectrum_free( filename2 );
-    return d->status = disk_open2( d, filename, preindex );
+    return d->status = disk_open_initial( d, filename, preindex, file );
   }
 
   if( disk_open2( &d2, filename2, preindex ) ) {
-    return d->status = disk_open2( d, filename, preindex );
+    return d->status = disk_open_initial( d, filename, preindex, file );
   }
 
-  if( disk_open2( &d1, filename, preindex ) )
+  if( disk_open_initial( &d1, filename, preindex, file ) )
     return d->status = d1.status;
 
   if( disk_merge_sides( d, &d1, &d2, 0x00 ) ) {
