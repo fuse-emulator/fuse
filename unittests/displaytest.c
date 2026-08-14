@@ -30,6 +30,7 @@
 #include "compat.h"
 #include "infrastructure/startup_manager.h"
 #include "machine.h"
+#include "display.h"
 #include "memory_pages.h"
 #include "peripherals/scld.h"
 #include "rectangle.h"
@@ -494,7 +495,7 @@ attribute_write_marks_correct_cell( void )
   /* Arrange: the final attribute byte is column 31, character row 23. */
 
   /* Act */
-  display_dirty_sinclair( 0x1aff );
+  display_dirty_sinclair( DISPLAY_PIXEL_BYTES + DISPLAY_ATTR_BYTES - 1 );
 
   /* Assert: mark column 31 in each of the cell's eight pixel rows only. */
   for( y = 0; y < DISPLAY_HEIGHT; y++ ) {
@@ -513,8 +514,8 @@ attribute_write_marks_correct_cells( void )
   /* Verify the display_dirty64() attribute address decoder against
      boundary and representative offsets.
 
-     The attribute area begins at DISPLAY_PIXEL_BYTES (0x1800) and is
-     laid out linearly: idx = offset - 0x1800, x = idx % 32,
+     The attribute area begins at DISPLAY_PIXEL_BYTES and is
+     laid out linearly: idx = offset - DISPLAY_PIXEL_BYTES, x = idx % 32,
      char_row = idx / 32.  Each attribute covers eight pixel rows
      (char_row*8 .. char_row*8+7), so eight consecutive dirty bits
      must be set for column x. */
@@ -524,12 +525,12 @@ attribute_write_marks_correct_cells( void )
     int expected_x;
     int expected_char_row;   /* y = expected_char_row * 8 */
   } cases[] = {
-    { 0x1800,  0,  0 },  /* first attr byte: col 0, char row 0 */
-    { 0x181f, 31,  0 },  /* last col of first char row */
-    { 0x1820,  0,  1 },  /* first col of second char row */
-    { 0x1840,  0,  2 },  /* first col of third char row */
-    { 0x1ae0,  0, 23 },  /* first col of last char row */
-    { 0x1aff, 31, 23 },  /* last attr byte */
+    { DISPLAY_PIXEL_BYTES,                               0,  0 },  /* first attr byte: col 0, char row 0 */
+    { DISPLAY_PIXEL_BYTES + DISPLAY_WIDTH_COLS - 1,     31,  0 },  /* last col of first char row */
+    { DISPLAY_PIXEL_BYTES + DISPLAY_WIDTH_COLS,          0,  1 },  /* first col of second char row */
+    { DISPLAY_PIXEL_BYTES + 2 * DISPLAY_WIDTH_COLS,      0,  2 },  /* first col of third char row */
+    { DISPLAY_PIXEL_BYTES + 23 * DISPLAY_WIDTH_COLS,     0, 23 },  /* first col of last char row */
+    { DISPLAY_PIXEL_BYTES + DISPLAY_ATTR_BYTES - 1,     31, 23 },  /* last attr byte */
   };
   int c;
 
@@ -579,7 +580,7 @@ pixel_write_marks_correct_cells( void )
     { 0x0020,  0,   8 },  /* col 0, first scan line of second char row */
     { 0x0100,  0,   1 },  /* col 0, second scan line of top char row */
     { 0x0800,  0,  64 },  /* col 0, first scan line of middle third */
-    { 0x17ff, 31, 191 },  /* col 31, last scan line of bottom third */
+    { DISPLAY_PIXEL_BYTES - 1, 31, 191 },  /* col 31, last scan line of bottom third */
   };
   int c;
 
@@ -627,8 +628,8 @@ flash_dirty_with_flash_attr_row0_col0( void )
 {
   int i;
 
-  /* Arrange: set flash bit in attribute for row 0, col 0 (offset 0x1800) */
-  RAM[0][0x1800] = 0x80;
+  /* Arrange: set flash bit in attribute for row 0, col 0 */
+  RAM[0][DISPLAY_PIXEL_BYTES] = 0x80;
 
   /* Act */
   display_dirty_flashing_sinclair();
@@ -650,7 +651,7 @@ flash_dirty_non_flash_attr( void )
   int y;
 
   /* Arrange: non-flash attr at row 0, col 0 (bit 7 clear) */
-  RAM[0][0x1800] = 0x47;
+  RAM[0][DISPLAY_PIXEL_BYTES] = 0x47;
 
   /* Act */
   display_dirty_flashing_sinclair();
@@ -679,7 +680,7 @@ timex_flash_hires_skips_flashing( void )
   /* Arrange: hires mode; set flash bits in both screen areas */
   timex_flash_test_before( HIRES );
   RAM[0][ALTDFILE_OFFSET] = 0x80;
-  RAM[0][0x3800] = 0x80;
+  RAM[0][ALTDFILE_OFFSET + DISPLAY_PIXEL_BYTES] = 0x80;
 
   /* Act */
   display_dirty_flashing_timex();
@@ -736,7 +737,7 @@ timex_flash_altdfile_marks_dirty( void )
 
   /* Arrange: altdfile mode; flash attr at row 0, col 0 of second screen */
   timex_flash_test_before( ALTDFILE ); /* altdfile=1, b1=0, hires=0 */
-  RAM[0][0x3800] = 0x80;              /* second screen attr area, row 0 col 0 */
+  RAM[0][ALTDFILE_OFFSET + DISPLAY_PIXEL_BYTES] = 0x80;  /* second screen attr area, row 0 col 0 */
 
   /* Act */
   display_dirty_flashing_timex();
@@ -765,7 +766,7 @@ timex_flash_standard_delegates_to_sinclair( void )
 
   /* Arrange: standard Timex mode (scld=0); flash attr at row 0, col 0 */
   timex_flash_test_before( STANDARD );
-  RAM[0][0x1800] = 0x80;
+  RAM[0][DISPLAY_PIXEL_BYTES] = 0x80;
 
   /* Act: standard path delegates to display_dirty_flashing_sinclair() */
   display_dirty_flashing_timex();
