@@ -1353,6 +1353,60 @@ scaler_for_size_test( void )
     r++;
   }
 
+  /* --- AdvMAME family: ADVMAME2X fills 1x and 2x; ADVMAME3X fills 3x and 4x --- */
+  scaler_register_clear();
+  scaler_register( SCALER_ADVMAME2X );
+  scaler_register( SCALER_ADVMAME3X );
+
+  if( scaler_for_size( SCALER_ADVMAME2X, 1 ) != SCALER_ADVMAME2X ) {
+    printf( "scaler_for_size: advmame2x-at-1x: expected SCALER_ADVMAME2X\n" );
+    r++;
+  }
+  if( scaler_for_size( SCALER_ADVMAME2X, 2 ) != SCALER_ADVMAME2X ) {
+    printf( "scaler_for_size: advmame2x-at-2x: expected SCALER_ADVMAME2X\n" );
+    r++;
+  }
+  if( scaler_for_size( SCALER_ADVMAME2X, 3 ) != SCALER_ADVMAME3X ) {
+    printf( "scaler_for_size: advmame2x-at-3x: expected SCALER_ADVMAME3X\n" );
+    r++;
+  }
+  /* 4x maps to ADVMAME3X — the family has no distinct 4x scaler */
+  if( scaler_for_size( SCALER_ADVMAME2X, 4 ) != SCALER_ADVMAME3X ) {
+    printf( "scaler_for_size: advmame2x-at-4x: expected SCALER_ADVMAME3X\n" );
+    r++;
+  }
+  if( scaler_for_size( SCALER_ADVMAME3X, 2 ) != SCALER_ADVMAME2X ) {
+    printf( "scaler_for_size: advmame3x-at-2x: expected SCALER_ADVMAME2X\n" );
+    r++;
+  }
+
+  /* --- HQ family: HQ2X fills 1x and 2x; HQ3X at 3x; HQ4X at 4x --- */
+  scaler_register_clear();
+  scaler_register( SCALER_HQ2X );
+  scaler_register( SCALER_HQ3X );
+  scaler_register( SCALER_HQ4X );
+
+  if( scaler_for_size( SCALER_HQ2X, 1 ) != SCALER_HQ2X ) {
+    printf( "scaler_for_size: hq2x-at-1x: expected SCALER_HQ2X\n" );
+    r++;
+  }
+  if( scaler_for_size( SCALER_HQ2X, 2 ) != SCALER_HQ2X ) {
+    printf( "scaler_for_size: hq2x-at-2x: expected SCALER_HQ2X\n" );
+    r++;
+  }
+  if( scaler_for_size( SCALER_HQ2X, 3 ) != SCALER_HQ3X ) {
+    printf( "scaler_for_size: hq2x-at-3x: expected SCALER_HQ3X\n" );
+    r++;
+  }
+  if( scaler_for_size( SCALER_HQ2X, 4 ) != SCALER_HQ4X ) {
+    printf( "scaler_for_size: hq2x-at-4x: expected SCALER_HQ4X\n" );
+    r++;
+  }
+  if( scaler_for_size( SCALER_HQ4X, 1 ) != SCALER_HQ2X ) {
+    printf( "scaler_for_size: hq4x-at-1x: expected SCALER_HQ2X\n" );
+    r++;
+  }
+
   return r;
 }
 
