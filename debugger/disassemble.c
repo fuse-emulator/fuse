@@ -1125,6 +1125,12 @@ libspectrum_byte testd5_data[] = { 0xdd, 0xcb, 0xff, 0x46 };  /* BIT 0,(IX-01h) 
 /* testd6: get_byte() via 11xxx110 path -- ADD A,n */
 libspectrum_byte testd6_data[] = { 0xc6, 0x07 };          /* ADD A,07h */
 
+/* testd7: ix_iy_offset() positive with IY in decimal mode -- LD A,(IY+d) */
+libspectrum_byte testd7_data[] = { 0xfd, 0x7e, 0x55 };    /* LD A,(IY+55h) */
+
+/* testd8: ix_iy_offset() negative with IY in decimal mode -- BIT b,(IY+d) */
+libspectrum_byte testd8_data[] = { 0xfd, 0xcb, 0xff, 0x46 };  /* BIT 0,(IY-01h) */
+
 /* ED NOPD boundary tests: opcodes that fall outside the valid ED range
    (b < 0x40 or b > 0xbb) are decoded as NOPD (2-byte instruction).
    The 0x80-0x9f sub-range inside the ED handler also decodes as NOPD. */
@@ -1887,6 +1893,12 @@ debugger_disassemble_decimal_unittest( void )
 
   /* get_byte() via 11xxx110 path: ADD A,07h -> "ADD A,7" */
   r += run_test( testd6_data, sizeof( testd6_data ), "ADD A,7" );
+
+  /* ix_iy_offset() positive with IY: LD A,(IY+55h) -> "LD A,(IY+85)" */
+  r += run_test( testd7_data, sizeof( testd7_data ), "LD A,(IY+85)" );
+
+  /* ix_iy_offset() negative with IY: BIT 0,(IY-01h) -> "BIT 0,(IY-1)" */
+  r += run_test( testd8_data, sizeof( testd8_data ), "BIT 0,(IY-1)" );
 
   debugger_output_base = saved_base;
 
