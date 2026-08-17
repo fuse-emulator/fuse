@@ -26,6 +26,7 @@
 
 #include "config.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "if2.h"
@@ -237,6 +238,8 @@ if2_to_snapshot( libspectrum_snap *snap )
 int
 if2_unittest( void )
 {
+  libspectrum_snap *snap;
+  libspectrum_byte *rom;
   int r = 0;
 
   if2_active = 1;
@@ -246,6 +249,31 @@ if2_unittest( void )
   r += unittests_assert_16k_ram_page( 0x4000, 5 );
   r += unittests_assert_16k_ram_page( 0x8000, 2 );
   r += unittests_assert_16k_ram_page( 0xc000, 0 );
+
+  if2_active = 0;
+  machine_current->memory_map();
+
+  snap = libspectrum_snap_alloc();
+  if( !snap ) {
+    fprintf( stderr, "Couldn't allocate Interface 2 unit test snapshot\n" );
+    return r + 1;
+  }
+
+  rom = libspectrum_new( libspectrum_byte, 0x4000 );
+  memset( rom, 0xa5, 0x4000 );
+  libspectrum_snap_set_interface2_active( snap, 1 );
+  libspectrum_snap_set_interface2_rom( snap, 0, rom );
+  if2_from_snapshot( snap );
+
+  if( machine_reset( 0 ) || if2_active ) {
+    fprintf( stderr, "Interface 2 snapshot cartridge survived soft reset\n" );
+    r++;
+  }
+
+  if( libspectrum_snap_free( snap ) ) {
+    fprintf( stderr, "Couldn't free Interface 2 unit test snapshot\n" );
+    r++;
+  }
 
   if2_active = 0;
   machine_current->memory_map();

@@ -35,6 +35,7 @@
 #include "fuse.h"
 #include "keyboard.h"
 #include "machine.h"
+#include "memory_pages.h"
 #include "mempool.h"
 #include "periph.h"
 #include "peripherals/disk/beta.h"
@@ -364,6 +365,48 @@ snapshot_copy_from_releases_keyboard_test( void )
   TEST_ASSERT( libspectrum_snap_free( snap ) == 0 );
 
   return 0;
+}
+
+static int
+snapshot_custom_rom_is_replaced_by_soft_reset_test( void )
+{
+  static const libspectrum_machine machines[] = {
+    LIBSPECTRUM_MACHINE_16, LIBSPECTRUM_MACHINE_48,
+    LIBSPECTRUM_MACHINE_48_NTSC, LIBSPECTRUM_MACHINE_128,
+    LIBSPECTRUM_MACHINE_PLUS2, LIBSPECTRUM_MACHINE_PLUS2A,
+    LIBSPECTRUM_MACHINE_PLUS3, LIBSPECTRUM_MACHINE_PLUS3E,
+    LIBSPECTRUM_MACHINE_TC2048, LIBSPECTRUM_MACHINE_TC2068,
+    LIBSPECTRUM_MACHINE_TS2068, LIBSPECTRUM_MACHINE_SE,
+  };
+  libspectrum_machine old_machine = machine_current->machine;
+  size_t i;
+  int r = 0;
+
+  for( i = 0; i < ARRAY_SIZE( machines ); i++ ) {
+    libspectrum_snap *snap;
+    libspectrum_byte *rom;
+
+    if( machine_select( machines[ i ] ) ) { r++; continue; }
+
+    snap = libspectrum_snap_alloc();
+    if( !snap || snapshot_copy_to( snap ) ) { r++; continue; }
+
+    rom = libspectrum_new( libspectrum_byte, 0x4000 );
+    memset( rom, 0xa5, 0x4000 );
+    libspectrum_snap_set_custom_rom( snap, 1 );
+    libspectrum_snap_set_custom_rom_pages( snap, 1 );
+    libspectrum_snap_set_roms( snap, 0, rom );
+    libspectrum_snap_set_rom_length( snap, 0, 0x4000 );
+
+    if( snapshot_copy_from( snap ) || memory_map_rom[ 0 ].page[ 0 ] != 0xa5 ||
+        machine_reset( 0 ) || memory_map_rom[ 0 ].page[ 0 ] == 0xa5 ) r++;
+
+    if( libspectrum_snap_free( snap ) ) r++;
+  }
+
+  if( machine_select( old_machine ) ) r++;
+
+  return r;
 }
 
 static int
@@ -1778,6 +1821,7 @@ unittests_run( void )
   r += floating_bus_test();
   r += floating_bus_merge_test();
   r += snapshot_copy_from_releases_keyboard_test();
+  r += snapshot_custom_rom_is_replaced_by_soft_reset_test();
   r += keyboard_read_test();
   r += keyboard_simulate_keypress_test();
   r += utils_safe_strdup_test();

@@ -498,6 +498,8 @@ plusd_activate( void )
 int
 plusd_unittest( void )
 {
+  libspectrum_snap *snap;
+  libspectrum_byte *rom;
   int r = 0;
 
   plusd_page();
@@ -509,6 +511,30 @@ plusd_unittest( void )
   r += unittests_assert_16k_ram_page( 0xc000, 0 );
 
   plusd_unpage();
+
+  snap = libspectrum_snap_alloc();
+  if( !snap ) {
+    fprintf( stderr, "Couldn't allocate +D unit test snapshot\n" );
+    return r + 1;
+  }
+
+  rom = libspectrum_new( libspectrum_byte, ROM_SIZE );
+  memset( rom, 0xa5, ROM_SIZE );
+  libspectrum_snap_set_plusd_active( snap, 1 );
+  libspectrum_snap_set_plusd_custom_rom( snap, 1 );
+  libspectrum_snap_set_plusd_rom( snap, 0, rom );
+  plusd_from_snapshot( snap );
+
+  if( machine_reset( 0 ) ||
+      plusd_memory_map_romcs_rom[ 0 ].page[ 0 ] == 0xa5 ) {
+    fprintf( stderr, "+D snapshot ROM survived soft reset\n" );
+    r++;
+  }
+
+  if( libspectrum_snap_free( snap ) ) {
+    fprintf( stderr, "Couldn't free +D unit test snapshot\n" );
+    r++;
+  }
 
   r += unittests_paging_test_48( 2 );
 

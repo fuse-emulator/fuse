@@ -585,6 +585,7 @@ opus_unittest( void )
   opus_memory_map_romcs_ram[ MEMORY_PAGES_IN_2K - 1 ].page[
     MEMORY_PAGE_SIZE - 1 ] = 0;
   opus_unpage();
+  libspectrum_snap_opus_rom( snap, 0 )[ 0 ] = 0xa5;
   opus_from_snapshot( snap );
 
   if( opus_memory_map_romcs_ram[ 0 ].page[ 0 ] != 0x55 ||
@@ -593,6 +594,11 @@ opus_unittest( void )
     fprintf( stderr, "Opus snapshot not restored correctly\n" );
     r++;
   }
+
+  opus_page();
+
+  if( machine_reset( 0 ) || opus_memory_map_romcs_rom[ 0 ].page[ 0 ] == 0xa5 )
+    r++;
 
   opus_page();
 
