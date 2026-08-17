@@ -38,6 +38,7 @@
 #include "memory_pages.h"
 #include "mempool.h"
 #include "periph.h"
+#include "peripherals/scld.h"
 #include "peripherals/disk/beta.h"
 #include "peripherals/disk/disk.h"
 #include "peripherals/disk/didaktik.h"
@@ -404,6 +405,23 @@ snapshot_custom_rom_is_replaced_by_soft_reset_test( void )
 
     if( libspectrum_snap_free( snap ) ) r++;
   }
+
+  if( machine_select( old_machine ) ) r++;
+
+  return r;
+}
+
+static int
+spec_se_dock_ram_reset_test( void )
+{
+  libspectrum_machine old_machine = machine_current->machine;
+  int r = 0;
+
+  if( machine_select( LIBSPECTRUM_MACHINE_SE ) ) return 1;
+
+  timex_dock[ 0 ].page[ 0 ] = 0xa5;
+  if( machine_reset( 0 ) || timex_dock[ 0 ].page[ 0 ] != 0xa5 ||
+      machine_reset( 1 ) || timex_dock[ 0 ].page[ 0 ] != 0 ) r++;
 
   if( machine_select( old_machine ) ) r++;
 
@@ -1823,6 +1841,7 @@ unittests_run( void )
   r += floating_bus_merge_test();
   r += snapshot_copy_from_releases_keyboard_test();
   r += snapshot_custom_rom_is_replaced_by_soft_reset_test();
+  r += spec_se_dock_ram_reset_test();
   r += keyboard_read_test();
   r += keyboard_simulate_keypress_test();
   r += utils_safe_strdup_test();

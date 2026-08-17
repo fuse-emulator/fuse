@@ -175,7 +175,6 @@ if2_reset( int hard_reset )
     memory_rom_bank_map( &if2_snapshot_cartridge, if2_memory_map_romcs, 0 );
     if2_active = 1;
     machine_current->ram.romcs = 1;
-    memory_romcs_map();
     ui_menu_activate( UI_MENU_ITEM_MEDIA_CARTRIDGE_IF2_EJECT, 1 );
     return;
   }
@@ -199,7 +198,6 @@ if2_reset( int hard_reset )
   machine_current->ram.romcs = 1;
 
   if2_active = 1;
-  memory_romcs_map();
 
   ui_menu_activate( UI_MENU_ITEM_MEDIA_CARTRIDGE_IF2_EJECT, 1 );
 }

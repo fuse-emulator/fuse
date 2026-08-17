@@ -65,7 +65,6 @@ typedef struct snapshot_rom_bank {
 } snapshot_rom_bank;
 
 static GSList *snapshot_rom_banks;
-static int machine_reset_hard;
 
 static int machine_add_machine( int (*init_function)(fuse_machine_info *machine) );
 static void machine_clear_snapshot_rom_banks( void );
@@ -381,7 +380,7 @@ machine_load_rom_bank( memory_page* bank_map, int page_num,
   int retval;
 
   snapshot_bank = snapshot_rom_bank_find( bank_map, page_num );
-  if( snapshot_bank && !machine_reset_hard ) {
+  if( snapshot_bank ) {
     memory_rom_bank_map( &snapshot_bank->bank, bank_map, page_num );
     return 0;
   }
@@ -410,7 +409,6 @@ machine_reset( int hard_reset )
   size_t i;
   int error;
 
-  machine_reset_hard = hard_reset;
   if( hard_reset ) machine_clear_snapshot_rom_banks();
 
   /* Clear poke list (undoes effects of active pokes on Spectrum memory) */
@@ -429,7 +427,7 @@ machine_reset( int hard_reset )
   memory_reset();
 
   /* Do the machine-specific bits, including loading the ROMs */
-  error = machine_current->reset(); if( error ) return error;
+  error = machine_current->reset( hard_reset ); if( error ) return error;
 
   module_reset( hard_reset );
 

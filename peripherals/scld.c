@@ -145,8 +145,16 @@ scld_dec_write( libspectrum_word port GCC_UNUSED, libspectrum_byte b )
 }
 
 static void
-scld_reset( int hard_reset GCC_UNUSED )
+scld_reset( int hard_reset )
 {
+  int bank_type, page_num;
+
+  if( hard_reset ) {
+    for( bank_type = 0; bank_type < 2; bank_type++ )
+      for( page_num = 0; page_num < 8; page_num++ )
+        memory_rom_bank_clear( &scld_snapshot_banks[ bank_type ][ page_num ] );
+  }
+
   scld_last_dec.byte = 0;
 }
 

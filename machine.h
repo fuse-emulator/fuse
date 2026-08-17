@@ -61,7 +61,7 @@ typedef struct fuse_machine_info {
   const char *id;	/* Used to select from command line */
   int capabilities;	/* Capabilities of this machine */
 
-  int (*reset)(void);	/* Reset function */
+  int (*reset)(int hard_reset);	/* Reset function */
 
   int timex;      /* Timex machine (keyboard emulation/loading sounds etc.) */
 

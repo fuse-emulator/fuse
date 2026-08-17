@@ -102,6 +102,8 @@ slt_from_snapshot( libspectrum_snap *snap )
 
   for( i=0; i<256; i++ ) {
 
+    libspectrum_free( slt[i] );
+    slt[i] = NULL;
     slt_length[i] = libspectrum_snap_slt_length( snap, i );
 
     if( slt_length[i] ) {
@@ -114,9 +116,12 @@ slt_from_snapshot( libspectrum_snap *snap )
     }
   }
 
+  libspectrum_free( slt_screen );
+  slt_screen = NULL;
+
   if( libspectrum_snap_slt_screen( snap ) ) {
 
-    slt_screen = memory_pool_allocate( DISPLAY_FILE_SIZE * sizeof( libspectrum_byte ) );
+    slt_screen = libspectrum_new( libspectrum_byte, DISPLAY_FILE_SIZE );
 
     memcpy( slt_screen, libspectrum_snap_slt_screen( snap ), DISPLAY_FILE_SIZE );
     slt_screen_level = libspectrum_snap_slt_screen_level( snap );
