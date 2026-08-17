@@ -542,8 +542,8 @@ disciple_unittest( void )
   disciple_from_snapshot( snap );
 
   if( machine_reset( 0 ) ||
-      disciple_memory_map_romcs_rom[ 0 ].page[ 0 ] == 0xa5 ) {
-    fprintf( stderr, "DISCiPLE snapshot ROM survived soft reset\n" );
+      disciple_memory_map_romcs_rom[ 0 ].page[ 0 ] != 0xa5 ) {
+    fprintf( stderr, "DISCiPLE snapshot ROM was not preserved by soft reset\n" );
     r++;
   }
 
@@ -666,7 +666,7 @@ disciple_from_snapshot( libspectrum_snap *snap )
 
   if( libspectrum_snap_disciple_custom_rom( snap ) &&
       libspectrum_snap_disciple_rom( snap, 0 ) &&
-      machine_load_rom_bank_from_buffer(
+      machine_load_rom_bank_from_snapshot(
                              disciple_memory_map_romcs_rom, 0,
                              libspectrum_snap_disciple_rom( snap, 0 ),
                              libspectrum_snap_disciple_rom_length( snap, 0 ),

@@ -486,7 +486,7 @@ didaktik80_unittest( void )
   didaktik80_unpage();
 
   if( machine_reset( 0 ) ||
-      didaktik_memory_map_romcs_rom[ 0 ].page[ 0 ] == 0xa5 ) r++;
+      didaktik_memory_map_romcs_rom[ 0 ].page[ 0 ] != 0xa5 ) r++;
 
   r += unittests_paging_test_48( 2 );
 
@@ -564,7 +564,7 @@ didaktik_from_snapshot( libspectrum_snap *snap )
 
   if( libspectrum_snap_didaktik80_custom_rom( snap ) &&
       libspectrum_snap_didaktik80_rom( snap, 0 ) &&
-      machine_load_rom_bank_from_buffer(
+      machine_load_rom_bank_from_snapshot(
                              didaktik_memory_map_romcs_rom, 0,
                              libspectrum_snap_didaktik80_rom( snap, 0 ),
                              ROM_SIZE, 1 ) )

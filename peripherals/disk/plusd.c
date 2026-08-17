@@ -418,7 +418,7 @@ plusd_from_snapshot( libspectrum_snap *snap )
 
   if( libspectrum_snap_plusd_custom_rom( snap ) &&
       libspectrum_snap_plusd_rom( snap, 0 ) &&
-      machine_load_rom_bank_from_buffer(
+      machine_load_rom_bank_from_snapshot(
                              plusd_memory_map_romcs_rom, 0,
                              libspectrum_snap_plusd_rom( snap, 0 ),
                              ROM_SIZE, 1 ) )
@@ -526,8 +526,8 @@ plusd_unittest( void )
   plusd_from_snapshot( snap );
 
   if( machine_reset( 0 ) ||
-      plusd_memory_map_romcs_rom[ 0 ].page[ 0 ] == 0xa5 ) {
-    fprintf( stderr, "+D snapshot ROM survived soft reset\n" );
+      plusd_memory_map_romcs_rom[ 0 ].page[ 0 ] != 0xa5 ) {
+    fprintf( stderr, "+D snapshot ROM was not preserved by soft reset\n" );
     r++;
   }
 

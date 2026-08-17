@@ -46,6 +46,16 @@
 /* Dock cart inserted? */
 int dck_active = 0;
 static const utils_file *dck_loaded_file;
+static memory_rom_bank dck_banks[3][8];
+
+static memory_rom_bank *
+dck_get_bank( libspectrum_dck_bank bank, int page )
+{
+  if( bank > LIBSPECTRUM_DCK_BANK_EXROM || page < 0 || page >= 8 )
+    return NULL;
+
+  return &dck_banks[ bank ][ page ];
+}
 
 static int
 dck_insert_internal( const char *filename, const utils_file *file )
@@ -168,8 +178,14 @@ dck_reset( void )
         break;
 
       case LIBSPECTRUM_DCK_PAGE_ROM:
-        data = memory_pool_allocate( 0x2000 );
-	memcpy( data, dck->dck[num_block]->pages[i], 0x2000 );
+      {
+        memory_rom_bank *bank = dck_get_bank( dck_bank, i );
+        if( !bank || memory_rom_bank_set( bank,
+              dck->dck[num_block]->pages[i], 0x2000, 1 ) ) {
+          libspectrum_dck_free( dck, 0 );
+          return 1;
+        }
+        data = bank->data;
         for( j = 0; j < MEMORY_PAGES_IN_8K; j++ ) {
           page = dck_get_memory_page( dck_bank, i * MEMORY_PAGES_IN_8K + j);
           page->offset = j * MEMORY_PAGE_SIZE;
@@ -178,6 +194,7 @@ dck_reset( void )
           page->page = data + page->offset;
         }
         break;
+      }
 
       case LIBSPECTRUM_DCK_PAGE_RAM_EMPTY:
       case LIBSPECTRUM_DCK_PAGE_RAM:

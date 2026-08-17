@@ -215,8 +215,8 @@ usource_unittest( void )
   libspectrum_snap_set_usource_rom( snap, 0, test_rom );
   usource_from_snapshot( snap );
 
-  if( machine_reset( 0 ) || usource_memory_map_romcs[ 0 ].page[ 0 ] == 0xa5 ) {
-    fprintf( stderr, "uSource snapshot ROM survived soft reset\n" );
+  if( machine_reset( 0 ) || usource_memory_map_romcs[ 0 ].page[ 0 ] != 0xa5 ) {
+    fprintf( stderr, "uSource snapshot ROM was not preserved by soft reset\n" );
     r++;
   }
 
@@ -263,7 +263,7 @@ usource_from_snapshot( libspectrum_snap *snap )
 
   if( libspectrum_snap_usource_custom_rom( snap ) &&
       libspectrum_snap_usource_rom( snap, 0 ) &&
-      machine_load_rom_bank_from_buffer(
+      machine_load_rom_bank_from_snapshot(
                              usource_memory_map_romcs, 0,
                              libspectrum_snap_usource_rom( snap, 0 ),
                              libspectrum_snap_usource_rom_length( snap, 0 ),

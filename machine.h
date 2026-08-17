@@ -103,6 +103,9 @@ int machine_load_rom_bank_from_buffer( memory_page* bank_map, int page_num,
   unsigned char *buffer, size_t length, int custom );
 int machine_load_rom_bank( memory_page* bank_map, int page_num,
   const char *filename, const char *fallback, size_t expected_length );
+int machine_load_rom_bank_from_snapshot( memory_page* bank_map, int page_num,
+  unsigned char *buffer, size_t length, int custom );
+void machine_clear_snapshot_rom_bank( memory_page *bank_map, int page_num );
 int machine_load_rom( int page_num, const char *filename, const char *fallback,
   size_t expected_length );
 

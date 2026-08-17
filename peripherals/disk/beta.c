@@ -59,6 +59,7 @@
 /* A 16KB memory chunk accessible by the Z80 when /ROMCS is low */
 memory_page beta_memory_map_romcs[MEMORY_PAGES_IN_16K];
 static int beta_memory_source;
+static memory_rom_bank beta_snapshot_rom;
 
 int beta_available = 0;
 int beta_active = 0;
@@ -211,7 +212,9 @@ beta_reset( int hard_reset GCC_UNUSED )
   wd_fdc_master_reset( beta_fdc );
 
   if( !beta_builtin ) {
-    if( machine_load_rom_bank( beta_memory_map_romcs, 0,
+    if( beta_snapshot_rom.data ) {
+      memory_rom_bank_map( &beta_snapshot_rom, beta_memory_map_romcs, 0 );
+    } else if( machine_load_rom_bank( beta_memory_map_romcs, 0,
 			       settings_current.rom_beta128,
 			       settings_default.rom_beta128, ROM_SIZE ) ) {
       beta_active = 0;
@@ -252,6 +255,7 @@ static void
 beta_end( void )
 {
   beta_available = 0;
+  memory_rom_bank_clear( &beta_snapshot_rom );
   libspectrum_free( beta_fdc );
 }
 
@@ -438,11 +442,13 @@ beta_from_snapshot( libspectrum_snap *snap )
 
   if( libspectrum_snap_beta_custom_rom( snap ) &&
       libspectrum_snap_beta_rom( snap, 0 ) &&
-      machine_load_rom_bank_from_buffer(
-                             beta_memory_map_romcs, 0,
-                             libspectrum_snap_beta_rom( snap, 0 ),
-                             ROM_SIZE, 1 ) )
+      memory_rom_bank_set( &beta_snapshot_rom,
+                           libspectrum_snap_beta_rom( snap, 0 ),
+                           ROM_SIZE, 1 ) )
     return;
+
+  if( beta_snapshot_rom.data )
+    memory_rom_bank_map( &beta_snapshot_rom, beta_memory_map_romcs, 0 );
 
   /* ignore drive count for now, there will be an issue with loading snaps where
      drives have been disabled
@@ -544,8 +550,8 @@ beta_unittest( void )
   libspectrum_snap_set_beta_rom( snap, 0, test_rom );
   beta_from_snapshot( snap );
 
-  if( machine_reset( 0 ) || beta_memory_map_romcs[ 0 ].page[ 0 ] == 0xa5 ) {
-    fprintf( stderr, "Beta 128 snapshot ROM survived soft reset\n" );
+  if( machine_reset( 0 ) || beta_memory_map_romcs[ 0 ].page[ 0 ] != 0xa5 ) {
+    fprintf( stderr, "Beta 128 snapshot ROM was not preserved by soft reset\n" );
     r++;
   }
 

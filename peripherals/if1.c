@@ -474,7 +474,7 @@ if1_from_snapshot( libspectrum_snap *snap )
   if( libspectrum_snap_interface1_custom_rom( snap ) &&
       libspectrum_snap_interface1_rom( snap, 0 ) &&
       libspectrum_snap_interface1_rom_length( snap, 0 ) >= ROM_SIZE &&
-      machine_load_rom_bank_from_buffer(
+      machine_load_rom_bank_from_snapshot(
                              if1_memory_map_romcs, 0,
                              libspectrum_snap_interface1_rom( snap, 0 ),
                              ROM_SIZE, 1 ) )
@@ -1396,7 +1396,7 @@ if1_unittest( void )
   libspectrum_snap_set_interface1_rom( snap, 0, rom );
   if1_from_snapshot( snap );
 
-  if( machine_reset( 0 ) || if1_memory_map_romcs[ 0 ].page[ 0 ] == 0xa5 )
+  if( machine_reset( 0 ) || if1_memory_map_romcs[ 0 ].page[ 0 ] != 0xa5 )
     r++;
 
   if( libspectrum_snap_free( snap ) ) r++;

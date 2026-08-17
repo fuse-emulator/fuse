@@ -49,6 +49,9 @@ int if2_active = 0;
 /* IF2 memory source */
 static int if2_memory_source;
 static const utils_file *if2_loaded_file;
+static memory_rom_bank if2_snapshot_cartridge;
+
+static void if2_end( void );
 
 static void if2_reset( int hard_reset );
 static void if2_memory_map( void );
@@ -98,7 +101,14 @@ if2_register_startup( void )
     STARTUP_MANAGER_MODULE_SETUID,
   };
   startup_manager_register( STARTUP_MANAGER_MODULE_IF2, dependencies,
-                            ARRAY_SIZE( dependencies ), if2_init, NULL, NULL );
+                            ARRAY_SIZE( dependencies ), if2_init, NULL,
+                            if2_end );
+}
+
+static void
+if2_end( void )
+{
+  memory_rom_bank_clear( &if2_snapshot_cartridge );
 }
 
 static int
@@ -111,6 +121,7 @@ if2_insert_internal( const char *filename, const utils_file *file )
   }
 
   settings_set_string( &settings_current.if2_file, filename );
+  memory_rom_bank_clear( &if2_snapshot_cartridge );
 
   if2_loaded_file = file;
   machine_reset( 0 );
@@ -143,6 +154,7 @@ if2_eject( void )
 
   if( settings_current.if2_file ) libspectrum_free( settings_current.if2_file );
   settings_current.if2_file = NULL;
+  memory_rom_bank_clear( &if2_snapshot_cartridge );
 
   machine_current->ram.romcs = 0;
 
@@ -152,20 +164,30 @@ if2_eject( void )
 }
 
 static void
-if2_reset( int hard_reset GCC_UNUSED )
+if2_reset( int hard_reset )
 {
   if2_active = 0;
+  if( hard_reset ) memory_rom_bank_clear( &if2_snapshot_cartridge );
+
+  if( !periph_is_active( PERIPH_TYPE_INTERFACE2 ) ) return;
+
+  if( if2_snapshot_cartridge.data ) {
+    memory_rom_bank_map( &if2_snapshot_cartridge, if2_memory_map_romcs, 0 );
+    if2_active = 1;
+    machine_current->ram.romcs = 1;
+    memory_romcs_map();
+    ui_menu_activate( UI_MENU_ITEM_MEDIA_CARTRIDGE_IF2_EJECT, 1 );
+    return;
+  }
 
   if( !settings_current.if2_file ) {
     ui_menu_activate( UI_MENU_ITEM_MEDIA_CARTRIDGE_IF2_EJECT, 0 );
     return;
   }
 
-  if ( !periph_is_active( PERIPH_TYPE_INTERFACE2 ) ) return;
-
   if( if2_loaded_file ) {
     if( if2_loaded_file->length != 0x4000 ||
-        machine_load_rom_bank_from_buffer( if2_memory_map_romcs, 0,
+        machine_load_rom_bank_from_snapshot( if2_memory_map_romcs, 0,
                                            if2_loaded_file->buffer,
                                            if2_loaded_file->length, 1 ) )
       return;
@@ -204,13 +226,13 @@ if2_from_snapshot( libspectrum_snap *snap )
   if2_active = 1;
   machine_current->ram.romcs = 1;
 
-  if( libspectrum_snap_interface2_rom( snap, 0 ) &&
-      machine_load_rom_bank_from_buffer(
-                             if2_memory_map_romcs, 0,
-                             libspectrum_snap_interface2_rom( snap, 0 ),
-                             0x4000,
-                             1 ) )
+  if( !libspectrum_snap_interface2_rom( snap, 0 ) ||
+      memory_rom_bank_set( &if2_snapshot_cartridge,
+                           libspectrum_snap_interface2_rom( snap, 0 ),
+                           0x4000, 1 ) )
     return;
+
+  memory_rom_bank_map( &if2_snapshot_cartridge, if2_memory_map_romcs, 0 );
 
   ui_menu_activate( UI_MENU_ITEM_MEDIA_CARTRIDGE_IF2_EJECT, 1 );
 
@@ -240,6 +262,7 @@ if2_unittest( void )
 {
   libspectrum_snap *snap;
   libspectrum_byte *rom;
+  int saved_interface2 = settings_current.interface2;
   int r = 0;
 
   if2_active = 1;
@@ -263,10 +286,17 @@ if2_unittest( void )
   memset( rom, 0xa5, 0x4000 );
   libspectrum_snap_set_interface2_active( snap, 1 );
   libspectrum_snap_set_interface2_rom( snap, 0, rom );
+  if2_enabled_snapshot( snap );
   if2_from_snapshot( snap );
 
-  if( machine_reset( 0 ) || if2_active ) {
-    fprintf( stderr, "Interface 2 snapshot cartridge survived soft reset\n" );
+  if( machine_reset( 0 ) || !if2_active ||
+      if2_memory_map_romcs[ 0 ].page[ 0 ] != 0xa5 ) {
+    fprintf( stderr, "Interface 2 snapshot cartridge was not preserved by soft reset\n" );
+    r++;
+  }
+
+  if( machine_reset( 1 ) || if2_active ) {
+    fprintf( stderr, "Interface 2 snapshot cartridge survived hard reset\n" );
     r++;
   }
 
@@ -276,6 +306,8 @@ if2_unittest( void )
   }
 
   if2_active = 0;
+  settings_current.interface2 = saved_interface2;
+  machine_current->ram.romcs = 0;
   machine_current->memory_map();
 
   r += unittests_paging_test_48( 2 );

@@ -448,7 +448,7 @@ opus_from_snapshot( libspectrum_snap *snap )
 
   if( libspectrum_snap_opus_custom_rom( snap ) &&
       libspectrum_snap_opus_rom( snap, 0 ) &&
-      machine_load_rom_bank_from_buffer(
+      machine_load_rom_bank_from_snapshot(
                              opus_memory_map_romcs_rom, 0,
                              libspectrum_snap_opus_rom( snap, 0 ),
                              OPUS_ROM_SIZE, 1 ) )
@@ -597,7 +597,7 @@ opus_unittest( void )
 
   opus_page();
 
-  if( machine_reset( 0 ) || opus_memory_map_romcs_rom[ 0 ].page[ 0 ] == 0xa5 )
+  if( machine_reset( 0 ) || opus_memory_map_romcs_rom[ 0 ].page[ 0 ] != 0xa5 )
     r++;
 
   opus_page();

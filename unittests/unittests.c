@@ -399,7 +399,8 @@ snapshot_custom_rom_is_replaced_by_soft_reset_test( void )
     libspectrum_snap_set_rom_length( snap, 0, 0x4000 );
 
     if( snapshot_copy_from( snap ) || memory_map_rom[ 0 ].page[ 0 ] != 0xa5 ||
-        machine_reset( 0 ) || memory_map_rom[ 0 ].page[ 0 ] == 0xa5 ) r++;
+        machine_reset( 0 ) || memory_map_rom[ 0 ].page[ 0 ] != 0xa5 ||
+        machine_reset( 1 ) || memory_map_rom[ 0 ].page[ 0 ] == 0xa5 ) r++;
 
     if( libspectrum_snap_free( snap ) ) r++;
   }

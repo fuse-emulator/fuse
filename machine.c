@@ -58,7 +58,17 @@ fuse_machine_info *machine_current = NULL; /* The currently selected machine */
 static int machine_location;	/* Where is the current machine in
 				   machine_types[...]? */
 
+typedef struct snapshot_rom_bank {
+  memory_page *map;
+  int page_num;
+  memory_rom_bank bank;
+} snapshot_rom_bank;
+
+static GSList *snapshot_rom_banks;
+static int machine_reset_hard;
+
 static int machine_add_machine( int (*init_function)(fuse_machine_info *machine) );
+static void machine_clear_snapshot_rom_banks( void );
 static int machine_select_machine( fuse_machine_info *machine );
 static void machine_set_const_timings( fuse_machine_info *machine );
 static void machine_set_variable_timings( fuse_machine_info *machine );
@@ -133,6 +143,8 @@ int
 machine_select( libspectrum_machine type )
 {
   int i;
+
+  machine_clear_snapshot_rom_banks();
   int error;
 
   /* Stop any ongoing RZX */
@@ -303,12 +315,76 @@ machine_load_rom_bank_from_file( memory_page* bank_map, int page_num,
   return error;
 }
 
+void
+machine_clear_snapshot_rom_bank( memory_page *bank_map, int page_num )
+{
+  GSList *ptr;
+
+  for( ptr = snapshot_rom_banks; ptr; ptr = ptr->next ) {
+    snapshot_rom_bank *bank = ptr->data;
+    if( bank->map == bank_map && bank->page_num == page_num ) {
+      memory_rom_bank_clear( &bank->bank );
+      snapshot_rom_banks = g_slist_remove( snapshot_rom_banks, bank );
+      libspectrum_free( bank );
+      return;
+    }
+  }
+}
+
+static snapshot_rom_bank *
+snapshot_rom_bank_find( memory_page *map, int page_num )
+{
+  GSList *ptr;
+  for( ptr = snapshot_rom_banks; ptr; ptr = ptr->next ) {
+    snapshot_rom_bank *bank = ptr->data;
+    if( bank->map == map && bank->page_num == page_num ) return bank;
+  }
+  return NULL;
+}
+
+static void
+machine_clear_snapshot_rom_banks( void )
+{
+  while( snapshot_rom_banks ) {
+    snapshot_rom_bank *bank = snapshot_rom_banks->data;
+    memory_rom_bank_clear( &bank->bank );
+    snapshot_rom_banks = g_slist_delete_link( snapshot_rom_banks,
+                                               snapshot_rom_banks );
+    libspectrum_free( bank );
+  }
+}
+
+int
+machine_load_rom_bank_from_snapshot( memory_page *bank_map, int page_num,
+  unsigned char *buffer, size_t length, int custom )
+{
+  snapshot_rom_bank *bank = snapshot_rom_bank_find( bank_map, page_num );
+
+  if( !bank ) {
+    bank = libspectrum_new0( snapshot_rom_bank, 1 );
+    bank->map = bank_map;
+    bank->page_num = page_num;
+    snapshot_rom_banks = g_slist_prepend( snapshot_rom_banks, bank );
+  }
+
+  if( memory_rom_bank_set( &bank->bank, buffer, length, custom ) ) return 1;
+  memory_rom_bank_map( &bank->bank, bank_map, page_num );
+  return 0;
+}
+
 int
 machine_load_rom_bank( memory_page* bank_map, int page_num,
   const char *filename, const char *fallback, size_t expected_length )
 {
+  snapshot_rom_bank *snapshot_bank;
   int custom = 0;
   int retval;
+
+  snapshot_bank = snapshot_rom_bank_find( bank_map, page_num );
+  if( snapshot_bank && !machine_reset_hard ) {
+    memory_rom_bank_map( &snapshot_bank->bank, bank_map, page_num );
+    return 0;
+  }
 
   if( fallback ) custom = !!strcmp( filename, fallback );
 
@@ -333,6 +409,9 @@ machine_reset( int hard_reset )
 {
   size_t i;
   int error;
+
+  machine_reset_hard = hard_reset;
+  if( hard_reset ) machine_clear_snapshot_rom_banks();
 
   /* Clear poke list (undoes effects of active pokes on Spectrum memory) */
   pokemem_clear();
