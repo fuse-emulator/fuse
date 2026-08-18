@@ -667,6 +667,80 @@ static const struct menu_item_entries menu_item_lookup[] = {
     "/Media/Disk/Opus/Drive 2/Write protect/Enable",
     "/Media/Disk/Opus/Drive 2/Write protect/Disable", 1 },
 
+  { UI_MENU_ITEM_MEDIA_DISK_JLO, "/Media/Disk/JLO" },
+
+  { UI_MENU_ITEM_MEDIA_DISK_JLO_0,
+    "/Media/Disk/JLO/Drive 0:" },
+
+  { UI_MENU_ITEM_MEDIA_DISK_JLO_0_EJECT,
+    "/Media/Disk/JLO/Drive 0:/Eject",
+    "/Media/Disk/JLO/Drive 0:/Save As...", 0,
+    "/Media/Disk/JLO/Drive 0:/Save", 0,
+    "/Media/Disk/JLO/Drive 0:/Flip disk", 0,
+    "/Media/Disk/JLO/Drive 0:/Write protect", 0 },
+
+  { UI_MENU_ITEM_MEDIA_DISK_JLO_0_FLIP_SET,
+    "/Media/Disk/JLO/Drive 0:/Flip disk/Turn upside down",
+    "/Media/Disk/JLO/Drive 0:/Flip disk/Turn back", 1 },
+
+  { UI_MENU_ITEM_MEDIA_DISK_JLO_0_WP_SET,
+    "/Media/Disk/JLO/Drive 0:/Write protect/Enable",
+    "/Media/Disk/JLO/Drive 0:/Write protect/Disable", 1 },
+
+  { UI_MENU_ITEM_MEDIA_DISK_JLO_1,
+    "/Media/Disk/JLO/Drive 1:" },
+
+  { UI_MENU_ITEM_MEDIA_DISK_JLO_1_EJECT,
+    "/Media/Disk/JLO/Drive 1:/Eject",
+    "/Media/Disk/JLO/Drive 1:/Save As...", 0,
+    "/Media/Disk/JLO/Drive 1:/Save", 0,
+    "/Media/Disk/JLO/Drive 1:/Flip disk", 0,
+    "/Media/Disk/JLO/Drive 1:/Write protect", 0 },
+
+  { UI_MENU_ITEM_MEDIA_DISK_JLO_1_FLIP_SET,
+    "/Media/Disk/JLO/Drive 1:/Flip disk/Turn upside down",
+    "/Media/Disk/JLO/Drive 1:/Flip disk/Turn back", 1 },
+
+  { UI_MENU_ITEM_MEDIA_DISK_JLO_1_WP_SET,
+    "/Media/Disk/JLO/Drive 1:/Write protect/Enable",
+    "/Media/Disk/JLO/Drive 1:/Write protect/Disable", 1 },
+
+  { UI_MENU_ITEM_MEDIA_DISK_JLO_2,
+    "/Media/Disk/JLO/Drive 2:" },
+
+  { UI_MENU_ITEM_MEDIA_DISK_JLO_2_EJECT,
+    "/Media/Disk/JLO/Drive 2:/Eject",
+    "/Media/Disk/JLO/Drive 2:/Save As...", 0,
+    "/Media/Disk/JLO/Drive 2:/Save", 0,
+    "/Media/Disk/JLO/Drive 2:/Flip disk", 0,
+    "/Media/Disk/JLO/Drive 2:/Write protect", 0 },
+
+  { UI_MENU_ITEM_MEDIA_DISK_JLO_2_FLIP_SET,
+    "/Media/Disk/JLO/Drive 2:/Flip disk/Turn upside down",
+    "/Media/Disk/JLO/Drive 2:/Flip disk/Turn back", 1 },
+
+  { UI_MENU_ITEM_MEDIA_DISK_JLO_2_WP_SET,
+    "/Media/Disk/JLO/Drive 2:/Write protect/Enable",
+    "/Media/Disk/JLO/Drive 2:/Write protect/Disable", 1 },
+
+  { UI_MENU_ITEM_MEDIA_DISK_JLO_3,
+    "/Media/Disk/JLO/Drive 3:" },
+
+  { UI_MENU_ITEM_MEDIA_DISK_JLO_3_EJECT,
+    "/Media/Disk/JLO/Drive 3:/Eject",
+    "/Media/Disk/JLO/Drive 3:/Save As...", 0,
+    "/Media/Disk/JLO/Drive 3:/Save", 0,
+    "/Media/Disk/JLO/Drive 3:/Flip disk", 0,
+    "/Media/Disk/JLO/Drive 3:/Write protect", 0 },
+
+  { UI_MENU_ITEM_MEDIA_DISK_JLO_3_FLIP_SET,
+    "/Media/Disk/JLO/Drive 3:/Flip disk/Turn upside down",
+    "/Media/Disk/JLO/Drive 3:/Flip disk/Turn back", 1 },
+
+  { UI_MENU_ITEM_MEDIA_DISK_JLO_3_WP_SET,
+    "/Media/Disk/JLO/Drive 3:/Write protect/Enable",
+    "/Media/Disk/JLO/Drive 3:/Write protect/Disable", 1 },
+
   { UI_MENU_ITEM_MEDIA_IDE, "/Media/IDE" },
 
   { UI_MENU_ITEM_MEDIA_IDE_SIMPLE8BIT, "/Media/IDE/Simple 8-bit" },

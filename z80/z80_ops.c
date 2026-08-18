@@ -41,6 +41,7 @@
 #include "peripherals/disk/didaktik.h"
 #include "peripherals/disk/disciple.h"
 #include "peripherals/disk/opus.h"
+#include "peripherals/disk/jlo.h"
 #include "peripherals/disk/plusd.h"
 #include "peripherals/ide/divide.h"
 #include "peripherals/ide/divmmc.h"
@@ -57,6 +58,7 @@
 #include "svg.h"
 #include "tape.h"
 #include "z80.h"
+
 
 #include "z80_macros.h"
 
@@ -198,6 +200,20 @@ z80_do_opcodes( void )
 
     END_CHECK
 
+    /*
+     * JLO Board B bank latch.
+     *
+     * An M1 fetch in 0008-000f or 0068-006f pages in the
+     * JLO ROM/RAM before the opcode itself is fetched.
+     */
+    CHECK( jlo, jlo_available )
+
+    if( ( PC & 0xfff8 ) == 0x0008 || ( PC & 0xfff8 ) == 0x0068 ) {
+      jlo_page();
+    }
+
+    END_CHECK
+
     CHECK( plusd, plusd_available )
 
     /* These addresses are decoded by the +D PAL; unlike the DISCiPLE,
@@ -304,6 +320,7 @@ z80_do_opcodes( void )
     END_CHECK
 
   run_opcode:
+
     /* Do the instruction fetch; readbyte_internal used here to avoid
        triggering read breakpoints */
     opcode = readbyte_internal( PC );

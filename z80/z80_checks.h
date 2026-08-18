@@ -5,6 +5,7 @@ SETUP_CHECK( automation, automation_active() && automation_pc_check_active() )
 #endif
 SETUP_CHECK( debugger, debugger_mode != DEBUGGER_MODE_INACTIVE )
 SETUP_CHECK( beta, beta_available )
+SETUP_CHECK( jlo, jlo_available )
 SETUP_CHECK( plusd, plusd_available )
 SETUP_CHECK( didaktik80, didaktik80_available )
 SETUP_CHECK( disciple, disciple_available )

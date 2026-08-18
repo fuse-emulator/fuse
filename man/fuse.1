@@ -734,6 +734,39 @@ Emulate an issue\ 2 keyboard. Same as the General Options dialog's
 option.
 .RE
 .PP
+.B \-\-jlo
+.RS
+Emulate a JLO Disk System interface.
+.RE
+.PP
+.B \-\-jlo0disk
+.I file
+.br
+.B \-\-jlo1disk
+.I file
+.br
+.B \-\-jlo2disk
+.I file
+.br
+.B \-\-jlo3disk
+.I file
+.RS
+Insert the specified disk image into JLO drive 0, 1, 2 or 3 respectively
+on startup.
+.RE
+.PP
+.B \-\-jlo0disk\-new
+.br
+.B \-\-jlo1disk\-new
+.br
+.B \-\-jlo2disk\-new
+.br
+.B \-\-jlo3disk\-new
+.RS
+Insert a new unformatted disk into JLO drive 0, 1, 2 or 3 respectively
+on startup.
+.RE
+.PP
 .B \-\-joystick\-1\-output
 .I type
 .br
@@ -1381,6 +1414,9 @@ are not.
 .B \-\-rom\-interface\-1
 .I file
 .br
+.B \-\-rom\-jlo
+.I file
+.br
 .B \-\-rom\-beta128
 .I file
 .br
@@ -1424,6 +1460,8 @@ Specify the file to be used for ROM(s) used for each peripheral. The
 options respectively refer to
 the Interface\ 1 ROM
 .RI ( if1\-2.rom ),
+the JLO Disk System ROM
+.RI ( safe265.rom ),
 the TR-DOS ROM for Beta\ 128 emulation with the 48K, TC2048, 128K or +2
 .RI ( trdos.rom ),
 the +D ROM

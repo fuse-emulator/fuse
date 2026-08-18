@@ -70,6 +70,7 @@ multiface3, boolean, 0
 multiface1_stealth, boolean, 0
 snapsasz80, null, 0
 opus, boolean, 0
+jlo, boolean, 0
 pal_tv2x, null, 0
 movie_compr, string, NULL
 movie_start, string, NULL
@@ -167,6 +168,14 @@ plusddisk_file, string, NULL,, plusddisk
 didaktik80disk_file, string, NULL,, didaktik80disk
 discipledisk_file, string, NULL,, discipledisk
 betadisk_file, string, NULL,, betadisk
+jlo0disk_file, string, NULL,, jlo0disk
+jlo1disk_file, string, NULL,, jlo1disk
+jlo2disk_file, string, NULL,, jlo2disk
+jlo3disk_file, string, NULL,, jlo3disk
+jlo0disk_new, boolean, 0,, jlo0disk-new
+jlo1disk_new, boolean, 0,, jlo1disk-new
+jlo2disk_new, boolean, 0,, jlo2disk-new
+jlo3disk_new, boolean, 0,, jlo3disk-new
 dck_file, string, NULL,, dock
 if2_file, string, NULL,, if2cart
 
@@ -271,6 +280,7 @@ rom_multiface1, string, "mf1.rom",
 rom_multiface128, string, "mf128.rom",
 rom_multiface3, string, "mf3.rom",
 rom_opus, string, "opus.rom",
+rom_jlo, string, "safe265.rom",
 rom_sp0256, string, "sp0256-al2.rom",
 rom_speccyboot, string, "speccyboot-1.4.rom",
 rom_ttx2000s, string, "ttx2000s.rom",
@@ -292,6 +302,10 @@ drive_disciple1_type, string, NULL
 drive_disciple2_type, string, NULL
 drive_opus1_type, string, NULL
 drive_opus2_type, string, NULL
+drive_jlo1_type, string, NULL
+drive_jlo2_type, string, NULL
+drive_jlo3_type, string, NULL
+drive_jlo4_type, string, NULL
 drive_40_max_track, numeric, 42
 drive_80_max_track, numeric, 84
 

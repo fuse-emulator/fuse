@@ -505,6 +505,22 @@ opus_unpage( void )
   abort();
 }
 
+int jlo_available = 0;
+int jlo_active = 0;
+
+void
+jlo_page( void )
+{
+  abort();
+}
+
+void
+jlo_unpage( void )
+{
+  abort();
+}
+
+
 int plusd_available = 0;
 int plusd_active = 0;
 

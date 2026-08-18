@@ -29,11 +29,23 @@
 
 #include "libspectrum.h"
 
+#include <stdio.h>
+
 #include "crc.h"
 #include "event.h"
 #include "spectrum.h"
 #include "ui/ui.h"
 #include "wd_fdc.h"
+
+#ifdef WD_FDC_DEBUG
+#define WD_FDC_LOG( ... )                    \
+  do {                                       \
+    fprintf( stderr, __VA_ARGS__ );          \
+    fflush( stderr );                        \
+  } while( 0 )
+#else
+#define WD_FDC_LOG( ... ) do { } while( 0 )
+#endif
 
 static void crc_preset( wd_fdc *f );
 static void crc_add( wd_fdc *f, fdd_t *d );
@@ -77,6 +89,7 @@ wd_fdc_master_reset( wd_fdc *f )
   if( !( f->flags & WD_FLAG_NOHLT ) && f->hlt_time > 0 ) f->hlt = 0;
   f->intrq = 0;
   f->datarq = 0;
+  f->sector_increment_pending = 0;
 
   f->state = WD_FDC_STATE_NONE;
   f->status_type = WD_FDC_STATUS_TYPE1;
@@ -119,28 +132,37 @@ wd_fdc_alloc_fdc( wd_type_t type, int hlt_time, unsigned int flags )
   }
   fdc->type = type;
   fdc->current_drive = NULL;
+  fdc->step_callback = NULL;
+  fdc->motor_callback = NULL;
   fdc->hlt_time = hlt_time;
   fdc->flags = flags;			/* Beta128 connect HLD out to READY in and MOTOR ON */
   wd_fdc_master_reset( fdc );
   return fdc;
 }
 
-void
-wd_fdc_set_intrq( wd_fdc *f )
+static void
+wd_fdc_schedule_motor_off( wd_fdc *f )
 {
   if( ( f->type == WD1770 || f->type == WD1772 ) &&
       f->status_register & WD_FDC_SR_MOTORON        ) {
-    event_add_with_data( tstates + 2 * 			/* 10 rev: 10 * 200 / 1000 */
-			 machine_current->timings.processor_speed,
-			 motor_off_event, f );
+    event_add_with_data( tstates + 2 *
+                         machine_current->timings.processor_speed,
+                         motor_off_event, f );
   }
 
   if( ( f->type == WD1773 || f->type == FD1793 || f->type == WD2797 ) &&
-      f->head_load				    ) {
-    event_add_with_data( tstates + 3 * 			/* 15 revolution: 15 * 200 / 1000 */
-			 machine_current->timings.processor_speed,
-			 motor_off_event, f );
+      f->head_load ) {
+    event_add_with_data( tstates + 3 *
+                         machine_current->timings.processor_speed,
+                         motor_off_event, f );
   }
+}
+
+void
+wd_fdc_set_intrq( wd_fdc *f )
+{
+  wd_fdc_schedule_motor_off( f );
+
   if( f->intrq != 1 ) {
     f->intrq = 1;
     if( f->set_intrq ) f->set_intrq( f );
@@ -180,6 +202,34 @@ void
 wd_fdc_set_hlt( wd_fdc *f, int hlt )
 {
   f->hlt = hlt > 0 ? 1 : 0;
+}
+
+void
+wd_fdc_set_step_callback( wd_fdc *f, void (*callback)( int direction ) )
+{
+  f->step_callback = callback;
+}
+
+void
+wd_fdc_set_motor_callback( wd_fdc *f, void (*callback)( int on ) )
+{
+  f->motor_callback = callback;
+}
+
+/*
+ * WD1770/1772 expose a single MOTOR ON output. Drive selection and the
+ * distribution of that signal belong to the surrounding interface.
+ * Interfaces with simple one-drive selection can keep the historical
+ * current_drive behaviour; interfaces such as JLO can propagate the output
+ * to every drive selected by their external hardware.
+ */
+static void
+wd_fdc_set_motor_output( wd_fdc *f, int on )
+{
+  if( f->motor_callback )
+    f->motor_callback( on );
+  else if( f->current_drive )
+    fdd_motoron( f->current_drive, on );
 }
 
 static void
@@ -497,9 +547,15 @@ type_i_noupdate:
     if( d->tr00 && f->direction == FDD_STEP_OUT ) {
       f->track_register = 0;
     } else {
-      fdd_step( d, f->direction );
+      if( f->step_callback )
+        f->step_callback( f->direction );
+      else
+        fdd_step( d, f->direction );
       f->state = WD_FDC_STATE_SEEK_DELAY;
       event_remove_type( fdc_event );
+      WD_FDC_LOG( "WD STEP schedule CMD=%02X TR=%02X DIR=%d delay=%d\n",
+                  f->command_register, f->track_register, f->direction,
+                  f->rates[ b & 0x03 ] );
       event_add_with_data( tstates + f->rates[ b & 0x03 ] *
 			   machine_current->timings.processor_speed / 1000,
 			   fdc_event, f );
@@ -528,7 +584,7 @@ type_i_verify:
     if( ( f->type == WD1770 || f->type == WD1772 ) &&
 	!( f->status_register & WD_FDC_SR_MOTORON ) ) {
       f->status_register |= WD_FDC_SR_MOTORON;
-      fdd_motoron( f->current_drive, 1 );
+      wd_fdc_set_motor_output( f, 1 );
       event_remove_type( fdc_event );
       event_add_with_data( tstates + 12 * 		/* 6 revolution 6 * 200 / 1000 */
 		    machine_current->timings.processor_speed / 10,
@@ -761,6 +817,12 @@ wd_fdc_event( libspectrum_dword last_tstates GCC_UNUSED, int event,
   wd_fdc *f = user_data;
   fdd_t *d = f->current_drive;
 
+  WD_FDC_LOG( "WD EVENT=%d CMD=%02X STATE=%d TR=%02X SEC=%02X "
+            "STATUS=%02X DRQ=%d PENDING=%d READ_ID=%d\n",
+            event, f->command_register, f->state, f->track_register,
+            f->sector_register, f->status_register, f->datarq,
+            f->sector_increment_pending, f->read_id );
+
   if( event == timeout_event ) {
     if( f->state == WD_FDC_STATE_READ       ||
 	f->state == WD_FDC_STATE_WRITE      ||
@@ -779,7 +841,7 @@ wd_fdc_event( libspectrum_dword last_tstates GCC_UNUSED, int event,
   if( event == motor_off_event ) {
     if( f->type == WD1770 || f->type == WD1772 ) {
       f->status_register &= ~WD_FDC_SR_MOTORON;
-      fdd_motoron( d, 0 );
+      wd_fdc_set_motor_output( f, 0 );
     } else {						/* WD1773/FD1973 */
       f->head_load = 0;
       if( f->flags & WD_FLAG_BETA128 )
@@ -788,6 +850,20 @@ wd_fdc_event( libspectrum_dword last_tstates GCC_UNUSED, int event,
         fdd_head_load( d, 0 );
     }
     return;
+  }
+
+  /*
+   * Some interfaces expect the Sector Register to retain the number of the
+   * sector just transferred until the controller starts looking for the next
+   * sector of a multisector command.
+   */
+  if( f->sector_increment_pending ) {
+    if( f->command_register == 0xb0 )
+      WD_FDC_LOG( "WD B0 INC SEC %02X -> %02X\n", f->sector_register,
+                  (libspectrum_byte)( f->sector_register + 1 ) );
+
+    f->sector_register++;
+    f->sector_increment_pending = 0;
   }
 
   if( ( f->type == WD1773 || f->type == FD1793 || f->type == WD2797 ) &&
@@ -873,7 +949,7 @@ wd_fdc_spinup( wd_fdc *f, libspectrum_byte b )
 
     if( !( f->status_register & WD_FDC_SR_MOTORON ) ) {
       f->status_register |= WD_FDC_SR_MOTORON;
-      fdd_motoron( d, 1 );
+      wd_fdc_set_motor_output( f, 1 );
       if( !( b & 0x08 ) )
         delay += 6 * 200;
     }
@@ -928,12 +1004,40 @@ wd_fdc_cr_write( wd_fdc *f, libspectrum_byte b )
   wd_fdc_reset_intrq( f );
 
   if( ( b & 0xf0 ) == 0xd0 ) {			/* Type IV - Force Interrupt */
-    event_remove_type( fdc_event );
-    f->status_register &= ~( WD_FDC_SR_BUSY   | WD_FDC_SR_WRPROT |
-			     WD_FDC_SR_CRCERR | WD_FDC_SR_IDX_DRQ );
-    f->state = WD_FDC_STATE_NONE;
-    f->status_type = WD_FDC_STATUS_TYPE1;
-    wd_fdc_reset_datarq( f );
+
+    if( ( f->flags & WD_FLAG_PRESERVE_STATUS_ON_FORCE_INTERRUPT ) &&
+        ( f->status_register & WD_FDC_SR_BUSY ) ) {
+      /*
+       * Some interfaces use Force Interrupt to terminate a Type II/III command
+       * and then inspect the status left by that command. Preserve the status
+       * type and error bits while clearing BUSY/DRQ, and discard any pending
+       * activity belonging to the interrupted command.
+       */
+      event_remove_type( fdc_event );
+      event_remove_type( timeout_event );
+      f->read_id = 0;
+      f->id_mark = WD_FDC_AM_NONE;
+      f->sector_increment_pending = 0;
+      f->status_register &= ~WD_FDC_SR_BUSY;
+      f->state = WD_FDC_STATE_NONE;
+      wd_fdc_reset_datarq( f );
+    } else {
+      /*
+       * Keep the original Fuse behavior for controllers which do not request
+       * preserved Type II/III status, and for Force Interrupt while idle.
+       */
+      event_remove_type( fdc_event );
+      f->status_register &= ~( WD_FDC_SR_BUSY   | WD_FDC_SR_WRPROT |
+			       WD_FDC_SR_CRCERR | WD_FDC_SR_IDX_DRQ );
+      f->state = WD_FDC_STATE_NONE;
+      f->status_type = WD_FDC_STATUS_TYPE1;
+      wd_fdc_reset_datarq( f );
+
+      if( d->tr00 )
+        f->status_register |= WD_FDC_SR_LOST;
+      else
+        f->status_register &= ~WD_FDC_SR_LOST;
+    }
 
     if( b & 0x08 )
       wd_fdc_set_intrq( f );
@@ -942,12 +1046,20 @@ wd_fdc_cr_write( wd_fdc *f, libspectrum_byte b )
       d->fdc = f;
     }
 
-    if( d->tr00 )
-      f->status_register |= WD_FDC_SR_LOST;
-    else
-      f->status_register &= ~WD_FDC_SR_LOST;
+    wd_fdc_spinup( f, b & 0xf7 ); /* spinup motor, but we do not have a 'h' bit! */
 
-    wd_fdc_spinup( f, b & 0xf7 ); /* spinup motor, but we do not have a 'h' bit!  */
+    /*
+     * A WD1770/1772 Force Interrupt with no interrupt condition terminates
+     * the current command without asserting INTRQ. The spindle motor must
+     * still time out after the normal idle period.
+     */
+    if( ( b & 0x0f ) == 0 &&
+        ( f->type == WD1770 || f->type == WD1772 ) &&
+        ( f->status_register & WD_FDC_SR_MOTORON ) ) {
+      event_add_with_data( tstates + 2 *
+                           machine_current->timings.processor_speed,
+                           motor_off_event, f );
+    }
 
     return;
   }
@@ -955,6 +1067,7 @@ wd_fdc_cr_write( wd_fdc *f, libspectrum_byte b )
   if( f->status_register & WD_FDC_SR_BUSY )
     return;
 
+  f->sector_increment_pending = 0;
   f->command_register = b;
   f->status_register |= WD_FDC_SR_BUSY;
 
@@ -981,6 +1094,7 @@ wd_fdc_cr_write( wd_fdc *f, libspectrum_byte b )
         return;
       }
     }
+
     if( f->type == WD1773 && b & 0x02 )
       f->data_check_head = b & 0x08 ? 1 : 0;
     else if( f->type == WD2797 )
@@ -990,22 +1104,26 @@ wd_fdc_cr_write( wd_fdc *f, libspectrum_byte b )
 
     /* WD2797 (and FD1797) can read sectors with non-IBM-compatible
        sector length codes */
-    f->non_ibm_len_code = ( f->type == WD2797 && !( b & 0x08 ) ) ? 1 : 0;
+    f->non_ibm_len_code =
+      ( f->type == WD2797 && !( b & 0x08 ) ) ? 1 : 0;
 
     f->state = b & 0x20 ? WD_FDC_STATE_WRITE : WD_FDC_STATE_READ;
     f->status_type = WD_FDC_STATUS_TYPE2;
     f->status_register &= ~( WD_FDC_SR_WRPROT | WD_FDC_SR_RNF |
-			     WD_FDC_SR_IDX_DRQ| WD_FDC_SR_LOST|
+			     WD_FDC_SR_IDX_DRQ | WD_FDC_SR_LOST |
 			     WD_FDC_SR_SPINUP );
 
-    if( f->type == WD2797 ) fdd_set_head( d, b & 0x02 ? 1 : 0 );
+    if( f->type == WD2797 )
+      fdd_set_head( d, b & 0x02 ? 1 : 0 );
 
     f->rev = 5;
     if( wd_fdc_spinup( f, b ) )
       return;
     wd_fdc_type_ii( f );
   } else if( ( b & 0x30 ) != 0x10 ) {           /* Type III */
-    if( f->type == WD1773 || f->type == FD1793 || f->type == WD2797 ) {
+    if( f->type == WD1773 ||
+        f->type == FD1793 ||
+        f->type == WD2797 ) {
       if( !disk_ready( f ) ) {
         f->status_register &= ~WD_FDC_SR_BUSY;
         f->state = WD_FDC_STATE_NONE;
@@ -1014,12 +1132,14 @@ wd_fdc_cr_write( wd_fdc *f, libspectrum_byte b )
       }
     }
 
-    f->state = b & 0x20 ? ( b & 0x10 ?
-			    WD_FDC_STATE_WRITETRACK : WD_FDC_STATE_READTRACK ) :
-		WD_FDC_STATE_READID;
+    f->state = b & 0x20 ?
+      ( b & 0x10 ? WD_FDC_STATE_WRITETRACK :
+                    WD_FDC_STATE_READTRACK ) :
+      WD_FDC_STATE_READID;
+
     f->status_type = WD_FDC_STATUS_TYPE2;
     f->status_register &= ~( WD_FDC_SR_SPINUP | WD_FDC_SR_RNF |
-			     WD_FDC_SR_IDX_DRQ| WD_FDC_SR_LOST );
+			     WD_FDC_SR_IDX_DRQ | WD_FDC_SR_LOST );
 
     f->rev = 5;
     if( wd_fdc_spinup( f, b ) )
@@ -1049,6 +1169,7 @@ wd_fdc_sec_read( wd_fdc *f )
 void
 wd_fdc_sec_write( wd_fdc *f, libspectrum_byte b )
 {
+  f->sector_increment_pending = 0;
   f->sector_register = b;
 }
 
@@ -1056,6 +1177,7 @@ libspectrum_byte
 wd_fdc_dr_read( wd_fdc *f )
 {
   fdd_t *d = f->current_drive;
+  int sector_complete = 0;
 
   if( f->flags & WD_FLAG_DRQ &&
 	f->status_register & WD_FDC_SR_BUSY )
@@ -1076,12 +1198,16 @@ wd_fdc_dr_read( wd_fdc *f )
       if( f->data_offset == f->sector_length ) {	/* read the CRC */
 	fdd_read_data( d ); crc_add(f, d);
 	fdd_read_data( d ); crc_add(f, d);
+	sector_complete = 1;
 
 	/* FIXME: make this per-FDC */
 	event_remove_type( timeout_event );	/* clear the timeout */
 
 	if( f->crc == 0x0000 && f->data_multisector ) {
-	  f->sector_register++;
+	  if( f->flags & WD_FLAG_DELAY_SECTOR_INC )
+	    f->sector_increment_pending = 1;
+	  else
+	    f->sector_register++;
 	  f->rev = 5;
 	  wd_fdc_reset_datarq( f );
 	  event_add_with_data( tstates +	 	/* 5 revolutions: 5 * 200 / 1000 */
@@ -1149,9 +1275,18 @@ wd_fdc_dr_read( wd_fdc *f )
   }
   if( ( f->flags & WD_FLAG_DRQ ) &&
 	( f->status_register & WD_FDC_SR_BUSY ) ) {	/* we need a next datarq */
-    event_add_with_data( tstates + 30 * 		/* 30 us delay */
-			       machine_current->timings.processor_speed / 1000000,
-			       fdc_event, f );
+    /*
+     * A completed multisector record already has an inter-sector event
+     * scheduled above. With delayed Sector Register semantics, that event
+     * owns the continuation: it increments the Sector Register and starts
+     * the search for the next record. Do not also leave a normal 30 us byte
+     * event queued for the same transition.
+     */
+    if( !( sector_complete && f->data_multisector &&
+           ( f->flags & WD_FLAG_DELAY_SECTOR_INC ) ) )
+      event_add_with_data( tstates + 30 * 		/* 30 us delay */
+			         machine_current->timings.processor_speed / 1000000,
+			         fdc_event, f );
   }
   return f->data_register;
 }
@@ -1160,6 +1295,17 @@ void
 wd_fdc_dr_write( wd_fdc *f, libspectrum_byte b )
 {
   fdd_t *d = f->current_drive;
+  int sector_complete = 0;
+
+  /*
+   * With DRQ timing and delayed sector increment, remove the pending byte
+   * event before accepting the next byte. This mirrors wd_fdc_dr_read() and
+   * prevents an old byte event from becoming the inter-sector event.
+   */
+  if( ( f->flags & WD_FLAG_DRQ ) &&
+      ( f->flags & WD_FLAG_DELAY_SECTOR_INC ) &&
+      ( f->status_register & WD_FDC_SR_BUSY ) )
+    event_remove_type( fdc_event );
 
   f->data_register = b;
   if( f->state == WD_FDC_STATE_WRITE ) {
@@ -1175,9 +1321,19 @@ wd_fdc_dr_write( wd_fdc *f, libspectrum_byte b )
       fdd_write_data( d );			/* write 1 byte of ff? */
 
       event_remove_type( timeout_event );	/* clear the timeout */
+      sector_complete = 1;
+
+      if( f->command_register == 0xb0 )
+        WD_FDC_LOG( "WD B0 SECTOR COMPLETE SEC=%02X TSTATES=%u "
+                    "MULTI=%d DELAY=%d\n", f->sector_register,
+                    (unsigned)tstates, f->data_multisector,
+                    !!( f->flags & WD_FLAG_DELAY_SECTOR_INC ) );
 
       if( f->data_multisector ) {
-	f->sector_register++;
+	if( f->flags & WD_FLAG_DELAY_SECTOR_INC )
+	  f->sector_increment_pending = 1;
+	else
+	  f->sector_register++;
 	f->rev = 5;
 	wd_fdc_reset_datarq( f );
 	event_add_with_data( tstates +		/* 5 revolutions: 5 * 200 / 1000 */
@@ -1236,10 +1392,28 @@ wd_fdc_dr_write( wd_fdc *f, libspectrum_byte b )
   }
   if( ( f->flags & WD_FLAG_DRQ ) &&
 	f->status_register & WD_FDC_SR_BUSY ) {	/* we need a next datarq */
-    /* wd_fdc_reset_datarq( f ); */
-    event_add_with_data( tstates + 30 * 		/* 30 us delay */
-			       machine_current->timings.processor_speed / 1000000,
-			       fdc_event, f );
+    /*
+     * A completed multisector record already has an inter-sector event
+     * scheduled above. With delayed Sector Register semantics, do not add the
+     * normal 30 us byte event as well.
+     */
+    if( !( sector_complete && f->data_multisector &&
+           ( f->flags & WD_FLAG_DELAY_SECTOR_INC ) ) ) {
+      if( f->command_register == 0xb0 )
+        WD_FDC_LOG( "WD B0 SCHEDULE 30US SEC=%02X TSTATES=%u "
+                    "COMPLETE=%d MULTI=%d DELAY=%d\n", f->sector_register,
+                    (unsigned)tstates, sector_complete, f->data_multisector,
+                    !!( f->flags & WD_FLAG_DELAY_SECTOR_INC ) );
+      event_add_with_data( tstates + 30 * 		/* 30 us delay */
+			         machine_current->timings.processor_speed / 1000000,
+			         fdc_event, f );
+    } else {
+      if( f->command_register == 0xb0 )
+        WD_FDC_LOG( "WD B0 SKIP 30US SEC=%02X TSTATES=%u "
+                    "COMPLETE=%d MULTI=%d DELAY=%d\n", f->sector_register,
+                    (unsigned)tstates, sector_complete, f->data_multisector,
+                    !!( f->flags & WD_FLAG_DELAY_SECTOR_INC ) );
+    }
   }
 }
 

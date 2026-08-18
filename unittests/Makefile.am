@@ -197,6 +197,8 @@ noinst_PROGRAMS += unittests/sdl2joysticktest
 noinst_PROGRAMS += unittests/sdl2mousetest
 noinst_PROGRAMS += unittests/palcompositetest
 noinst_PROGRAMS += unittests/scalerexpandtest
+noinst_PROGRAMS += unittests/wdfdctest
+noinst_PROGRAMS += unittests/jlotest
 if ENABLE_AUTOMATION
 # Compile-time interval variants share the real execution/event engine. These
 # executables are test artifacts, not installed runtime configuration paths.
@@ -293,4 +295,22 @@ unittests_scalerexpandtest_LDADD = $(LIBSPECTRUM_LIBS) \
         ui/scaler/scalers16.o ui/scaler/scalers32.o ui/scaler/snes_ntsc.o
 unittests_scalerexpandtest_CPPFLAGS = $(AM_CPPFLAGS)
 
+unittests_wdfdctest_SOURCES = \
+        unittests/wdfdctest.c \
+        unittests/wdfdc_fakes.c \
+        peripherals/disk/wd_fdc.c \
+        peripherals/disk/fdd.c \
+        peripherals/disk/crc.c
+
+unittests_wdfdctest_LDADD = $(LIBSPECTRUM_LIBS)
+
+unittests_jlotest_SOURCES = \
+        unittests/jlotest.c \
+        unittests/wdfdc_fakes.c \
+        peripherals/disk/jlo_logic.c \
+        peripherals/disk/wd_fdc.c \
+        peripherals/disk/fdd.c \
+        peripherals/disk/crc.c
+
+unittests_jlotest_LDADD = $(LIBSPECTRUM_LIBS)
 endif

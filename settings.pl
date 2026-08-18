@@ -1009,6 +1009,7 @@ settings_get_rom_setting( settings_info *settings, size_t which,
     case 11: return &( settings->rom_ttx2000s );
     case 12: return &( settings->rom_usource );
     case 13: return &( settings->rom_uspeech );
+    case 14: return &( settings->rom_jlo );
     default: return NULL;
     }
   }

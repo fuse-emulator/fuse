@@ -129,6 +129,7 @@ Options/Select ROMs/Peripheral ROMs/Specc_yBoot..., Item,, menu_options_selectro
 Options/Select ROMs/Peripheral ROMs/TT_X2000S..., Item,, menu_options_selectroms_peripheral_select,, 12
 Options/Select ROMs/Peripheral ROMs/_uSource..., Item,, menu_options_selectroms_peripheral_select,, 13
 Options/Select ROMs/Peripheral ROMs/uS_peech..., Item,, menu_options_selectroms_peripheral_select,, 14
+Options/Select ROMs/Peripheral ROMs/_JLO Disk System..., Item,, menu_options_selectroms_peripheral_select,, 15
 
 Options/_Filter..., Item,,, menu_filter_detail
 
@@ -459,6 +460,59 @@ Media/Disk/Didaktik 80/Drive B/Flip disk/Turn _back, Item,, menu_media_flip,, 0x
 Media/Disk/Didaktik 80/Drive B/Write _protect, Branch
 Media/Disk/Didaktik 80/Drive B/Write protect/_Enable, Item,, menu_media_writeprotect,, 0x162
 Media/Disk/Didaktik 80/Drive B/Write protect/_Disable, Item,, menu_media_writeprotect,, 0x062
+
+Media/Disk/_JLO, Branch
+Media/Disk/JLO/Drive _0:, Branch
+Media/Disk/JLO/Drive 0:/Insert _New, Item,, menu_media_insert_new,, 0x71
+Media/Disk/JLO/Drive 0:/_Insert..., Item,, menu_media_insert,, 0x71
+Media/Disk/JLO/Drive 0:/_Eject, Item,, menu_media_eject,, 0x71
+Media/Disk/JLO/Drive 0:/_Save, Item,, menu_media_save,, 0x071
+Media/Disk/JLO/Drive 0:/Save _As..., Item,, menu_media_save,, 0x171
+Media/Disk/JLO/Drive 0:/_Flip disk, Branch
+Media/Disk/JLO/Drive 0:/Flip disk/Turn _upside down, Item,, menu_media_flip,, 0x171
+Media/Disk/JLO/Drive 0:/Flip disk/Turn _back, Item,, menu_media_flip,, 0x071
+Media/Disk/JLO/Drive 0:/Write _protect, Branch
+Media/Disk/JLO/Drive 0:/Write protect/_Enable, Item,, menu_media_writeprotect,, 0x171
+Media/Disk/JLO/Drive 0:/Write protect/_Disable, Item,, menu_media_writeprotect,, 0x071
+
+Media/Disk/JLO/Drive _1:, Branch
+Media/Disk/JLO/Drive 1:/Insert _New, Item,, menu_media_insert_new,, 0x72
+Media/Disk/JLO/Drive 1:/_Insert..., Item,, menu_media_insert,, 0x72
+Media/Disk/JLO/Drive 1:/_Eject, Item,, menu_media_eject,, 0x72
+Media/Disk/JLO/Drive 1:/_Save, Item,, menu_media_save,, 0x072
+Media/Disk/JLO/Drive 1:/Save _As..., Item,, menu_media_save,, 0x172
+Media/Disk/JLO/Drive 1:/_Flip disk, Branch
+Media/Disk/JLO/Drive 1:/Flip disk/Turn _upside down, Item,, menu_media_flip,, 0x172
+Media/Disk/JLO/Drive 1:/Flip disk/Turn _back, Item,, menu_media_flip,, 0x072
+Media/Disk/JLO/Drive 1:/Write _protect, Branch
+Media/Disk/JLO/Drive 1:/Write protect/_Enable, Item,, menu_media_writeprotect,, 0x172
+Media/Disk/JLO/Drive 1:/Write protect/_Disable, Item,, menu_media_writeprotect,, 0x072
+
+Media/Disk/JLO/Drive _2:, Branch
+Media/Disk/JLO/Drive 2:/Insert _New, Item,, menu_media_insert_new,, 0x73
+Media/Disk/JLO/Drive 2:/_Insert..., Item,, menu_media_insert,, 0x73
+Media/Disk/JLO/Drive 2:/_Eject, Item,, menu_media_eject,, 0x73
+Media/Disk/JLO/Drive 2:/_Save, Item,, menu_media_save,, 0x073
+Media/Disk/JLO/Drive 2:/Save _As..., Item,, menu_media_save,, 0x173
+Media/Disk/JLO/Drive 2:/_Flip disk, Branch
+Media/Disk/JLO/Drive 2:/Flip disk/Turn _upside down, Item,, menu_media_flip,, 0x173
+Media/Disk/JLO/Drive 2:/Flip disk/Turn _back, Item,, menu_media_flip,, 0x073
+Media/Disk/JLO/Drive 2:/Write _protect, Branch
+Media/Disk/JLO/Drive 2:/Write protect/_Enable, Item,, menu_media_writeprotect,, 0x173
+Media/Disk/JLO/Drive 2:/Write protect/_Disable, Item,, menu_media_writeprotect,, 0x073
+
+Media/Disk/JLO/Drive _3:, Branch
+Media/Disk/JLO/Drive 3:/Insert _New, Item,, menu_media_insert_new,, 0x74
+Media/Disk/JLO/Drive 3:/_Insert..., Item,, menu_media_insert,, 0x74
+Media/Disk/JLO/Drive 3:/_Eject, Item,, menu_media_eject,, 0x74
+Media/Disk/JLO/Drive 3:/_Save, Item,, menu_media_save,, 0x074
+Media/Disk/JLO/Drive 3:/Save _As..., Item,, menu_media_save,, 0x174
+Media/Disk/JLO/Drive 3:/_Flip disk, Branch
+Media/Disk/JLO/Drive 3:/Flip disk/Turn _upside down, Item,, menu_media_flip,, 0x174
+Media/Disk/JLO/Drive 3:/Flip disk/Turn _back, Item,, menu_media_flip,, 0x074
+Media/Disk/JLO/Drive 3:/Write _protect, Branch
+Media/Disk/JLO/Drive 3:/Write protect/_Enable, Item,, menu_media_writeprotect,, 0x174
+Media/Disk/JLO/Drive 3:/Write protect/_Disable, Item,, menu_media_writeprotect,, 0x074
 
 Media/_Cartridge, Branch
 Media/Cartridge/_Timex Dock, Branch

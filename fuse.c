@@ -76,6 +76,7 @@
 #include "peripherals/disk/beta.h"
 #include "peripherals/disk/didaktik.h"
 #include "peripherals/disk/fdd.h"
+#include "peripherals/disk/jlo.h"
 #include "peripherals/ide/divide.h"
 #include "peripherals/ide/divmmc.h"
 #include "peripherals/ide/simpleide.h"
@@ -142,6 +143,8 @@ typedef struct start_files_t {
   utils_file disk_beta;
   utils_file disk_didaktik80;
   utils_file disk_disciple;
+  utils_file disk_jlo[JLO_NUM_DRIVES];
+  int disk_jlo_new[JLO_NUM_DRIVES];
   utils_file dock;
   utils_file if2;
   utils_file playback;
@@ -349,6 +352,7 @@ run_startup_manager( int *argc, char ***argv )
   memory_register_startup();
   mempool_register_startup();
   multiface_register_startup();
+  jlo_register_startup();
   opus_register_startup();
   phantom_typist_register_startup();
   plusd_register_startup();
@@ -659,12 +663,30 @@ int fuse_emulation_unpause(void)
 static int
 setup_start_files( start_files_t *start_files )
 {
+  const char *jlo_disk_files[JLO_NUM_DRIVES] = {
+    settings_current.jlo0disk_file,
+    settings_current.jlo1disk_file,
+    settings_current.jlo2disk_file,
+    settings_current.jlo3disk_file,
+  };
+  const int jlo_new_disks[JLO_NUM_DRIVES] = {
+    settings_current.jlo0disk_new,
+    settings_current.jlo1disk_new,
+    settings_current.jlo2disk_new,
+    settings_current.jlo3disk_new,
+  };
+  int i;
+
   utils_file_init( &start_files->disk_plus3, settings_current.plus3disk_file );
   utils_file_init( &start_files->disk_opus, settings_current.opusdisk_file );
   utils_file_init( &start_files->disk_plusd, settings_current.plusddisk_file );
   utils_file_init( &start_files->disk_didaktik80, settings_current.didaktik80disk_file );
   utils_file_init( &start_files->disk_disciple, settings_current.discipledisk_file );
   utils_file_init( &start_files->disk_beta, settings_current.betadisk_file );
+  for( i = 0; i < JLO_NUM_DRIVES; i++ ) {
+    utils_file_init( &start_files->disk_jlo[i], jlo_disk_files[i] );
+    start_files->disk_jlo_new[i] = jlo_new_disks[i];
+  }
   utils_file_init( &start_files->dock, settings_current.dck_file );
   utils_file_init( &start_files->if2, settings_current.if2_file );
   utils_file_init( &start_files->playback, settings_current.playback_file );
@@ -717,6 +739,8 @@ free_start_files( start_files_t *start_files )
   utils_file_free( &start_files->disk_beta );
   utils_file_free( &start_files->disk_didaktik80 );
   utils_file_free( &start_files->disk_disciple );
+  for( i = 0; i < JLO_NUM_DRIVES; i++ )
+    utils_file_free( &start_files->disk_jlo[i] );
   utils_file_free( &start_files->dock );
   utils_file_free( &start_files->if2 );
   utils_file_free( &start_files->playback );
@@ -921,6 +945,24 @@ do_start_files( start_files_t *start_files )
      the file; input playback being done after snapshot loading means
      any embedded snapshot in the input recording will override any
      specified snapshot */
+
+  for( i = 0; i < JLO_NUM_DRIVES; i++ ) {
+    if( start_files->disk_jlo[i].filename ) {
+      if( start_files->disk_jlo_new[i] ) {
+        ui_error( UI_ERROR_WARNING,
+                  "both --jlo%ddisk and --jlo%ddisk-new specified; "
+                  "new disk ignored", i, i );
+      }
+      error = jlo_disk_insert( (jlo_drive_number)i,
+                               start_files->disk_jlo[i].filename,
+                               autoload && i == JLO_DRIVE_0 );
+    } else if( start_files->disk_jlo_new[i] ) {
+      error = jlo_disk_insert( (jlo_drive_number)i, NULL, 0 );
+    } else {
+      continue;
+    }
+    if( error ) return error;
+  }
 
   if( start_files->disk_plus3.filename ) {
     error = utils_open_loaded_file( &start_files->disk_plus3, autoload, NULL );

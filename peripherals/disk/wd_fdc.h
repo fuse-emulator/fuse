@@ -58,7 +58,18 @@ enum {
    * 'extra_signal' for this */
   WD_FLAG_RDY       = 1<<2,
   /* HLT (input) pin not connected at all, so we assume it is always 1. */
-  WD_FLAG_NOHLT     = 1<<3
+  WD_FLAG_NOHLT     = 1<<3,
+  /*
+   * Do not increment the sector register immediately after the last byte
+   * of a multisector transfer. Increment it on the following FDC event.
+   */
+  WD_FLAG_DELAY_SECTOR_INC = 1<<4,
+  /*
+   * Preserve Type II/III status when Force Interrupt terminates an active
+   * command. Interfaces which do not set this flag retain the original
+   * Fuse Force Interrupt behavior.
+   */
+  WD_FLAG_PRESERVE_STATUS_ON_FORCE_INTERRUPT = 1<<5
 };
 
 typedef enum wd_type_t {
@@ -129,6 +140,7 @@ typedef struct wd_fdc {
   int data_check_head;	/* -1 no check, 0/1 wait side 0 or 1 */
   int data_multisector;
   int data_offset;
+  int sector_increment_pending;
 
   libspectrum_byte command_register;    /* command register */
   libspectrum_byte status_register;     /* status register */
@@ -142,6 +154,8 @@ typedef struct wd_fdc {
   void ( *reset_intrq ) ( struct wd_fdc *f );
   void ( *set_datarq ) ( struct wd_fdc *f );
   void ( *reset_datarq ) ( struct wd_fdc *f );
+  void (*step_callback)( int direction );			/* optional multi-drive step callback */
+  void (*motor_callback)( int on );			/* optional MOTOR ON output callback */
 
 } wd_fdc;
 
@@ -168,5 +182,7 @@ void wd_fdc_reset_intrq( wd_fdc *f );
 void wd_fdc_set_datarq( wd_fdc *f );
 void wd_fdc_reset_datarq( wd_fdc *f );
 void wd_fdc_set_hlt( wd_fdc *f, int hlt );
+void wd_fdc_set_step_callback( wd_fdc *f, void (*callback)( int direction ) );
+void wd_fdc_set_motor_callback( wd_fdc *f, void (*callback)( int on ) );
 
 #endif                  /* #ifndef FUSE_WD_FDC_H */

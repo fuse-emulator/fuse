@@ -262,6 +262,7 @@ machines_periph_timex( void )
   /* ZX Printer and Interface 2 available */
   periph_set_present( PERIPH_TYPE_INTERFACE2, PERIPH_PRESENT_OPTIONAL );
   periph_set_present( PERIPH_TYPE_ZXPRINTER_FULL_DECODE, PERIPH_PRESENT_OPTIONAL );
+  periph_set_present( PERIPH_TYPE_JLO, PERIPH_PRESENT_OPTIONAL );
 }
 
 /* The set of peripherals available on the Pentagon and Scorpion */

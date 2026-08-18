@@ -42,6 +42,7 @@
 #include "memory_pages.h"
 #include "module.h"
 #include "peripherals/disk/opus.h"
+#include "peripherals/disk/jlo.h"
 #include "peripherals/sound/uspeech.h"
 #include "peripherals/spectranet.h"
 #include "peripherals/ttx2000s.h"
@@ -421,6 +422,7 @@ readbyte( libspectrum_word address )
 {
   libspectrum_word bank;
   memory_page *mapping;
+  libspectrum_byte b;
 
   bank = address >> MEMORY_PAGE_SIZE_LOGARITHM;
   mapping = &memory_map_read[ bank ];
@@ -449,7 +451,7 @@ readbyte( libspectrum_word address )
     }
 
     if( ttx2000s_paged && address >= 0x2000 )
-        return ttx2000s_sram_read( address );
+      return ttx2000s_sram_read( address );
 
     if( uspeech_available ) {
       if( address == 0x0038 )
@@ -459,7 +461,22 @@ readbyte( libspectrum_word address )
     }
   }
 
-  return mapping->page[ address & MEMORY_PAGE_SIZE_MASK ];
+  b = mapping->page[ address & MEMORY_PAGE_SIZE_MASK ];
+
+  /*
+   * JLO Board B bank latch.
+   *
+   * A normal memory read in 0008-000f or 0068-006f unpages
+   * the JLO interface. Read the current byte before changing
+   * the memory map.
+   */
+  if( jlo_active &&
+      ( ( address & 0xfff8 ) == 0x0008 ||
+        ( address & 0xfff8 ) == 0x0068 ) ) {
+    jlo_unpage();
+  }
+
+  return b;
 }
 
 void

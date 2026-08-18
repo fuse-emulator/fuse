@@ -141,6 +141,7 @@ Checkbox, DISCiPLE (i)nhibit, disciple_inhibit, INPUT_KEY_i
 Checkbox, (B)eta 128 interface, beta128, INPUT_KEY_b
 Checkbox, Beta 128 (a)uto-boot in 48K machines, beta128_48boot, INPUT_KEY_a
 Checkbox, (O)pus Discovery interface, opus, INPUT_KEY_o
+Checkbox, (J)LO Disk System interface, jlo, INPUT_KEY_j
 Checkbox, ZXMMC i(n)terface, zxmmc_enabled, INPUT_KEY_n
 Postcheck, periph_postcheck
 Posthook, periph_posthook
@@ -182,6 +183,10 @@ Combo, DI(S)CiPLE Drive 1, drive_disciple1_type, INPUT_KEY_s, Single-sided 40 tr
 Combo, DISCiP(L)E Drive 2, drive_disciple2_type, INPUT_KEY_l, Disabled|Single-sided 40 track|Double-sided 40 track|Single-sided 80 track|*Double-sided 80 track
 Combo, (O)pus Drive 1, drive_opus1_type, INPUT_KEY_o, *Single-sided 40 track|Double-sided 40 track|Single-sided 80 track|Double-sided 80 track
 Combo, O(p)us Drive 2, drive_opus2_type, INPUT_KEY_p, Disabled|*Single-sided 40 track|Double-sided 40 track|Single-sided 80 track|Double-sided 80 track
+Combo, JLO Drive (0), drive_jlo1_type, INPUT_KEY_0, Single-sided 40 track|Double-sided 40 track|Single-sided 80 track|*Double-sided 80 track
+Combo, JLO Drive (1), drive_jlo2_type, INPUT_KEY_1, Disabled|Single-sided 40 track|Double-sided 40 track|Single-sided 80 track|*Double-sided 80 track
+Combo, JLO Drive (2), drive_jlo3_type, INPUT_KEY_2, Disabled|Single-sided 40 track|Double-sided 40 track|Single-sided 80 track|*Double-sided 80 track
+Combo, JLO Drive (3), drive_jlo4_type, INPUT_KEY_3, Disabled|Single-sided 40 track|Double-sided 40 track|Single-sided 80 track|*Double-sided 80 track
 Combo, (T)ry merge 'B' side of disks, disk_try_merge, INPUT_KEY_t, Never|*With single-sided drives|Always
 Checkbox, Con(f)irm merge disk sides, disk_ask_merge, INPUT_KEY_f
 

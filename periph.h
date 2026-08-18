@@ -57,6 +57,7 @@ typedef enum periph_type {
   PERIPH_TYPE_KEMPSTON_LOOSE,
 
   PERIPH_TYPE_KEMPSTON_MOUSE, /* Kempston mouse */
+  PERIPH_TYPE_JLO,            /* JLO Disk System */
   PERIPH_TYPE_MELODIK,        /* Melodik interface */
   PERIPH_TYPE_MULTIFACE_1,    /* Multiface 1 */
   PERIPH_TYPE_MULTIFACE_128,  /* Multiface 128 */

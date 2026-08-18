@@ -116,7 +116,7 @@ run_dialog( const char *title, int is_saving )
   ofn.lpstrFileTitle = NULL;
   ofn.lpstrInitialDir = NULL;
   ofn.lpstrTitle = title;
-  ofn.Flags = /* OFN_DONTADDTORECENT | */ OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+  ofn.Flags = /* OFN_DONTADDTORECENT | */ OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_NOCHANGEDIR;
   if( is_saving ) {
     ofn.Flags |= OFN_OVERWRITEPROMPT | OFN_NOREADONLYRETURN;
   } else {

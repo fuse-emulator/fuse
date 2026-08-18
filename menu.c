@@ -297,6 +297,7 @@ MENU_CALLBACK_WITH_ACTION( menu_options_selectroms_peripheral_select )
   case 12: menu_select_peripheral_roms( "TTX2000S",       11, 1 ); return;
   case 13: menu_select_peripheral_roms( "uSource",        12, 1 ); return;
   case 14: menu_select_peripheral_roms( "uSpeech",        13, 1 ); return;
+  case 15: menu_select_peripheral_roms( "JLO Disk System", 14, 1 ); return;
 
   }
 

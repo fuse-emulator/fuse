@@ -47,6 +47,8 @@ fuse_SOURCES += \
                 peripherals/disk/disciple.c \
                 peripherals/disk/disk.c \
                 peripherals/disk/fdd.c \
+                peripherals/disk/jlo.c \
+                peripherals/disk/jlo_logic.c \
                 peripherals/disk/opus.c \
                 peripherals/disk/plusd.c \
                 peripherals/disk/trdos.c \
@@ -99,6 +101,8 @@ noinst_HEADERS += \
                   peripherals/disk/disciple.h \
                   peripherals/disk/disk.h \
                   peripherals/disk/fdd.h \
+                  peripherals/disk/jlo.h \
+                  peripherals/disk/jlo_logic.h \
                   peripherals/disk/opus.h \
                   peripherals/disk/plusd.h \
                   peripherals/disk/trdos.h \
