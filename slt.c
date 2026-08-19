@@ -46,12 +46,13 @@ static libspectrum_byte *slt_screen;	/* The screenshot from the .slt file */
 static int slt_screen_level;		/* The level of the screenshot.
 					   Not used for anything AFAIK */
 
+static void slt_reset( int hard_reset GCC_UNUSED );
 static void slt_from_snapshot( libspectrum_snap *snap );
 static void slt_to_snapshot( libspectrum_snap *snap );
 
 static module_info_t slt_module_info = {
 
-  NULL,
+  slt_reset,
   NULL,
   NULL,
   slt_from_snapshot,
@@ -96,14 +97,25 @@ slt_trap( libspectrum_word address, libspectrum_byte level )
 }
 
 static void
+slt_reset( int hard_reset GCC_UNUSED )
+{
+  size_t i;
+
+  for( i = 0; i < 256; i++ ) {
+    slt[i] = NULL;
+    slt_length[i] = 0;
+  }
+  slt_screen = NULL;
+  slt_screen_level = 0;
+}
+
+static void
 slt_from_snapshot( libspectrum_snap *snap )
 {
   size_t i;
 
   for( i=0; i<256; i++ ) {
 
-    libspectrum_free( slt[i] );
-    slt[i] = NULL;
     slt_length[i] = libspectrum_snap_slt_length( snap, i );
 
     if( slt_length[i] ) {
@@ -115,9 +127,6 @@ slt_from_snapshot( libspectrum_snap *snap )
 	      libspectrum_snap_slt_length( snap, i ) );
     }
   }
-
-  libspectrum_free( slt_screen );
-  slt_screen = NULL;
 
   if( libspectrum_snap_slt_screen( snap ) ) {
 

@@ -412,6 +412,38 @@ snapshot_custom_rom_is_replaced_by_soft_reset_test( void )
 }
 
 static int
+slt_is_cleared_by_reset_test( void )
+{
+  libspectrum_snap *snap;
+  libspectrum_snap *result;
+  libspectrum_byte *data;
+  int r = 0;
+
+  snap = libspectrum_snap_alloc();
+  result = libspectrum_snap_alloc();
+  if( !snap || !result ) {
+    if( snap ) libspectrum_snap_free( snap );
+    if( result ) libspectrum_snap_free( result );
+    return 1;
+  }
+
+  if( snapshot_copy_to( snap ) ) r++;
+  data = libspectrum_new( libspectrum_byte, 1 );
+  data[ 0 ] = 0xa5;
+  libspectrum_snap_set_slt_length( snap, 0, 1 );
+  libspectrum_snap_set_slt( snap, 0, data );
+
+  if( snapshot_copy_from( snap ) || machine_reset( 0 ) ||
+      snapshot_copy_to( result ) || libspectrum_snap_slt_length( result, 0 ) )
+    r++;
+
+  if( libspectrum_snap_free( snap ) ) r++;
+  if( libspectrum_snap_free( result ) ) r++;
+
+  return r;
+}
+
+static int
 spec_se_dock_ram_reset_test( void )
 {
   libspectrum_machine old_machine = machine_current->machine;
@@ -1841,6 +1873,7 @@ unittests_run( void )
   r += floating_bus_merge_test();
   r += snapshot_copy_from_releases_keyboard_test();
   r += snapshot_custom_rom_is_replaced_by_soft_reset_test();
+  r += slt_is_cleared_by_reset_test();
   r += spec_se_dock_ram_reset_test();
   r += keyboard_read_test();
   r += keyboard_simulate_keypress_test();
