@@ -1052,6 +1052,19 @@ libspectrum_byte test139_data[] = { 0x03 };               /* INC BC */
 libspectrum_byte test140_data[] = { 0x0b };               /* DEC BC */
 libspectrum_byte test141_data[] = { 0x19 };               /* ADD HL,DE */
 
+/* ADD HL,rr — remaining three register pairs */
+static libspectrum_byte test352_data[] = { 0x09 };  /* ADD HL,BC */
+static libspectrum_byte test353_data[] = { 0x29 };  /* ADD HL,HL */
+static libspectrum_byte test354_data[] = { 0x39 };  /* ADD HL,SP */
+
+/* INC/DEC rr — remaining three register pairs (DE, HL, SP) */
+static libspectrum_byte test355_data[] = { 0x13 };  /* INC DE */
+static libspectrum_byte test356_data[] = { 0x23 };  /* INC HL */
+static libspectrum_byte test357_data[] = { 0x33 };  /* INC SP */
+static libspectrum_byte test358_data[] = { 0x1b };  /* DEC DE */
+static libspectrum_byte test359_data[] = { 0x2b };  /* DEC HL */
+static libspectrum_byte test360_data[] = { 0x3b };  /* DEC SP */
+
 /* 00xxx100/101/110: INC r, DEC r, LD r,n */
 libspectrum_byte test142_data[] = { 0x04 };        /* INC B */
 libspectrum_byte test143_data[] = { 0x05 };        /* DEC B */
@@ -1080,6 +1093,20 @@ libspectrum_byte test157_data[] = { 0xa2 };  /* AND D */
 libspectrum_byte test158_data[] = { 0xab };  /* XOR E */
 libspectrum_byte test159_data[] = { 0xb4 };  /* OR H */
 libspectrum_byte test160_data[] = { 0xbd };  /* CP L */
+
+/* 10xxxxxx: ADC A,r and SBC A,r (register forms — distinct from immediate) */
+static libspectrum_byte test342_data[] = { 0x88 };  /* ADC A,B */
+static libspectrum_byte test343_data[] = { 0x99 };  /* SBC A,C */
+
+/* 10xxxxxx: arithmetic/logic with (HL) operand (rrr = 110) */
+static libspectrum_byte test344_data[] = { 0x86 };  /* ADD A,(HL) */
+static libspectrum_byte test345_data[] = { 0x8e };  /* ADC A,(HL) */
+static libspectrum_byte test346_data[] = { 0x96 };  /* SUB (HL) */
+static libspectrum_byte test347_data[] = { 0x9e };  /* SBC A,(HL) */
+static libspectrum_byte test348_data[] = { 0xa6 };  /* AND (HL) */
+static libspectrum_byte test349_data[] = { 0xae };  /* XOR (HL) */
+static libspectrum_byte test350_data[] = { 0xb6 };  /* OR (HL) */
+static libspectrum_byte test351_data[] = { 0xbe };  /* CP (HL) */
 
 /* 11xxx110: immediate arithmetic/logic */
 libspectrum_byte test161_data[] = { 0xc6, 0x07 };  /* ADD A,07 */
@@ -1621,6 +1648,19 @@ debugger_disassemble_unittest( void )
   r += run_test( test140_data, sizeof( test140_data ), "DEC BC" );
   r += run_test( test141_data, sizeof( test141_data ), "ADD HL,DE" );
 
+  /* ADD HL,rr — remaining three register pairs */
+  r += run_test( test352_data, sizeof( test352_data ), "ADD HL,BC" );
+  r += run_test( test353_data, sizeof( test353_data ), "ADD HL,HL" );
+  r += run_test( test354_data, sizeof( test354_data ), "ADD HL,SP" );
+
+  /* INC/DEC rr — remaining three register pairs (DE, HL, SP) */
+  r += run_test( test355_data, sizeof( test355_data ), "INC DE" );
+  r += run_test( test356_data, sizeof( test356_data ), "INC HL" );
+  r += run_test( test357_data, sizeof( test357_data ), "INC SP" );
+  r += run_test( test358_data, sizeof( test358_data ), "DEC DE" );
+  r += run_test( test359_data, sizeof( test359_data ), "DEC HL" );
+  r += run_test( test360_data, sizeof( test360_data ), "DEC SP" );
+
   /* 00xxx100/101/110: INC r, DEC r, LD r,n */
   r += run_test( test142_data, sizeof( test142_data ), "INC B" );
   r += run_test( test143_data, sizeof( test143_data ), "DEC B" );
@@ -1649,6 +1689,20 @@ debugger_disassemble_unittest( void )
   r += run_test( test158_data, sizeof( test158_data ), "XOR E" );
   r += run_test( test159_data, sizeof( test159_data ), "OR H" );
   r += run_test( test160_data, sizeof( test160_data ), "CP L" );
+
+  /* 10xxxxxx: ADC A,r and SBC A,r — register forms (distinct from immediate) */
+  r += run_test( test342_data, sizeof( test342_data ), "ADC A,B" );
+  r += run_test( test343_data, sizeof( test343_data ), "SBC A,C" );
+
+  /* 10xxxxxx: arithmetic/logic with (HL) operand */
+  r += run_test( test344_data, sizeof( test344_data ), "ADD A,(HL)" );
+  r += run_test( test345_data, sizeof( test345_data ), "ADC A,(HL)" );
+  r += run_test( test346_data, sizeof( test346_data ), "SUB (HL)" );
+  r += run_test( test347_data, sizeof( test347_data ), "SBC A,(HL)" );
+  r += run_test( test348_data, sizeof( test348_data ), "AND (HL)" );
+  r += run_test( test349_data, sizeof( test349_data ), "XOR (HL)" );
+  r += run_test( test350_data, sizeof( test350_data ), "OR (HL)" );
+  r += run_test( test351_data, sizeof( test351_data ), "CP (HL)" );
 
   /* 11xxx110: immediate arithmetic */
   r += run_test( test161_data, sizeof( test161_data ), "ADD A,07" );
