@@ -37,6 +37,7 @@ struct display_timing {
   unsigned long frame;
   unsigned long source_regions;
   unsigned long source_pixels;
+  unsigned long presentation_count;
   unsigned long paint_count;
   long long input_us;
   long long scaler_us;
@@ -123,8 +124,10 @@ display_timing_presentation_begin( void )
 void
 display_timing_presentation_end( void )
 {
-  if( timing.enabled )
+  if( timing.enabled ) {
     timing.presentation_us += now_us() - timing.presentation_start;
+    timing.presentation_count++;
+  }
 }
 
 void
@@ -153,16 +156,18 @@ display_timing_frame_end( void )
   fprintf( stderr,
            "display-timing backend=%s frame=%lu input_us=%lld "
            "source_regions=%lu source_pixels=%lu scaler_us=%lld "
-           "presentation_us=%lld paint_count=%lu paint_us=%lld frame_us=%lld\n",
+           "presentation_count=%lu presentation_us=%lld paint_count=%lu "
+           "paint_us=%lld frame_us=%lld\n",
            timing.backend, ++timing.frame, timing.input_us,
            timing.source_regions, timing.source_pixels, timing.scaler_us,
-           timing.presentation_us, timing.paint_count, timing.paint_us,
-           frame_us );
+           timing.presentation_count, timing.presentation_us,
+           timing.paint_count, timing.paint_us, frame_us );
 
   timing.source_regions = 0;
   timing.source_pixels = 0;
   timing.input_us = 0;
   timing.scaler_us = 0;
+  timing.presentation_count = 0;
   timing.presentation_us = 0;
   timing.paint_count = 0;
   timing.paint_us = 0;

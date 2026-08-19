@@ -16,8 +16,9 @@ Output is written to standard error. Each `display-timing` frame line has:
   coverage of the merged display regions received by the backend;
 * `scaler_us`: time in `scaler_proc32`, excluding RGB conversion and queued
   presentation;
-* `presentation_us`: time scheduling a GTK redraw, or invalidating and
-  synchronously updating the Win32 window;
+* `presentation_count` and `presentation_us`: number of redraw schedules and
+  time scheduling a GTK redraw, or invalidating and synchronously updating
+  the Win32 window;
 * `paint_count` and `paint_us`: time in the actual GTK draw or Win32 paint
   callback. GTK may report a draw with the following emulated frame because
   drawing is asynchronous;
