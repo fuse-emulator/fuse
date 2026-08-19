@@ -1764,7 +1764,7 @@ utils_open_loaded_disk_test( void )
 static int
 utils_open_loaded_disk_merge_test( void )
 {
-  char directory[] = "/tmp/fuse-disk-merge-XXXXXX";
+  char temporary_path[] = "/tmp/fuse-disk-merge-XXXXXX";
   char filename_a[ PATH_MAX ], filename_b[ PATH_MAX ];
   compat_file_vtable_t vtable;
   utils_file file;
@@ -1772,15 +1772,20 @@ utils_open_loaded_disk_merge_test( void )
   unsigned char *data;
   int fd, saved_ask_merge, r = 0;
 
-  if( !mkdtemp( directory ) ) return 1;
-  snprintf( filename_a, sizeof( filename_a ), "%s/disk Side A.img", directory );
-  snprintf( filename_b, sizeof( filename_b ), "%s/disk Side B.img", directory );
+  /* mkdtemp is not provided by MinGW; use mkstemp to obtain a unique
+     filename prefix instead. */
+  fd = mkstemp( temporary_path );
+  if( fd < 0 ) return 1;
+  close( fd );
+  unlink( temporary_path );
+  snprintf( filename_a, sizeof( filename_a ), "%s Side A.img", temporary_path );
+  snprintf( filename_b, sizeof( filename_b ), "%s Side B.img", temporary_path );
   data = libspectrum_new0( unsigned char, 40 * 10 * 512 );
   fd = creat( filename_b, 0600 );
   if( !data || fd < 0 || write( fd, data, 40 * 10 * 512 ) != 40 * 10 * 512 ) {
     if( fd >= 0 ) close( fd );
     libspectrum_free( data );
-    unlink( filename_b ); rmdir( directory );
+    unlink( filename_b );
     return 1;
   }
   close( fd );
@@ -1808,7 +1813,7 @@ utils_open_loaded_disk_merge_test( void )
   disk_close( &disk );
   utils_file_free( &file );
   compat_file_set_vtable( &utils_file_previous_vtable );
-  unlink( filename_b ); rmdir( directory );
+  unlink( filename_b );
   if( r ) printf( "utils_open_loaded_disk_merge_test failed\n" );
   return r;
 }
