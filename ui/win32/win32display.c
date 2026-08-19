@@ -24,6 +24,8 @@
 
 #include "config.h"
 
+#include <stddef.h>
+
 #include "display.h"
 #include "ui/display_timing.h"
 #include "fuse.h"
@@ -61,6 +63,13 @@ static BITMAPINFO fuse_BMI;
 static HBITMAP fuse_BMP;
 static RECT invalidated_area;
 
+/* Scaler input areas accumulated for the current emulated frame. */
+struct win32display_dirty_area {
+  int x, y, width, height;
+};
+static struct win32display_dirty_area dirty_areas[ DISPLAY_SCREEN_HEIGHT ];
+static size_t dirty_area_count = 0;
+
 static const unsigned char rgb_colours[16][3] = {
 
   {   0,   0,   0 },
@@ -89,6 +98,8 @@ static libspectrum_dword bw_colours[16];
 static int win32display_current_size=1;
 
 static int init_colours( void );
+static void win32display_add_dirty_area( int x, int y, int width, int height );
+static void win32display_scale_dirty_areas( void );
 static void register_scalers( int force_scaler );
 static void win32display_load_gfx_mode( void );
 
@@ -318,15 +329,19 @@ uidisplay_frame_end( void )
     uidisplay_area( 0, 0, image_width, image_height );
   }
 
+  win32display_scale_dirty_areas();
+
   if( !IsRectEmpty( &invalidated_area ) ) {
 
+    /* Invalidate asynchronously: WM_PAINT will always copy the newest
+       completed DIB, while Windows coalesces invalidations if painting
+       cannot keep up. UpdateWindow() would synchronously dispatch WM_PAINT
+       and can therefore stall emulation once per frame. */
     display_timing_presentation_begin();
     InvalidateRect( fuse_hWnd, &invalidated_area, FALSE );
+    display_timing_presentation_end();
 
     SetRectEmpty( &invalidated_area );
-
-    UpdateWindow( fuse_hWnd );
-    display_timing_presentation_end();
   }
 
   display_timing_frame_end();
@@ -335,8 +350,7 @@ uidisplay_frame_end( void )
 void
 uidisplay_area( int x, int y, int w, int h )
 {
-  float scale = (float)win32display_current_size / image_scale;
-  int scaled_x, scaled_y, i, yy;
+  int i, yy;
   libspectrum_dword *palette;
 
   display_timing_area( w, h );
@@ -346,11 +360,10 @@ uidisplay_area( int x, int y, int w, int h )
   if( scaler_flags & SCALER_FLAGS_EXPAND )
     scaler_expander( &x, &y, &w, &h, image_width, image_height );
 
-  scaled_x = scale * x; scaled_y = scale * y;
-
   palette = settings_current.bw_tv ? bw_colours : win32display_colours;
 
-  /* Create the RGB image */
+  /* Create the RGB image. Scaling is deferred until all damage for this
+     emulated frame has been merged. */
   for( yy = y; yy < y + h; yy++ ) {
 
     libspectrum_dword *rgb; libspectrum_word *display;
@@ -363,19 +376,85 @@ uidisplay_area( int x, int y, int w, int h )
     for( i = 0; i < w; i++, rgb++, display++ ) *rgb = palette[ *display ];
   }
 
-  /* Create scaled image */
+  win32display_add_dirty_area( x, y, w, h );
+}
+
+static void
+merge_dirty_areas( struct win32display_dirty_area *destination,
+                   const struct win32display_dirty_area *source )
+{
+  int right = destination->x + destination->width;
+  int bottom = destination->y + destination->height;
+  int source_right = source->x + source->width;
+  int source_bottom = source->y + source->height;
+
+  if( source->x < destination->x ) destination->x = source->x;
+  if( source->y < destination->y ) destination->y = source->y;
+  if( source_right > right ) right = source_right;
+  if( source_bottom > bottom ) bottom = source_bottom;
+
+  destination->width = right - destination->x;
+  destination->height = bottom - destination->y;
+}
+
+static void
+win32display_add_dirty_area( int x, int y, int width, int height )
+{
+  struct win32display_dirty_area area;
+  size_t i;
+
+  area.x = x; area.y = y; area.width = width; area.height = height;
+
+  /* Merge touching regions too. PAL TV expands every region to the full
+     scanline, so this prevents the same expanded line being scaled twice. */
+  for( i = 0; i < dirty_area_count; ) {
+    struct win32display_dirty_area *old = &dirty_areas[i];
+
+    if( area.x <= old->x + old->width && old->x <= area.x + area.width &&
+        area.y <= old->y + old->height && old->y <= area.y + area.height ) {
+      merge_dirty_areas( &area, old );
+      dirty_areas[i] = dirty_areas[ --dirty_area_count ];
+    } else {
+      i++;
+    }
+  }
+
+  if( dirty_area_count == DISPLAY_SCREEN_HEIGHT ) {
+    for( i = 0; i < dirty_area_count; i++ )
+      merge_dirty_areas( &area, &dirty_areas[i] );
+    dirty_area_count = 0;
+  }
+
+  dirty_areas[ dirty_area_count++ ] = area;
+}
+
+static void
+win32display_scale_dirty_areas( void )
+{
+  float scale = (float)win32display_current_size / image_scale;
+  size_t i;
+
+  if( !dirty_area_count ) return;
+
   display_timing_scaler_begin();
-  scaler_proc32( &rgb_image[ ( y + 2 ) * rgb_pitch + 4 * ( x + 1 ) ],
-                 rgb_pitch,
-                 (unsigned char *)win32_pixdata + scaled_y * scaled_pitch +
-                 4 * scaled_x,
-                 scaled_pitch, w, h );
+  for( i = 0; i < dirty_area_count; i++ ) {
+    const struct win32display_dirty_area *area = &dirty_areas[i];
+    int scaled_x = scale * area->x;
+    int scaled_y = scale * area->y;
+
+    scaler_proc32( &rgb_image[ ( area->y + 2 ) * rgb_pitch +
+                                4 * ( area->x + 1 ) ],
+                   rgb_pitch,
+                   (unsigned char *)win32_pixdata +
+                   scaled_y * scaled_pitch + 4 * scaled_x,
+                   scaled_pitch, area->width, area->height );
+
+    win32display_area( scaled_x, scaled_y, scale * area->width,
+                       scale * area->height );
+  }
   display_timing_scaler_end();
 
-  w *= scale; h *= scale;
-
-  /* Blit to the real screen */
-  win32display_area( scaled_x, scaled_y, w, h );
+  dirty_area_count = 0;
 }
 
 void
