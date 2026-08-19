@@ -894,6 +894,14 @@ libspectrum_byte test24_data[] = { 0xdd, 0xcb, 0x55, 0xcf };  /* LD A,SET 1,(IX+
 libspectrum_byte test27_data[] = { 0xfd, 0xcb, 0x55, 0x87 };  /* LD A,RES 0,(IY+55) */
 libspectrum_byte test28_data[] = { 0xfd, 0xcb, 0x55, 0xcf };  /* LD A,SET 1,(IY+55) */
 
+/* DD CB / FD CB: BIT 7, RES 7, SET 7 (bit number 7 = bits 3-5 all set) */
+libspectrum_byte testbit7a_data[] = { 0xdd, 0xcb, 0x55, 0x7e };  /* BIT 7,(IX+55) */
+libspectrum_byte testbit7b_data[] = { 0xdd, 0xcb, 0x55, 0xbe };  /* RES 7,(IX+55) */
+libspectrum_byte testbit7c_data[] = { 0xdd, 0xcb, 0x55, 0xfe };  /* SET 7,(IX+55) */
+libspectrum_byte testbit7d_data[] = { 0xfd, 0xcb, 0x55, 0x7e };  /* BIT 7,(IY+55) */
+libspectrum_byte testbit7e_data[] = { 0xfd, 0xcb, 0x55, 0xbe };  /* RES 7,(IY+55) */
+libspectrum_byte testbit7f_data[] = { 0xfd, 0xcb, 0x55, 0xfe };  /* SET 7,(IY+55) */
+
 /* Negative (IX+d)/(IY+d) offset (offset >= 0x80) */
 libspectrum_byte test29_data[] = { 0xdd, 0xcb, 0xff, 0x46 };  /* BIT 0,(IX-01) */
 libspectrum_byte test30_data[] = { 0xfd, 0xcb, 0xff, 0x46 };  /* BIT 0,(IY-01) */
@@ -1452,6 +1460,14 @@ debugger_disassemble_unittest( void )
   /* FD CB undocumented LD reg,RES/SET n,(IY+d) */
   r += run_test( test27_data, sizeof( test27_data ), "LD A,RES 0,(IY+55)" );
   r += run_test( test28_data, sizeof( test28_data ), "LD A,SET 1,(IY+55)" );
+
+  /* DDCB/FDCB: BIT 7, RES 7, SET 7 — exercises the full 0-7 bit range */
+  r += run_test( testbit7a_data, sizeof( testbit7a_data ), "BIT 7,(IX+55)" );
+  r += run_test( testbit7b_data, sizeof( testbit7b_data ), "RES 7,(IX+55)" );
+  r += run_test( testbit7c_data, sizeof( testbit7c_data ), "SET 7,(IX+55)" );
+  r += run_test( testbit7d_data, sizeof( testbit7d_data ), "BIT 7,(IY+55)" );
+  r += run_test( testbit7e_data, sizeof( testbit7e_data ), "RES 7,(IY+55)" );
+  r += run_test( testbit7f_data, sizeof( testbit7f_data ), "SET 7,(IY+55)" );
 
   /* Negative (IX+d)/(IY+d) offsets */
   r += run_test( test29_data, sizeof( test29_data ), "BIT 0,(IX-01)" );
