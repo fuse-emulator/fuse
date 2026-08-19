@@ -399,6 +399,76 @@ write_reads_from_appropriate_y( void )
 }
 
 static int
+write_reads_from_middle_third( void )
+{
+  /* y=64 is the first pixel row of the middle screen third.
+     display_line_start[64] = 32*64 = 2048; attr at display_attr_start[64] = 0x1900.
+     beam_x = 0 + 4 = 4, beam_y = 64 + 24 = 88, last_screen index = 4 + 88*40 = 3524 */
+  RAM[0][2048] = 0xa5;
+  RAM[0][0x1900] = 0x38;    /* ink=0, paper=7 */
+
+  display_write_if_dirty_sinclair( 0, 64 );
+
+  if( plot8_assert( 1, 4, 88, 0xa5, 0, 7 ) ) return 1;
+  if( display_last_screen[ 3524 ] != 0x38a5 ) {
+    fprintf( stderr, "display_last_screen[3524]: expected 0x38a5, got 0x%x\n",
+             display_last_screen[ 3524 ] );
+    return 1;
+  }
+  if( display_get_is_dirty( 88 ) != ( (libspectrum_qword)1 << 4 ) ) return 1;
+
+  return 0;
+}
+
+static int
+write_reads_from_bottom_third( void )
+{
+  /* y=128 is the first pixel row of the bottom screen third.
+     display_line_start[128] = 32*128 = 4096; attr at display_attr_start[128] = 0x1a00.
+     beam_x = 0 + 4 = 4, beam_y = 128 + 24 = 152, last_screen index = 4 + 152*40 = 6084 */
+  RAM[0][4096] = 0x99;
+  RAM[0][0x1a00] = 0x09;    /* ink=1, paper=1 */
+
+  display_write_if_dirty_sinclair( 0, 128 );
+
+  if( plot8_assert( 1, 4, 152, 0x99, 1, 1 ) ) return 1;
+  if( display_last_screen[ 6084 ] != 0x0999 ) {
+    fprintf( stderr, "display_last_screen[6084]: expected 0x0999, got 0x%x\n",
+             display_last_screen[ 6084 ] );
+    return 1;
+  }
+  if( display_get_is_dirty( 152 ) != ( (libspectrum_qword)1 << 4 ) ) return 1;
+
+  return 0;
+}
+
+static int
+no_redraw_if_cached_after_write( void )
+{
+  /* First call writes new data and caches it in display_last_screen */
+  RAM[0][0] = 0x01;
+  RAM[0][DISPLAY_PIXEL_BYTES] = 0x02;
+
+  display_write_if_dirty_sinclair( 0, 0 );
+  if( !plot8_count ) {
+    fprintf( stderr, "expected plot8 on first call, got none\n" );
+    return 1;
+  }
+
+  /* Second call with identical RAM data: cache hit, no redraw expected */
+  plot8_count = 0;
+  display_write_if_dirty_sinclair( 0, 0 );
+  if( plot8_count ) {
+    fprintf( stderr,
+             "expected no plot8 on second call with same data, got %d\n",
+             plot8_count );
+    return 1;
+  }
+
+  return 0;
+}
+
+static int
 flash_inverts_colours( void )
 {
   /* Arrange */
@@ -1063,6 +1133,9 @@ static const struct test_t tests[] = {
   { "write_called_for_new_data", write_called_for_new_data },
   { "write_reads_from_appropriate_x", write_reads_from_appropriate_x },
   { "write_reads_from_appropriate_y", write_reads_from_appropriate_y },
+  { "write_reads_from_middle_third", write_reads_from_middle_third },
+  { "write_reads_from_bottom_third", write_reads_from_bottom_third },
+  { "no_redraw_if_cached_after_write", no_redraw_if_cached_after_write },
   { "flash_inverts_colours", flash_inverts_colours },
 
   /* display_dirty_sinclair() tests */
