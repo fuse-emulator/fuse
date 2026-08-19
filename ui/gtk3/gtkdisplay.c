@@ -37,6 +37,7 @@
 #endif
 
 #include "display.h"
+#include "ui/display_timing.h"
 #include "fuse.h"
 #include "gtkinternals.h"
 #include "screenshot.h"
@@ -192,6 +193,8 @@ uidisplay_init( int width, int height )
 {
   int x, y, error;
   libspectrum_dword black;
+
+  display_timing_init( "gtk3" );
   const char *machine_name;
   colour_format_t colour_format;
 
@@ -338,6 +341,8 @@ uidisplay_frame_end( void )
 
   /* If the user changed the full screen option, apply it now */
   gtkui_fullscreen_apply();
+
+  display_timing_frame_end();
 }
 
 void
@@ -346,6 +351,8 @@ uidisplay_area( int x, int y, int w, int h )
   float scale = scaler_get_scaling_factor( current_scaler );
   int scaled_x, scaled_y, i, yy;
   libspectrum_dword *palette;
+
+  display_timing_area( w, h );
 
   /* Extend the dirty region by 1 pixel for scalers
      that "smear" the screen, e.g. 2xSAI */
@@ -370,10 +377,12 @@ uidisplay_area( int x, int y, int w, int h )
   }
 
   /* Create scaled image */
+  display_timing_scaler_begin();
   scaler_proc32( &rgb_image[ ( y + 2 ) * rgb_pitch + 4 * ( x + 1 ) ],
                  rgb_pitch,
                  &scaled_image[ scaled_y * scaled_pitch + 4 * scaled_x ],
                  scaled_pitch, w, h );
+  display_timing_scaler_end();
 
   w *= scale; h *= scale;
 
@@ -426,8 +435,11 @@ static void gtkdisplay_area(int x, int y, int width, int height)
 
   if( width <= 0 || height <= 0 ) return;
 
+  display_timing_presentation_begin();
+
   if( !surface ) {
     gtk_widget_queue_draw_area( gtkui_drawing_area, x, y, width, height );
+    display_timing_presentation_end();
     return;
   }
 
@@ -451,6 +463,7 @@ static void gtkdisplay_area(int x, int y, int width, int height)
   wh = (int)( ceil( ( y + height ) * scale ) ) - (int)( y * scale );
 
   gtk_widget_queue_draw_area( gtkui_drawing_area, wx, wy, ww, wh );
+  display_timing_presentation_end();
 }
 
 int
@@ -570,6 +583,8 @@ gtkdisplay_draw( GtkWidget *widget GCC_UNUSED, cairo_t *cr,
   int offset_x, offset_y;
   double scale;
 
+  display_timing_paint_begin();
+
   /* Create a new surface for this gfx mode */
   if( !surface ) ensure_appropriate_surface();
 
@@ -593,6 +608,8 @@ gtkdisplay_draw( GtkWidget *widget GCC_UNUSED, cairo_t *cr,
                    cairo_image_surface_get_width( surface ),
                    cairo_image_surface_get_height( surface ) );
   cairo_fill( cr );
+
+  display_timing_paint_end();
 
   return FALSE;
 }

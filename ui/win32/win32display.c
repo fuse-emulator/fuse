@@ -25,6 +25,7 @@
 #include "config.h"
 
 #include "display.h"
+#include "ui/display_timing.h"
 #include "fuse.h"
 #include "machine.h"
 #include "settings.h"
@@ -99,6 +100,8 @@ blit( void )
   HBITMAP src_bmp;
   int x, y, width, height;
 
+  display_timing_paint_begin();
+
   dest_dc = BeginPaint( fuse_hWnd, &ps );
 
   x = ps.rcPaint.left;
@@ -117,6 +120,8 @@ blit( void )
   }
 
   EndPaint( fuse_hWnd, &ps );
+
+  display_timing_paint_end();
 }
 
 int
@@ -124,6 +129,8 @@ win32display_init( void )
 {
   int x, y, error;
   libspectrum_dword black;
+
+  display_timing_init( "win32" );
 
   error = init_colours(); if( error ) return error;
   error = scaler_select_bitformat( BITFORMAT_X8R8G8B8 );
@@ -313,12 +320,16 @@ uidisplay_frame_end( void )
 
   if( !IsRectEmpty( &invalidated_area ) ) {
 
+    display_timing_presentation_begin();
     InvalidateRect( fuse_hWnd, &invalidated_area, FALSE );
 
     SetRectEmpty( &invalidated_area );
 
     UpdateWindow( fuse_hWnd );
+    display_timing_presentation_end();
   }
+
+  display_timing_frame_end();
 }
 
 void
@@ -327,6 +338,8 @@ uidisplay_area( int x, int y, int w, int h )
   float scale = (float)win32display_current_size / image_scale;
   int scaled_x, scaled_y, i, yy;
   libspectrum_dword *palette;
+
+  display_timing_area( w, h );
 
   /* Extend the dirty region by 1 pixel for scalers
      that "smear" the screen, e.g. 2xSAI */
@@ -351,11 +364,13 @@ uidisplay_area( int x, int y, int w, int h )
   }
 
   /* Create scaled image */
+  display_timing_scaler_begin();
   scaler_proc32( &rgb_image[ ( y + 2 ) * rgb_pitch + 4 * ( x + 1 ) ],
                  rgb_pitch,
                  (unsigned char *)win32_pixdata + scaled_y * scaled_pitch +
                  4 * scaled_x,
                  scaled_pitch, w, h );
+  display_timing_scaler_end();
 
   w *= scale; h *= scale;
 
