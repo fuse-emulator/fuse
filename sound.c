@@ -106,15 +106,6 @@ Blip_Synth *left_covox_synth = NULL, *right_covox_synth = NULL;
 
 Blip_Synth *left_sp0256_synth = NULL, *right_sp0256_synth = NULL;
 
-struct speaker_type_tag
-{
-  int bass;
-  double treble;
-};
-
-static struct speaker_type_tag speaker_type[] =
-  { { 200, -37.0 }, { 1000, -67.0 }, { 0, 0.0 } };
-
 static double
 sound_get_volume( int volume )
 {
@@ -151,8 +142,8 @@ sound_init_blip( Blip_Buffer **buf, Blip_Synth **synth )
   blip_synth_set_volume( *synth, sound_get_volume( settings_current.volume_beeper ) );
   blip_synth_set_output( *synth, *buf );
 
-  blip_buffer_set_bass_freq( *buf, speaker_type[ option_enumerate_sound_speaker_type() ].bass );
-  blip_synth_set_treble_eq( *synth, speaker_type[ option_enumerate_sound_speaker_type() ].treble );
+  blip_buffer_set_bass_freq( *buf, 0 );
+  blip_synth_set_treble_eq( *synth, 0.0 );
 
   return 1;
 }
@@ -207,7 +198,6 @@ void
 sound_init( const char *device )
 {
   float hz;
-  double treble;
   Blip_Synth **ay_left_synth;
   Blip_Synth **ay_mid_synth;
   Blip_Synth **ay_mid_synth_r;
@@ -234,40 +224,38 @@ sound_init( const char *device )
       !sound_init_blip(&right_buf, &right_beeper_synth) )
     return;
 
-  treble = speaker_type[ option_enumerate_sound_speaker_type() ].treble;
-
   ay_a_synth = new_Blip_Synth();
   blip_synth_set_volume( ay_a_synth,
                          sound_get_volume( settings_current.volume_ay) );
-  blip_synth_set_treble_eq( ay_a_synth, treble );
+  blip_synth_set_treble_eq( ay_a_synth, 0.0 );
 
   ay_b_synth = new_Blip_Synth();
   blip_synth_set_volume( ay_b_synth,
                          sound_get_volume( settings_current.volume_ay) );
-  blip_synth_set_treble_eq( ay_b_synth, treble );
+  blip_synth_set_treble_eq( ay_b_synth, 0.0 );
 
   ay_c_synth = new_Blip_Synth();
   blip_synth_set_volume( ay_c_synth,
                          sound_get_volume( settings_current.volume_ay) );
-  blip_synth_set_treble_eq( ay_c_synth, treble );
+  blip_synth_set_treble_eq( ay_c_synth, 0.0 );
 
   left_specdrum_synth = new_Blip_Synth();
   blip_synth_set_volume( left_specdrum_synth,
                          sound_get_volume( settings_current.volume_specdrum ) );
   blip_synth_set_output( left_specdrum_synth, left_buf );
-  blip_synth_set_treble_eq( left_specdrum_synth, treble );
+  blip_synth_set_treble_eq( left_specdrum_synth, 0.0 );
 
   left_covox_synth = new_Blip_Synth();
   blip_synth_set_volume( left_covox_synth,
                          sound_get_volume( settings_current.volume_covox ) );
   blip_synth_set_output( left_covox_synth, left_buf );
-  blip_synth_set_treble_eq( left_covox_synth, treble );
+  blip_synth_set_treble_eq( left_covox_synth, 0.0 );
   
   left_sp0256_synth = new_Blip_Synth();
   blip_synth_set_volume( left_sp0256_synth,
                          sound_get_volume( settings_current.volume_uspeech ) );
   blip_synth_set_output( left_sp0256_synth, left_buf );
-  blip_synth_set_treble_eq( left_sp0256_synth, treble );
+  blip_synth_set_treble_eq( left_sp0256_synth, 0.0 );
 
   /* important to override these settings if not using stereo
    * (it would probably be confusing to mess with the stereo
@@ -305,25 +293,25 @@ sound_init( const char *device )
     blip_synth_set_volume( *ay_mid_synth_r,
                            sound_get_volume( settings_current.volume_ay ) );
     blip_synth_set_output( *ay_mid_synth_r, right_buf );
-    blip_synth_set_treble_eq( *ay_mid_synth_r, treble );
+    blip_synth_set_treble_eq( *ay_mid_synth_r, 0.0 );
 
     right_specdrum_synth = new_Blip_Synth();
     blip_synth_set_volume( right_specdrum_synth,
                            sound_get_volume( settings_current.volume_specdrum ) );
     blip_synth_set_output( right_specdrum_synth, right_buf );
-    blip_synth_set_treble_eq( right_specdrum_synth, treble );
+    blip_synth_set_treble_eq( right_specdrum_synth, 0.0 );
 
     right_covox_synth = new_Blip_Synth();
     blip_synth_set_volume( right_covox_synth,
                            sound_get_volume( settings_current.volume_covox ) );
     blip_synth_set_output( right_covox_synth, right_buf );
-    blip_synth_set_treble_eq( right_covox_synth, treble );
+    blip_synth_set_treble_eq( right_covox_synth, 0.0 );
 
     right_sp0256_synth = new_Blip_Synth();
     blip_synth_set_volume( right_sp0256_synth,
                            sound_get_volume( settings_current.volume_uspeech ) );
     blip_synth_set_output( right_sp0256_synth, right_buf );
-    blip_synth_set_treble_eq( right_sp0256_synth, treble );
+    blip_synth_set_treble_eq( right_sp0256_synth, 0.0 );
   } else {
     blip_synth_set_output( ay_a_synth, left_buf );
     blip_synth_set_output( ay_b_synth, left_buf );
