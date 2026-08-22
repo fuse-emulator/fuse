@@ -17,6 +17,7 @@
 #include "fuse.h"
 #include "machine.h"
 #include "settings.h"
+#include "ui/display_timing.h"
 #include "ui/ui.h"
 #include "ui/scaler/scaler.h"
 #include "ui/uidisplay.h"
@@ -627,6 +628,8 @@ uidisplay_init( int width, int height )
   image_width = width;
   image_height = height;
 
+  display_timing_init( "sdl2" );
+
   init_scalers();
   sdl2_scaler_state_init( &scaler_state );
 
@@ -818,6 +821,8 @@ uidisplay_area( int x, int y, int width, int height )
     return;
   }
 
+  display_timing_area( width, height );
+
   if( scaler_flags & SCALER_FLAGS_EXPAND )
     scaler_expander( &x, &y, &width, &height, image_width, image_height );
 
@@ -869,6 +874,7 @@ uidisplay_frame_end( void )
     SDL_Rect *r = &updated_rects[i];
     sdl2_display_rect dst;
 
+    display_timing_scaler_begin();
     scaler_proc16(
       (libspectrum_byte *)tmp_screen->pixels +
       ( r->x + 1 ) * tmp_screen->format->BytesPerPixel +
@@ -882,6 +888,7 @@ uidisplay_frame_end( void )
       scaled_screen->pitch,
       r->w,
       r->h );
+    display_timing_scaler_end();
 
     sdl2display_update_rect( r->x, r->y, r->w, r->h,
                              sdl2display_current_size,
@@ -912,10 +919,14 @@ uidisplay_frame_end( void )
 
   SDL_RenderClear( sdl2_renderer );
   SDL_RenderCopy( sdl2_renderer, sdl2_texture, NULL, NULL );
+  display_timing_presentation_begin();
   SDL_RenderPresent( sdl2_renderer );
+  display_timing_presentation_end();
 
   num_rects = 0;
   sdl2display_force_full_refresh = 0;
+
+  display_timing_frame_end();
 }
 
 int
