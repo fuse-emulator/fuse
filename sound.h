@@ -49,8 +49,8 @@ void sound_ula_levels( int mic_on, int beeper_on, int *mic_ampl,
 void sound_ula( libspectrum_dword at_tstates, int mic_on, int beeper_on );
 void sound_tape( libspectrum_dword at_tstates );
 
-/* Valid until the next sound_frame(). The two rendered ULA contributions are
- * deliberately separate so later output modes can process them independently.
+/* Valid until the next sound_frame(). Only the selected ULA path is rendered:
+ * the accessor for the inactive path returns NULL and its count is zero.
  */
 const libspectrum_signed_word *sound_ula_mic_output( void );
 const libspectrum_signed_word *sound_ula_beeper_output( void );

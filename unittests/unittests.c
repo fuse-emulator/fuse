@@ -63,6 +63,7 @@
 #include "settings.h"
 #include "sound.h"
 #include "sound/speaker_filter.h"
+#include "sound/ula_filter.h"
 #include "snapshot.h"
 #include "tape.h"
 #include "bitmap.h"
@@ -324,6 +325,76 @@ speaker_filter_test( void )
   for( i = 0; i < ARRAY_SIZE( output ); i++ )
     TEST_ASSERT( output[ i ] == speaker_filter_apply( &filter,
                                                        i == 0 ? 1.0 : 0.0 ) );
+
+  return 0;
+}
+
+static int
+ula_filter_test( void )
+{
+  static const int sample_rates[] = { 44100, 48000, 96000 };
+  static const double alpha_rise[] = { 0.4624040261175517,
+                                       0.43459915012074307,
+                                       0.24806858698465262 };
+  static const double alpha_fall[] = { 0.2805717781540314,
+                                       0.2610632971504549,
+                                       0.14038572438008856 };
+  static const double input[] = { 0.0, 12800.0, 12800.0, 0.0, 0.0 };
+  static const double expected[] = { 0.0, 3175.2779134035536,
+                                     5562.869121545511, 4781.921710285717,
+                                     4110.608167058385 };
+  ula_filter_t continuous, split, direction;
+  double continuous_output[ ARRAY_SIZE( input ) ];
+  double direction_state, expected_direction;
+  int i, rate;
+
+  TEST_ASSERT( ULA_FILTER_RISE_TAU == 36.53558495933805e-6 );
+  TEST_ASSERT( ULA_FILTER_FALL_TAU == 68.86073172982108e-6 );
+
+  for( rate = 0; rate < ARRAY_SIZE( sample_rates ); rate++ ) {
+    TEST_ASSERT( !ula_filter_configure( &continuous, sample_rates[ rate ] ) );
+    TEST_ASSERT( fabs( continuous.alpha_rise - alpha_rise[ rate ] ) < 1e-15 );
+    TEST_ASSERT( fabs( continuous.alpha_fall - alpha_fall[ rate ] ) < 1e-15 );
+  }
+  TEST_ASSERT( ula_filter_configure( &continuous, 0 ) );
+
+  TEST_ASSERT( !ula_filter_configure( &continuous, 96000 ) );
+  for( i = 0; i < ARRAY_SIZE( input ); i++ ) {
+    continuous_output[ i ] = ula_filter_apply( &continuous, input[ i ] );
+    TEST_ASSERT( fabs( continuous_output[ i ] - expected[ i ] ) < 1e-9 );
+  }
+
+  /* The first input initializes the stream exactly, as in the listening-test
+   * generator; reset must restore that same convention. */
+  ula_filter_reset( &continuous );
+  TEST_ASSERT( ula_filter_apply( &continuous, 1234.0 ) == 1234.0 );
+
+  TEST_ASSERT( !ula_filter_configure( &direction, 96000 ) );
+  ula_filter_apply( &direction, 0.0 );
+  TEST_ASSERT( fabs( ula_filter_apply( &direction, 100.0 ) -
+                     100.0 * direction.alpha_rise ) < 1e-14 );
+  ula_filter_reset( &direction );
+  ula_filter_apply( &direction, 100.0 );
+  TEST_ASSERT( fabs( ula_filter_apply( &direction, 0.0 ) -
+                     100.0 * ( 1.0 - direction.alpha_fall ) ) < 1e-14 );
+
+  /* This target fell from the prior input (100 to 90), but remains above the
+   * current state, so it must use the rise coefficient. */
+  ula_filter_reset( &direction );
+  ula_filter_apply( &direction, 0.0 );
+  direction_state = ula_filter_apply( &direction, 100.0 );
+  expected_direction = direction_state + direction.alpha_rise *
+                       ( 90.0 - direction_state );
+  TEST_ASSERT( fabs( ula_filter_apply( &direction, 90.0 ) -
+                     expected_direction ) < 1e-14 );
+
+  /* Persisting one state across arbitrary buffer boundaries must be identical
+   * to a single uninterrupted stream. */
+  TEST_ASSERT( !ula_filter_configure( &split, 96000 ) );
+  for( i = 0; i < 2; i++ )
+    TEST_ASSERT( ula_filter_apply( &split, input[ i ] ) == continuous_output[ i ] );
+  for( ; i < ARRAY_SIZE( input ); i++ )
+    TEST_ASSERT( ula_filter_apply( &split, input[ i ] ) == continuous_output[ i ] );
 
   return 0;
 }
@@ -2004,6 +2075,7 @@ unittests_run( void )
   r += contention_test();
   r += floating_bus_test();
   r += speaker_filter_test();
+  r += ula_filter_test();
   r += ula_sound_levels_test();
   r += floating_bus_merge_test();
   r += snapshot_copy_from_releases_keyboard_test();

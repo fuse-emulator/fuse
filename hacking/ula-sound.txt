@@ -18,13 +18,13 @@ ordinary D3-only port write is not made audible by the speaker path.  This
 preserves the distinction relevant to Fuse bug #501 rather than treating
 MIC-only as general speaker audio.
 
-There are two mono ULA Blip buffers and synths:
+There is one mono ULA Blip buffer and synth. At each ULA update it renders
+only the selected logical path; changing Speaker type clears its old Blip
+history and starts the newly selected path from the current ULA state. This
+avoids both PCM work and allocation for an inactive ULA path.
 
-  ula_mic_synth    -> ula_mic_buf
-  ula_beeper_synth -> ula_beeper_buf
-
-The MIC buffer represents the ULA output node and has the following steady
-levels for the ULA bits (D4:D3):
+The MIC path represents the ULA output node and has the following steady levels
+for the ULA bits (D4:D3):
 
   00  0
   01  SOUND_AMPL_TAPE
@@ -49,18 +49,41 @@ loading sound is disabled, the old policy of suppressing the MIC
 contribution during playback is also retained.
 
 AY, SpecDrum, Covox and SP0256 continue to render into the existing main
-left/right buffers.  The selected ULA signal is rendered once per frame and
-mixed identically into both final channels after the main buffers are
-rendered, preserving mono ULA routing without duplicate stereo synthesis or
-new inter-channel timing differences.  The rendered ULA PCM is available
-through sound_ula_mic_output() and sound_ula_beeper_output(), with their
-corresponding count accessors, until the next sound_frame().
+left/right buffers. Only the currently selected ULA path is submitted to a
+Blip synth, rendered, read, and processed each frame; the inactive path does
+no PCM or filter work. The selected ULA signal is mixed identically into both
+final channels after the main buffers are rendered, preserving mono ULA
+routing without duplicate stereo synthesis or new inter-channel timing
+differences. The rendered ULA PCM is available through
+sound_ula_mic_output() and sound_ula_beeper_output(), with their corresponding
+count accessors, until the next sound_frame().
 
 The Speaker type setting selects the final ULA contribution:
 
-  TV speaker  ula_mic_buf, unfiltered (the raw ULA/MIC socket output)
-  Beeper      ula_beeper_buf, filtered as the built-in speaker
-  Unfiltered  ula_beeper_buf, unfiltered internal-speaker drive
+  TV speaker  MIC path -> electrical pole
+  Beeper      internal-speaker path -> electrical pole -> built-in speaker model
+  Unfiltered  MIC path, with neither filter
+
+The electrical pole is the frozen asymmetric first-order candidate from a
+listening experiment which had respondants comparing recordings of real
+machines to candidate filters. It is an effective ULA electrical/MIC-output
+approximation, not a claim that the physical ULA circuit is one pole and not a
+model of the internal speaker. It operates on the generated post-Blip PCM, so
+Blip ringing deliberately participates in the choice of rise or fall
+coefficient. Its one state belongs to the selected ULA path. A new sound
+generator, explicit reset, or speaker-type selection initializes it from the
+first PCM target; state never resets at a frame boundary. This is the same
+convention used to generate the listening-test material, and avoids an
+artificial transition at the beginning of a stream.
+
+The frozen time constants are 36.53558495933805 us rising and
+68.86073172982108 us falling. At the real output sample rate Fs their
+coefficients are `-expm1( -1 / ( Fs * tau ) )`. For each input target x and
+persistent output y, the rise coefficient is used exactly when `x > y`; the
+fall coefficient is used otherwise, then `y += alpha * ( x - y )`. There is no
+additional gain, offset, clipping, resonator, or frequency-dependent tuning.
+It is applied before final ULA mixing, so AY, SpecDrum, Covox and SP0256 remain
+uncoloured.
 
 The built-in speaker model is a single second-order resonant high-pass.
 Research on original 16/48K speakers is incomplete and production variation is
@@ -77,7 +100,7 @@ transition, rather than a conventional narrow band-pass speaker.
 It uses a conventional RBJ/bilinear digital biquad at the runtime host sample
 rate. The nominal experimental parameters, defined in sound/speaker_filter.h,
 are f0 = 750 Hz and Q = 1/sqrt(2). The filter is applied only in the Beeper
-case, immediately before final PCM mixing; it never changes ula_mic_buf. Its
+case, immediately before final PCM mixing; it never changes raw ULA PCM. Its
 state is reset on audio/AY reset and when switching between filtered and
 unfiltered routes. This is a deliberately minimal acoustic model: it adds no
 high-frequency low-pass, EQ peaks, enclosure response or distortion.

@@ -41,6 +41,7 @@
 #include "peripherals/sound/sp0256.h"
 #include "sound/blipbuffer.h"
 #include "sound/speaker_filter.h"
+#include "sound/ula_filter.h"
 
 /* Do we have any of our sound devices available? */
 
@@ -96,23 +97,22 @@ struct ay_change_tag
 static struct ay_change_tag ay_change[ AY_CHANGE_MAX ];
 static int ay_change_count;
 
-/* The main buffers contain AY and peripheral sources. ULA output is kept in
- * separate mono buffers so it can acquire independent processing before it is
- * mixed into the final PCM frame. */
+/* The main buffers contain AY and peripheral sources. The selected ULA path
+ * has its own mono buffer, so it can acquire independent processing before it
+ * is mixed into the final PCM frame. */
 Blip_Buffer *left_buf = NULL;
 Blip_Buffer *right_buf = NULL;
-static Blip_Buffer *ula_mic_buf = NULL;
-static Blip_Buffer *ula_beeper_buf = NULL;
+static Blip_Buffer *ula_buf = NULL;
 blip_sample_t *samples = NULL;
-static blip_sample_t *ula_mic_samples = NULL;
-static blip_sample_t *ula_beeper_samples = NULL;
-static int ula_mic_output_count;
-static int ula_beeper_output_count;
+static blip_sample_t *ula_samples = NULL;
+static int ula_output_count;
 static speaker_filter_t ula_beeper_speaker_filter;
+static ula_filter_t ula_filter;
 static int ula_beeper_speaker_filter_active;
+static int ula_filter_speaker_type = -1;
+static int ula_synth_speaker_type = -1;
 
-static Blip_Synth *ula_mic_synth = NULL;
-static Blip_Synth *ula_beeper_synth = NULL;
+static Blip_Synth *ula_synth = NULL;
 
 /* The ULA MIC output is active low. Tape input is combined at the ULA node,
  * as it was by the old sound_beeper() state encoding. */
@@ -250,13 +250,9 @@ sound_init( const char *device )
   if( sound_stereo_ay != SOUND_STEREO_AY_NONE &&
       !sound_init_buffer( &right_buf ) )
     return;
-  if( !sound_init_buffer( &ula_mic_buf ) ) return;
-  if( !sound_init_buffer( &ula_beeper_buf ) ) return;
+  if( !sound_init_buffer( &ula_buf ) ) return;
 
-  ula_mic_synth = sound_init_synth( ula_mic_buf,
-                                    settings_current.volume_beeper );
-  ula_beeper_synth = sound_init_synth( ula_beeper_buf,
-                                       settings_current.volume_beeper );
+  ula_synth = sound_init_synth( ula_buf, settings_current.volume_beeper );
 
   ay_a_synth = new_Blip_Synth();
   blip_synth_set_volume( ay_a_synth,
@@ -357,11 +353,14 @@ sound_init( const char *device )
   if( speaker_filter_configure( &ula_beeper_speaker_filter,
                                 settings_current.sound_freq,
                                 SPEAKER_FILTER_DEFAULT_FREQUENCY,
-                                SPEAKER_FILTER_DEFAULT_Q ) ) {
-    ui_error( UI_ERROR_ERROR, "could not configure Spectrum speaker filter" );
+                                SPEAKER_FILTER_DEFAULT_Q ) ||
+      ula_filter_configure( &ula_filter, settings_current.sound_freq ) ) {
+    ui_error( UI_ERROR_ERROR, "could not configure Spectrum ULA filter" );
     sound_end();
     return;
   }
+  ula_filter_speaker_type = -1;
+  ula_synth_speaker_type = -1;
 
   sound_channels = ( sound_stereo_ay != SOUND_STEREO_AY_NONE ? 2 : 1 );
 
@@ -376,8 +375,7 @@ sound_init( const char *device )
   sound_framesiz++;
 
   samples = libspectrum_new0( blip_sample_t, sound_framesiz * sound_channels );
-  ula_mic_samples = libspectrum_new0( blip_sample_t, sound_framesiz );
-  ula_beeper_samples = libspectrum_new0( blip_sample_t, sound_framesiz );
+  ula_samples = libspectrum_new0( blip_sample_t, sound_framesiz );
   /* initialize movie settings... */
   movie_init_sound( settings_current.sound_freq, sound_stereo_ay );
 
@@ -404,8 +402,7 @@ void
 sound_end( void )
 {
   if( sound_enabled ) {
-    delete_Blip_Synth( &ula_mic_synth );
-    delete_Blip_Synth( &ula_beeper_synth );
+    delete_Blip_Synth( &ula_synth );
 
     delete_Blip_Synth( &ay_a_synth );
     delete_Blip_Synth( &ay_b_synth );
@@ -425,14 +422,12 @@ sound_end( void )
 
     delete_Blip_Buffer( &left_buf );
     delete_Blip_Buffer( &right_buf );
-    delete_Blip_Buffer( &ula_mic_buf );
-    delete_Blip_Buffer( &ula_beeper_buf );
+    delete_Blip_Buffer( &ula_buf );
 
     if( settings_current.sound ) 
       sound_lowlevel_end();
     libspectrum_free( samples );
-    libspectrum_free( ula_mic_samples );
-    libspectrum_free( ula_beeper_samples );
+    libspectrum_free( ula_samples );
     sound_enabled = 0;
   }
 }
@@ -704,7 +699,10 @@ sound_ay_reset( void )
     ay_tone_high[f] = 0;
   ay_tone_cycles = ay_env_cycles = 0;
   speaker_filter_reset( &ula_beeper_speaker_filter );
+  ula_filter_reset( &ula_filter );
   ula_beeper_speaker_filter_active = 0;
+  ula_filter_speaker_type = -1;
+  ula_synth_speaker_type = -1;
 }
 
 /*
@@ -759,29 +757,32 @@ sound_sp0256_write( libspectrum_dword at_tstates, libspectrum_signed_word val )
 static void
 sound_mix_ula_speaker( long count )
 {
-  const blip_sample_t *ula_samples;
-  int ula_output_count;
   int filter_speaker = 0;
+  int filter_ula = 0;
   int speaker_type = option_enumerate_sound_speaker_type();
   long i;
   long frames = sound_channels == 2 ? count / 2 : count;
 
   switch( speaker_type ) {
-  case SOUND_SPEAKER_TYPE_TV:   /* TV speaker: raw ULA/MIC socket output */
-    ula_samples = ula_mic_samples;
-    ula_output_count = ula_mic_output_count;
+  case SOUND_SPEAKER_TYPE_TV:   /* TV speaker: ULA/MIC socket output */
+    filter_ula = 1;
     break;
   case SOUND_SPEAKER_TYPE_BEEPER: /* Beeper: internal speaker response */
-    ula_samples = ula_beeper_samples;
-    ula_output_count = ula_beeper_output_count;
+    filter_ula = 1;
     filter_speaker = 1;
     break;
-  case SOUND_SPEAKER_TYPE_UNFILTERED: /* Unfiltered: raw speaker drive */
-    ula_samples = ula_beeper_samples;
-    ula_output_count = ula_beeper_output_count;
+  case SOUND_SPEAKER_TYPE_UNFILTERED: /* Unfiltered: raw ULA/MIC output */
     break;
   default:
     fuse_abort();
+  }
+
+  if( speaker_type != ula_filter_speaker_type ) {
+    /* A newly selected stream follows the listening-test convention: its
+     * first target initializes the pole, rather than inheriting an inactive
+     * stream's old state. */
+    if( filter_ula ) ula_filter_reset( &ula_filter );
+    ula_filter_speaker_type = speaker_type;
   }
 
   if( filter_speaker != ula_beeper_speaker_filter_active ) {
@@ -791,10 +792,12 @@ sound_mix_ula_speaker( long count )
 
   for( i = 0; i < frames && i < ula_output_count; i++ ) {
     int channel;
-    long ula_sample = ula_samples[i];
+    double ula_sample = ula_samples[i];
 
-    /* The MIC buffer remains the socket's electrical output. Only the
-     * separately-rendered internal-speaker path acquires this response. */
+    if( filter_ula ) ula_sample = ula_filter_apply( &ula_filter, ula_sample );
+
+    /* The acoustic speaker model follows the electrical ULA pole and never
+     * affects the MIC socket path. */
     if( filter_speaker )
       ula_sample = speaker_filter_apply( &ula_beeper_speaker_filter,
                                          ula_sample );
@@ -823,8 +826,7 @@ sound_frame( void )
   sound_ay_overlay();
 
   blip_buffer_end_frame( left_buf, machine_current->timings.tstates_per_frame );
-  blip_buffer_end_frame( ula_mic_buf, machine_current->timings.tstates_per_frame );
-  blip_buffer_end_frame( ula_beeper_buf, machine_current->timings.tstates_per_frame );
+  blip_buffer_end_frame( ula_buf, machine_current->timings.tstates_per_frame );
 
   if( sound_stereo_ay != SOUND_STEREO_AY_NONE ) {
     blip_buffer_end_frame( right_buf, machine_current->timings.tstates_per_frame );
@@ -839,12 +841,8 @@ sound_frame( void )
                                       BLIP_BUFFER_DEF_STEREO );
   }
 
-  ula_mic_output_count = blip_buffer_read_samples( ula_mic_buf,
-                                                    ula_mic_samples,
-                                                    sound_framesiz, 0 );
-  ula_beeper_output_count = blip_buffer_read_samples( ula_beeper_buf,
-                                                       ula_beeper_samples,
-                                                       sound_framesiz, 0 );
+  ula_output_count = blip_buffer_read_samples( ula_buf, ula_samples,
+                                                sound_framesiz, 0 );
   sound_mix_ula_speaker( count );
 
   if( settings_current.sound )
@@ -870,6 +868,7 @@ sound_ula_update( libspectrum_dword at_tstates )
 {
   int mic_on = ula_mic_on || tape_microphone;
   int mic_ampl, beeper_ampl;
+  int speaker_type = option_enumerate_sound_speaker_type();
 
   /* This is the ULA output-node path. Unlike the speaker path, its MIC-only
    * state is retained for a future MIC output selection. */
@@ -885,8 +884,19 @@ sound_ula_update( libspectrum_dword at_tstates )
 
   if( !sound_enabled ) return;
 
-  blip_synth_update( ula_mic_synth, at_tstates, mic_ampl );
-  blip_synth_update( ula_beeper_synth, at_tstates, beeper_ampl );
+  if( speaker_type != ula_synth_speaker_type ) {
+    /* The inactive stream is deliberately not rendered. Discard its old Blip
+     * history before it becomes active, then begin the newly selected path at
+     * the current ULA state. */
+    blip_buffer_clear( ula_buf, BLIP_BUFFER_DEF_ENTIRE_BUFF );
+    blip_synth_set_output( ula_synth, ula_buf );
+    ula_synth_speaker_type = speaker_type;
+  }
+
+  if( speaker_type == SOUND_SPEAKER_TYPE_BEEPER )
+    blip_synth_update( ula_synth, at_tstates, beeper_ampl );
+  else
+    blip_synth_update( ula_synth, at_tstates, mic_ampl );
 }
 
 void
@@ -906,23 +916,27 @@ sound_tape( libspectrum_dword at_tstates )
 const libspectrum_signed_word *
 sound_ula_mic_output( void )
 {
-  return ula_mic_samples;
+  return ula_synth_speaker_type == SOUND_SPEAKER_TYPE_BEEPER ? NULL :
+         ula_samples;
 }
 
 const libspectrum_signed_word *
 sound_ula_beeper_output( void )
 {
-  return ula_beeper_samples;
+  return ula_synth_speaker_type == SOUND_SPEAKER_TYPE_BEEPER ? ula_samples :
+         NULL;
 }
 
 int
 sound_ula_mic_output_count( void )
 {
-  return ula_mic_output_count;
+  return ula_synth_speaker_type == SOUND_SPEAKER_TYPE_BEEPER ? 0 :
+         ula_output_count;
 }
 
 int
 sound_ula_beeper_output_count( void )
 {
-  return ula_beeper_output_count;
+  return ula_synth_speaker_type == SOUND_SPEAKER_TYPE_BEEPER ?
+         ula_output_count : 0;
 }
