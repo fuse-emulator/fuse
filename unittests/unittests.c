@@ -26,6 +26,7 @@
 #include "config.h"
 
 #include <fcntl.h>
+#include <math.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -61,6 +62,7 @@
 #include "pokefinder/pokefinder.h"
 #include "settings.h"
 #include "sound.h"
+#include "sound/speaker_filter.h"
 #include "snapshot.h"
 #include "tape.h"
 #include "bitmap.h"
@@ -247,6 +249,84 @@ floating_bus_test( void )
 }
 
 #define TEST_ASSERT(x) do { if( !(x) ) { printf("Test assertion failed at %s:%d: %s\n", __FILE__, __LINE__, #x ); return 1; } } while( 0 )
+
+static double
+speaker_filter_response( const speaker_filter_t *filter, double frequency,
+                         int sample_rate )
+{
+  double omega = 2.0 * 3.14159265358979323846 * frequency / sample_rate;
+  double cosine = cos( omega );
+  double sine = sin( omega );
+  double numerator_real = filter->b0 + filter->b1 * cosine +
+                          filter->b2 * cos( 2.0 * omega );
+  double numerator_imaginary = -filter->b1 * sine -
+                               filter->b2 * sin( 2.0 * omega );
+  double denominator_real = 1.0 + filter->a1 * cosine +
+                            filter->a2 * cos( 2.0 * omega );
+  double denominator_imaginary = -filter->a1 * sine -
+                                 filter->a2 * sin( 2.0 * omega );
+
+  return hypot( numerator_real, numerator_imaginary ) /
+         hypot( denominator_real, denominator_imaginary );
+}
+
+static int
+speaker_filter_test( void )
+{
+  static const int sample_rates[] = { 44100, 48000, 96000 };
+  speaker_filter_t filter;
+  double output[ 16 ];
+  int i, rate;
+
+  for( rate = 0; rate < ARRAY_SIZE( sample_rates ); rate++ ) {
+    TEST_ASSERT( !speaker_filter_configure( &filter, sample_rates[ rate ],
+                                            SPEAKER_FILTER_DEFAULT_FREQUENCY,
+                                            SPEAKER_FILTER_DEFAULT_Q ) );
+    TEST_ASSERT( isfinite( filter.b0 ) && isfinite( filter.b1 ) &&
+                 isfinite( filter.b2 ) && isfinite( filter.a1 ) &&
+                 isfinite( filter.a2 ) );
+    TEST_ASSERT( fabs( filter.b0 ) < 2.0 && fabs( filter.b1 ) < 2.0 &&
+                 fabs( filter.b2 ) < 2.0 && fabs( filter.a1 ) < 2.0 &&
+                 fabs( filter.a2 ) < 2.0 );
+
+    /* The digital response retains the intended acoustic high-pass shape at
+     * each supported host rate without an artificial HF roll-off. */
+    TEST_ASSERT( speaker_filter_response( &filter, 100.0,
+                                           sample_rates[ rate ] ) < 0.03 );
+    TEST_ASSERT( speaker_filter_response( &filter, 200.0,
+                                           sample_rates[ rate ] ) < 0.1 );
+    TEST_ASSERT( speaker_filter_response( &filter, 750.0,
+                                           sample_rates[ rate ] ) > 0.65 );
+    TEST_ASSERT( speaker_filter_response( &filter, 750.0,
+                                           sample_rates[ rate ] ) < 0.75 );
+    TEST_ASSERT( speaker_filter_response( &filter, 1000.0,
+                                           sample_rates[ rate ] ) > 0.8 );
+    TEST_ASSERT( speaker_filter_response( &filter, 2000.0,
+                                           sample_rates[ rate ] ) > 0.95 );
+    TEST_ASSERT( speaker_filter_response( &filter, 3200.0,
+                                           sample_rates[ rate ] ) > 0.98 );
+    TEST_ASSERT( speaker_filter_response( &filter, 6400.0,
+                                           sample_rates[ rate ] ) > 0.98 );
+  }
+
+  TEST_ASSERT( speaker_filter_configure( &filter, 48000, 0.0,
+                                         SPEAKER_FILTER_DEFAULT_Q ) );
+  TEST_ASSERT( speaker_filter_configure( &filter, 48000,
+                                         SPEAKER_FILTER_DEFAULT_FREQUENCY,
+                                         0.0 ) );
+
+  TEST_ASSERT( !speaker_filter_configure( &filter, 48000,
+                                          SPEAKER_FILTER_DEFAULT_FREQUENCY,
+                                          SPEAKER_FILTER_DEFAULT_Q ) );
+  for( i = 0; i < ARRAY_SIZE( output ); i++ )
+    output[ i ] = speaker_filter_apply( &filter, i == 0 ? 1.0 : 0.0 );
+  speaker_filter_reset( &filter );
+  for( i = 0; i < ARRAY_SIZE( output ); i++ )
+    TEST_ASSERT( output[ i ] == speaker_filter_apply( &filter,
+                                                       i == 0 ? 1.0 : 0.0 ) );
+
+  return 0;
+}
 
 static int
 ula_sound_levels_test( void )
@@ -1923,6 +2003,7 @@ unittests_run( void )
 
   r += contention_test();
   r += floating_bus_test();
+  r += speaker_filter_test();
   r += ula_sound_levels_test();
   r += floating_bus_merge_test();
   r += snapshot_copy_from_releases_keyboard_test();

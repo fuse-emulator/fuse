@@ -49,17 +49,35 @@ loading sound is disabled, the old policy of suppressing the MIC
 contribution during playback is also retained.
 
 AY, SpecDrum, Covox and SP0256 continue to render into the existing main
-left/right buffers.  The beeper buffer is rendered once per frame and mixed
-identically into both final channels after the main buffers are rendered; the
-MIC buffer is rendered independently but is not selected for final output yet.
-This preserves mono ULA routing without duplicate stereo synthesis or new
-inter-channel timing differences.  The rendered ULA PCM is available through
-sound_ula_mic_output() and sound_ula_beeper_output(), with their corresponding
-count accessors, until the next sound_frame().
+left/right buffers.  The selected ULA signal is rendered once per frame and
+mixed identically into both final channels after the main buffers are
+rendered, preserving mono ULA routing without duplicate stereo synthesis or
+new inter-channel timing differences.  The rendered ULA PCM is available
+through sound_ula_mic_output() and sound_ula_beeper_output(), with their
+corresponding count accessors, until the next sound_frame().
 
-Future electrical response stages belong immediately after each ULA buffer is
-rendered and before sound_mix_ula_beeper().  A MIC output mode can select or
-mix the MIC PCM at that boundary.  Built-in-speaker colouring belongs only on
-the beeper PCM immediately before that mix.  No analogue response or speaker
-colouring is implemented here; this is an emulator signal-topology boundary,
-not a transistor-level ULA model.
+The Speaker type setting selects the final ULA contribution:
+
+  TV speaker  ula_mic_buf, unfiltered (the raw ULA/MIC socket output)
+  Beeper      ula_beeper_buf, filtered as the built-in speaker
+  Unfiltered  ula_beeper_buf, unfiltered internal-speaker drive
+
+The built-in speaker model is a single second-order resonant high-pass.
+Research on original 16/48K speakers is incomplete and production variation is
+likely. The available evidence describes a very small moving-coil transducer
+with a plastic/Mylar-like diaphragm. Issue 1/2 machines used nominally 200-ohm
+units and Issue 3-6 nominally 40-ohm units, but their physical speakers appear
+broadly similar. Comparable miniature Mylar speakers with roughly 10-13 mm
+moving systems have a dominant mechanical resonance in the several-hundred-Hz
+to approximately 1 kHz range. This supports modelling that low-frequency
+transition, rather than a conventional narrow band-pass speaker.
+
+  H(s) = s^2 / (s^2 + (w0 / Q)s + w0^2)
+
+It uses a conventional RBJ/bilinear digital biquad at the runtime host sample
+rate. The nominal experimental parameters, defined in sound/speaker_filter.h,
+are f0 = 750 Hz and Q = 1/sqrt(2). The filter is applied only in the Beeper
+case, immediately before final PCM mixing; it never changes ula_mic_buf. Its
+state is reset on audio/AY reset and when switching between filtered and
+unfiltered routes. This is a deliberately minimal acoustic model: it adds no
+high-frequency low-pass, EQ peaks, enclosure response or distortion.

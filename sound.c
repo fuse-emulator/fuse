@@ -40,6 +40,7 @@
 #include "ui/ui.h"
 #include "peripherals/sound/sp0256.h"
 #include "sound/blipbuffer.h"
+#include "sound/speaker_filter.h"
 
 /* Do we have any of our sound devices available? */
 
@@ -49,6 +50,12 @@ int sound_enabled = 0;		/* Are we currently using the sound card */
 static int sound_enabled_ever = 0; /* whether sound has *ever* been in use; see
 				      sound_ay_write() and sound_ay_reset() */
 int sound_stereo_ay = SOUND_STEREO_AY_NONE; /* local copy of settings_current.stereo_ay */
+
+enum sound_speaker_type {
+  SOUND_SPEAKER_TYPE_TV,
+  SOUND_SPEAKER_TYPE_BEEPER,
+  SOUND_SPEAKER_TYPE_UNFILTERED
+};
 
 /* assume all three tone channels together match the beeper volume (ish).
  * Must be <=127 for all channels; 50+2+(24*3) = 124.
@@ -101,6 +108,8 @@ static blip_sample_t *ula_mic_samples = NULL;
 static blip_sample_t *ula_beeper_samples = NULL;
 static int ula_mic_output_count;
 static int ula_beeper_output_count;
+static speaker_filter_t ula_beeper_speaker_filter;
+static int ula_beeper_speaker_filter_active;
 
 static Blip_Synth *ula_mic_synth = NULL;
 static Blip_Synth *ula_beeper_synth = NULL;
@@ -344,6 +353,15 @@ sound_init( const char *device )
   }
 
   sound_enabled = sound_enabled_ever = 1;
+
+  if( speaker_filter_configure( &ula_beeper_speaker_filter,
+                                settings_current.sound_freq,
+                                SPEAKER_FILTER_DEFAULT_FREQUENCY,
+                                SPEAKER_FILTER_DEFAULT_Q ) ) {
+    ui_error( UI_ERROR_ERROR, "could not configure Spectrum speaker filter" );
+    sound_end();
+    return;
+  }
 
   sound_channels = ( sound_stereo_ay != SOUND_STEREO_AY_NONE ? 2 : 1 );
 
@@ -685,6 +703,8 @@ sound_ay_reset( void )
   for( f = 0; f < AY_CHANNELS; f++ )
     ay_tone_high[f] = 0;
   ay_tone_cycles = ay_env_cycles = 0;
+  speaker_filter_reset( &ula_beeper_speaker_filter );
+  ula_beeper_speaker_filter_active = 0;
 }
 
 /*
@@ -737,16 +757,50 @@ sound_sp0256_write( libspectrum_dword at_tstates, libspectrum_signed_word val )
 }
 
 static void
-sound_mix_ula_beeper( long count )
+sound_mix_ula_speaker( long count )
 {
+  const blip_sample_t *ula_samples;
+  int ula_output_count;
+  int filter_speaker = 0;
+  int speaker_type = option_enumerate_sound_speaker_type();
   long i;
   long frames = sound_channels == 2 ? count / 2 : count;
 
-  for( i = 0; i < frames && i < ula_beeper_output_count; i++ ) {
+  switch( speaker_type ) {
+  case SOUND_SPEAKER_TYPE_TV:   /* TV speaker: raw ULA/MIC socket output */
+    ula_samples = ula_mic_samples;
+    ula_output_count = ula_mic_output_count;
+    break;
+  case SOUND_SPEAKER_TYPE_BEEPER: /* Beeper: internal speaker response */
+    ula_samples = ula_beeper_samples;
+    ula_output_count = ula_beeper_output_count;
+    filter_speaker = 1;
+    break;
+  case SOUND_SPEAKER_TYPE_UNFILTERED: /* Unfiltered: raw speaker drive */
+    ula_samples = ula_beeper_samples;
+    ula_output_count = ula_beeper_output_count;
+    break;
+  default:
+    fuse_abort();
+  }
+
+  if( filter_speaker != ula_beeper_speaker_filter_active ) {
+    speaker_filter_reset( &ula_beeper_speaker_filter );
+    ula_beeper_speaker_filter_active = filter_speaker;
+  }
+
+  for( i = 0; i < frames && i < ula_output_count; i++ ) {
     int channel;
+    long ula_sample = ula_samples[i];
+
+    /* The MIC buffer remains the socket's electrical output. Only the
+     * separately-rendered internal-speaker path acquires this response. */
+    if( filter_speaker )
+      ula_sample = speaker_filter_apply( &ula_beeper_speaker_filter,
+                                         ula_sample );
 
     for( channel = 0; channel < sound_channels; channel++ ) {
-      long sample = samples[ i * sound_channels + channel ] + ula_beeper_samples[i];
+      long sample = samples[ i * sound_channels + channel ] + ula_sample;
 
       if( sample > 0x7fff ) sample = 0x7fff;
       else if( sample < -0x8000 ) sample = -0x8000;
@@ -791,7 +845,7 @@ sound_frame( void )
   ula_beeper_output_count = blip_buffer_read_samples( ula_beeper_buf,
                                                        ula_beeper_samples,
                                                        sound_framesiz, 0 );
-  sound_mix_ula_beeper( count );
+  sound_mix_ula_speaker( count );
 
   if( settings_current.sound )
     sound_lowlevel_frame( samples, count );
