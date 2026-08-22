@@ -54,8 +54,6 @@ int sound_stereo_ay = SOUND_STEREO_AY_NONE; /* local copy of settings_current.st
  * Must be <=127 for all channels; 50+2+(24*3) = 124.
  * (Now scaled up for 16-bit.)
  */
-#define AMPL_BEEPER		( 50 * 256)
-#define AMPL_TAPE		( 2 * 256 )
 #define AMPL_AY_TONE		( 24 * 256 )	/* three of these */
 
 /* max. number of sub-frame AY port writes allowed;
@@ -91,11 +89,26 @@ struct ay_change_tag
 static struct ay_change_tag ay_change[ AY_CHANGE_MAX ];
 static int ay_change_count;
 
+/* The main buffers contain AY and peripheral sources. ULA output is kept in
+ * separate mono buffers so it can acquire independent processing before it is
+ * mixed into the final PCM frame. */
 Blip_Buffer *left_buf = NULL;
 Blip_Buffer *right_buf = NULL;
+static Blip_Buffer *ula_mic_buf = NULL;
+static Blip_Buffer *ula_beeper_buf = NULL;
 blip_sample_t *samples = NULL;
+static blip_sample_t *ula_mic_samples = NULL;
+static blip_sample_t *ula_beeper_samples = NULL;
+static int ula_mic_output_count;
+static int ula_beeper_output_count;
 
-Blip_Synth *left_beeper_synth = NULL, *right_beeper_synth = NULL;
+static Blip_Synth *ula_mic_synth = NULL;
+static Blip_Synth *ula_beeper_synth = NULL;
+
+/* The ULA MIC output is active low. Tape input is combined at the ULA node,
+ * as it was by the old sound_beeper() state encoding. */
+static int ula_mic_on;
+static int ula_beeper_on;
 
 Blip_Synth *ay_a_synth = NULL, *ay_b_synth = NULL, *ay_c_synth = NULL;
 Blip_Synth *ay_a_synth_r = NULL, *ay_b_synth_r = NULL, *ay_c_synth_r = NULL;
@@ -124,7 +137,7 @@ sound_get_effective_processor_speed( void )
 }
 
 static int
-sound_init_blip( Blip_Buffer **buf, Blip_Synth **synth )
+sound_init_buffer( Blip_Buffer **buf )
 {
   *buf = new_Blip_Buffer();
   blip_buffer_set_clock_rate( *buf, sound_get_effective_processor_speed() );
@@ -137,15 +150,20 @@ sound_init_blip( Blip_Buffer **buf, Blip_Synth **synth )
     return 0;
   }
 
-  *synth = new_Blip_Synth();
-
-  blip_synth_set_volume( *synth, sound_get_volume( settings_current.volume_beeper ) );
-  blip_synth_set_output( *synth, *buf );
-
   blip_buffer_set_bass_freq( *buf, 0 );
-  blip_synth_set_treble_eq( *synth, 0.0 );
-
   return 1;
+}
+
+static Blip_Synth *
+sound_init_synth( Blip_Buffer *buf, int volume )
+{
+  Blip_Synth *synth = new_Blip_Synth();
+
+  blip_synth_set_volume( synth, sound_get_volume( volume ) );
+  blip_synth_set_output( synth, buf );
+  blip_synth_set_treble_eq( synth, 0.0 );
+
+  return synth;
 }
 
 static void
@@ -219,10 +237,17 @@ sound_init( const char *device )
                            &sound_stereo_ay ) )
     return;
 
-  if( !sound_init_blip(&left_buf, &left_beeper_synth) ) return;
+  if( !sound_init_buffer( &left_buf ) ) return;
   if( sound_stereo_ay != SOUND_STEREO_AY_NONE &&
-      !sound_init_blip(&right_buf, &right_beeper_synth) )
+      !sound_init_buffer( &right_buf ) )
     return;
+  if( !sound_init_buffer( &ula_mic_buf ) ) return;
+  if( !sound_init_buffer( &ula_beeper_buf ) ) return;
+
+  ula_mic_synth = sound_init_synth( ula_mic_buf,
+                                    settings_current.volume_beeper );
+  ula_beeper_synth = sound_init_synth( ula_beeper_buf,
+                                       settings_current.volume_beeper );
 
   ay_a_synth = new_Blip_Synth();
   blip_synth_set_volume( ay_a_synth,
@@ -333,6 +358,8 @@ sound_init( const char *device )
   sound_framesiz++;
 
   samples = libspectrum_new0( blip_sample_t, sound_framesiz * sound_channels );
+  ula_mic_samples = libspectrum_new0( blip_sample_t, sound_framesiz );
+  ula_beeper_samples = libspectrum_new0( blip_sample_t, sound_framesiz );
   /* initialize movie settings... */
   movie_init_sound( settings_current.sound_freq, sound_stereo_ay );
 
@@ -359,8 +386,8 @@ void
 sound_end( void )
 {
   if( sound_enabled ) {
-    delete_Blip_Synth( &left_beeper_synth );
-    delete_Blip_Synth( &right_beeper_synth );
+    delete_Blip_Synth( &ula_mic_synth );
+    delete_Blip_Synth( &ula_beeper_synth );
 
     delete_Blip_Synth( &ay_a_synth );
     delete_Blip_Synth( &ay_b_synth );
@@ -380,10 +407,14 @@ sound_end( void )
 
     delete_Blip_Buffer( &left_buf );
     delete_Blip_Buffer( &right_buf );
+    delete_Blip_Buffer( &ula_mic_buf );
+    delete_Blip_Buffer( &ula_beeper_buf );
 
     if( settings_current.sound ) 
       sound_lowlevel_end();
     libspectrum_free( samples );
+    libspectrum_free( ula_mic_samples );
+    libspectrum_free( ula_beeper_samples );
     sound_enabled = 0;
   }
 }
@@ -705,6 +736,25 @@ sound_sp0256_write( libspectrum_dword at_tstates, libspectrum_signed_word val )
   }
 }
 
+static void
+sound_mix_ula_beeper( long count )
+{
+  long i;
+  long frames = sound_channels == 2 ? count / 2 : count;
+
+  for( i = 0; i < frames && i < ula_beeper_output_count; i++ ) {
+    int channel;
+
+    for( channel = 0; channel < sound_channels; channel++ ) {
+      long sample = samples[ i * sound_channels + channel ] + ula_beeper_samples[i];
+
+      if( sample > 0x7fff ) sample = 0x7fff;
+      else if( sample < -0x8000 ) sample = -0x8000;
+      samples[ i * sound_channels + channel ] = sample;
+    }
+  }
+}
+
 void
 sound_frame( void )
 {
@@ -719,6 +769,8 @@ sound_frame( void )
   sound_ay_overlay();
 
   blip_buffer_end_frame( left_buf, machine_current->timings.tstates_per_frame );
+  blip_buffer_end_frame( ula_mic_buf, machine_current->timings.tstates_per_frame );
+  blip_buffer_end_frame( ula_beeper_buf, machine_current->timings.tstates_per_frame );
 
   if( sound_stereo_ay != SOUND_STEREO_AY_NONE ) {
     blip_buffer_end_frame( right_buf, machine_current->timings.tstates_per_frame );
@@ -729,10 +781,19 @@ sound_frame( void )
     blip_buffer_read_samples( right_buf, samples + 1, count, 1 );
     count <<= 1;
   } else {
-    count = blip_buffer_read_samples( left_buf, samples, sound_framesiz, BLIP_BUFFER_DEF_STEREO );
+    count = blip_buffer_read_samples( left_buf, samples, sound_framesiz,
+                                      BLIP_BUFFER_DEF_STEREO );
   }
 
-  if( settings_current.sound ) 
+  ula_mic_output_count = blip_buffer_read_samples( ula_mic_buf,
+                                                    ula_mic_samples,
+                                                    sound_framesiz, 0 );
+  ula_beeper_output_count = blip_buffer_read_samples( ula_beeper_buf,
+                                                       ula_beeper_samples,
+                                                       sound_framesiz, 0 );
+  sound_mix_ula_beeper( count );
+
+  if( settings_current.sound )
     sound_lowlevel_frame( samples, count );
 
   if( movie_recording )
@@ -741,26 +802,73 @@ sound_frame( void )
 }
 
 void
-sound_beeper( libspectrum_dword at_tstates, int on )
+sound_ula_levels( int mic_on, int beeper_on, int *mic_ampl,
+                  int *beeper_ampl )
 {
-  static int beeper_ampl[] = { 0, AMPL_TAPE, AMPL_BEEPER,
-                               AMPL_BEEPER+AMPL_TAPE };
-  int val;
+  *mic_ampl = ( mic_on ? SOUND_AMPL_TAPE : 0 ) +
+              ( beeper_on ? SOUND_AMPL_BEEPER : 0 );
+  *beeper_ampl = beeper_on ? SOUND_AMPL_BEEPER +
+                  ( mic_on ? SOUND_AMPL_TAPE : 0 ) : 0;
+}
+
+static void
+sound_ula_update( libspectrum_dword at_tstates )
+{
+  int mic_on = ula_mic_on || tape_microphone;
+  int mic_ampl, beeper_ampl;
+
+  /* This is the ULA output-node path. Unlike the speaker path, its MIC-only
+   * state is retained for a future MIC output selection. */
+  sound_ula_levels( mic_on, ula_beeper_on, &mic_ampl, &beeper_ampl );
+
+  /* Preserve the legacy tape-loading policy on the speaker path. Timex
+   * machines have no loading noise; disabling it also removed the MIC
+   * contribution while a tape was playing. */
+  if( tape_is_playing() &&
+      ( !settings_current.sound_load || machine_current->timex ) ) {
+    beeper_ampl = ula_beeper_on ? SOUND_AMPL_BEEPER : 0;
+  }
 
   if( !sound_enabled ) return;
 
-  if( tape_is_playing() ) {
-    /* Timex machines have no loading noise */
-    if( !settings_current.sound_load || machine_current->timex ) on = on & 0x02;
-  } else {
-    /* ULA book says that MIC only isn't enough to drive the speaker as output
-       voltage is below the 1.4v threshold */
-    if( on == 1 ) on = 0;
-  }
+  blip_synth_update( ula_mic_synth, at_tstates, mic_ampl );
+  blip_synth_update( ula_beeper_synth, at_tstates, beeper_ampl );
+}
 
-  val = beeper_ampl[on];
+void
+sound_ula( libspectrum_dword at_tstates, int mic_on, int beeper_on )
+{
+  ula_mic_on = !!mic_on;
+  ula_beeper_on = !!beeper_on;
+  sound_ula_update( at_tstates );
+}
 
-  blip_synth_update( left_beeper_synth, at_tstates, val );
-  if( sound_stereo_ay != SOUND_STEREO_AY_NONE )
-    blip_synth_update( right_beeper_synth, at_tstates, val );
+void
+sound_tape( libspectrum_dword at_tstates )
+{
+  sound_ula_update( at_tstates );
+}
+
+const libspectrum_signed_word *
+sound_ula_mic_output( void )
+{
+  return ula_mic_samples;
+}
+
+const libspectrum_signed_word *
+sound_ula_beeper_output( void )
+{
+  return ula_beeper_samples;
+}
+
+int
+sound_ula_mic_output_count( void )
+{
+  return ula_mic_output_count;
+}
+
+int
+sound_ula_beeper_output_count( void )
+{
+  return ula_beeper_output_count;
 }

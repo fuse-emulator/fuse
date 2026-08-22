@@ -916,7 +916,7 @@ tape_next_edge( libspectrum_dword last_tstates, int from_acceleration )
     }
   }
 
-  sound_beeper( last_tstates, tape_microphone );
+  sound_tape( last_tstates );
 
   /* If we've been requested to stop the tape, do it on the next tape
      event so that this final edge (e.g. the embedded pause at the end

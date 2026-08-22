@@ -1,0 +1,65 @@
+ULA sound paths
+===============
+
+ULA port writes carry two separate audio signals: D3 (MIC, active low in the
+port value) and D4 (EAR/beeper).  They used to be encoded into a two-bit index
+at the ULA write site and passed to sound_beeper().  That function selected a
+single amplitude table and sent it to the same left/right Blip_Buffer objects
+as AY and peripheral audio.  It also suppressed MIC-only output except while
+playing a tape with loading sound enabled.
+
+sound_ula() now retains the raw logical ULA states until sound_ula_update().
+The tape EAR input remains a separate input; it is combined with D3 only at the
+ULA output node, as in the former implementation.  Tape edge events call
+sound_tape() to render that node at their exact emulated tstate.  This keeps
+ROM tape load/save semantics separate from the D3 logical state.  In
+particular, tape saving continues to use the ULA's raw D3 state, while an
+ordinary D3-only port write is not made audible by the speaker path.  This
+preserves the distinction relevant to Fuse bug #501 rather than treating
+MIC-only as general speaker audio.
+
+There are two mono ULA Blip buffers and synths:
+
+  ula_mic_synth    -> ula_mic_buf
+  ula_beeper_synth -> ula_beeper_buf
+
+The MIC buffer represents the ULA output node and has the following steady
+levels for the ULA bits (D4:D3):
+
+  00  0
+  01  SOUND_AMPL_TAPE
+  10  SOUND_AMPL_BEEPER
+  11  SOUND_AMPL_BEEPER + SOUND_AMPL_TAPE
+
+Thus the electrical MIC-only state is retained.  The beeper buffer represents
+the drive to the internal speaker and, without tape playback loading sound,
+has these levels:
+
+  00  0
+  01  0
+  10  SOUND_AMPL_BEEPER
+  11  SOUND_AMPL_BEEPER + SOUND_AMPL_TAPE
+
+MIC-only is suppressed here by explicit threshold policy, not by discarding
+D3.  D3 still adds SOUND_AMPL_TAPE when D4 is high, so 10 and 11 remain
+distinct. SOUND_AMPL_BEEPER is 50 * 256 and SOUND_AMPL_TAPE is 2 * 256,
+retaining the 50:2 relationship.  The existing optional tape loading sound
+is retained only while a tape is playing (and is disabled for Timex).  When
+loading sound is disabled, the old policy of suppressing the MIC
+contribution during playback is also retained.
+
+AY, SpecDrum, Covox and SP0256 continue to render into the existing main
+left/right buffers.  The beeper buffer is rendered once per frame and mixed
+identically into both final channels after the main buffers are rendered; the
+MIC buffer is rendered independently but is not selected for final output yet.
+This preserves mono ULA routing without duplicate stereo synthesis or new
+inter-channel timing differences.  The rendered ULA PCM is available through
+sound_ula_mic_output() and sound_ula_beeper_output(), with their corresponding
+count accessors, until the next sound_frame().
+
+Future electrical response stages belong immediately after each ULA buffer is
+rendered and before sound_mix_ula_beeper().  A MIC output mode can select or
+mix the MIC PCM at that boundary.  Built-in-speaker colouring belongs only on
+the beeper PCM immediately before that mix.  No analogue response or speaker
+colouring is implemented here; this is an emulator signal-topology boundary,
+not a transistor-level ULA model.

@@ -60,6 +60,7 @@
 #include "peripherals/usource.h"
 #include "pokefinder/pokefinder.h"
 #include "settings.h"
+#include "sound.h"
 #include "snapshot.h"
 #include "tape.h"
 #include "bitmap.h"
@@ -246,6 +247,53 @@ floating_bus_test( void )
 }
 
 #define TEST_ASSERT(x) do { if( !(x) ) { printf("Test assertion failed at %s:%d: %s\n", __FILE__, __LINE__, #x ); return 1; } } while( 0 )
+
+static int
+ula_sound_levels_test( void )
+{
+  int mic_ampl, beeper_ampl;
+
+  sound_ula_levels( 0, 0, &mic_ampl, &beeper_ampl );
+  TEST_ASSERT( mic_ampl == 0 );
+  TEST_ASSERT( beeper_ampl == 0 );
+
+  sound_ula_levels( 1, 0, &mic_ampl, &beeper_ampl );
+  TEST_ASSERT( mic_ampl == SOUND_AMPL_TAPE );
+  TEST_ASSERT( beeper_ampl == 0 );
+
+  sound_ula_levels( 0, 1, &mic_ampl, &beeper_ampl );
+  TEST_ASSERT( mic_ampl == SOUND_AMPL_BEEPER );
+  TEST_ASSERT( beeper_ampl == SOUND_AMPL_BEEPER );
+
+  sound_ula_levels( 1, 1, &mic_ampl, &beeper_ampl );
+  TEST_ASSERT( mic_ampl == SOUND_AMPL_BEEPER + SOUND_AMPL_TAPE );
+  TEST_ASSERT( beeper_ampl == SOUND_AMPL_BEEPER + SOUND_AMPL_TAPE );
+  TEST_ASSERT( SOUND_AMPL_BEEPER / SOUND_AMPL_TAPE == 25 );
+
+  /* D3-only transitions alter the MIC path but not speaker drive. */
+  sound_ula_levels( 0, 0, &mic_ampl, &beeper_ampl );
+  TEST_ASSERT( mic_ampl == 0 && beeper_ampl == 0 );
+  sound_ula_levels( 1, 0, &mic_ampl, &beeper_ampl );
+  TEST_ASSERT( mic_ampl == SOUND_AMPL_TAPE && beeper_ampl == 0 );
+
+  /* D4-only and every mixed transition retain their distinct levels. */
+  sound_ula_levels( 0, 1, &mic_ampl, &beeper_ampl ); /* 00 -> 10 */
+  TEST_ASSERT( mic_ampl == SOUND_AMPL_BEEPER );
+  TEST_ASSERT( beeper_ampl == SOUND_AMPL_BEEPER );
+  sound_ula_levels( 1, 1, &mic_ampl, &beeper_ampl ); /* 10 -> 11 */
+  TEST_ASSERT( mic_ampl - SOUND_AMPL_BEEPER == SOUND_AMPL_TAPE );
+  TEST_ASSERT( beeper_ampl - SOUND_AMPL_BEEPER == SOUND_AMPL_TAPE );
+  sound_ula_levels( 1, 0, &mic_ampl, &beeper_ampl ); /* 11 -> 01 */
+  TEST_ASSERT( mic_ampl == SOUND_AMPL_TAPE && beeper_ampl == 0 );
+  sound_ula_levels( 0, 1, &mic_ampl, &beeper_ampl ); /* 01 -> 10 */
+  TEST_ASSERT( mic_ampl == SOUND_AMPL_BEEPER );
+  TEST_ASSERT( beeper_ampl == SOUND_AMPL_BEEPER );
+  sound_ula_levels( 1, 1, &mic_ampl, &beeper_ampl ); /* 10 -> 11 */
+  TEST_ASSERT( mic_ampl == SOUND_AMPL_BEEPER + SOUND_AMPL_TAPE );
+  TEST_ASSERT( beeper_ampl == SOUND_AMPL_BEEPER + SOUND_AMPL_TAPE );
+
+  return 0;
+}
 
 static int
 floating_bus_merge_test( void )
@@ -1875,6 +1923,7 @@ unittests_run( void )
 
   r += contention_test();
   r += floating_bus_test();
+  r += ula_sound_levels_test();
   r += floating_bus_merge_test();
   r += snapshot_copy_from_releases_keyboard_test();
   r += snapshot_custom_rom_is_replaced_by_soft_reset_test();
