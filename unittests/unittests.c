@@ -33,6 +33,7 @@
 #include "libspectrum.h"
 
 #include "debugger/debugger.h"
+#include "display.h"
 #include "fuse.h"
 #include "keyboard.h"
 #include "machine.h"
@@ -634,6 +635,40 @@ slt_is_cleared_by_reset_test( void )
 
   if( snapshot_copy_from( snap ) || machine_reset( 0 ) ||
       snapshot_copy_to( result ) || libspectrum_snap_slt_length( result, 0 ) )
+    r++;
+
+  if( libspectrum_snap_free( snap ) ) r++;
+  if( libspectrum_snap_free( result ) ) r++;
+
+  return r;
+}
+
+static int
+slt_screen_is_cleared_by_reset_test( void )
+{
+  libspectrum_snap *snap;
+  libspectrum_snap *result;
+  libspectrum_byte *screen;
+  int r = 0;
+
+  snap = libspectrum_snap_alloc();
+  result = libspectrum_snap_alloc();
+  if( !snap || !result ) {
+    if( snap ) libspectrum_snap_free( snap );
+    if( result ) libspectrum_snap_free( result );
+    return 1;
+  }
+
+  if( snapshot_copy_to( snap ) ) r++;
+  screen = libspectrum_new( libspectrum_byte, DISPLAY_FILE_SIZE );
+  memset( screen, 0xa5, DISPLAY_FILE_SIZE );
+  libspectrum_snap_set_slt_screen( snap, screen );
+  libspectrum_snap_set_slt_screen_level( snap, 1 );
+
+  if( snapshot_copy_from( snap ) || machine_reset( 0 ) ||
+      snapshot_copy_to( result ) ||
+      libspectrum_snap_slt_screen( result ) ||
+      libspectrum_snap_slt_screen_level( result ) )
     r++;
 
   if( libspectrum_snap_free( snap ) ) r++;
@@ -2081,6 +2116,7 @@ unittests_run( void )
   r += snapshot_copy_from_releases_keyboard_test();
   r += snapshot_custom_rom_is_replaced_by_soft_reset_test();
   r += slt_is_cleared_by_reset_test();
+  r += slt_screen_is_cleared_by_reset_test();
   r += spec_se_dock_ram_reset_test();
   r += keyboard_read_test();
   r += keyboard_simulate_keypress_test();

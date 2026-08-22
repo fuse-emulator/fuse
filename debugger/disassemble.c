@@ -1326,6 +1326,13 @@ static libspectrum_byte test293_data[] = { 0xcb, 0x7e };  /* BIT 7,(HL) */
 static libspectrum_byte test294_data[] = { 0xcb, 0xbe };  /* RES 7,(HL) */
 static libspectrum_byte test295_data[] = { 0xcb, 0xfe };  /* SET 7,(HL) */
 
+/* CB prefix: BIT, RES and SET with bit 0 and (HL) (rrr = 110).
+   Exercises bit_op_bit() with the minimum bit number (b = 0) and
+   source_reg() with (HL), complementing the bit-7 tests above. */
+static libspectrum_byte test361_data[] = { 0xcb, 0x46 };  /* BIT 0,(HL) */
+static libspectrum_byte test362_data[] = { 0xcb, 0x86 };  /* RES 0,(HL) */
+static libspectrum_byte test363_data[] = { 0xcb, 0xc6 };  /* SET 0,(HL) */
+
 /* CB prefix: all eight rotation/shift ops for register C (rrr = 001).
    Verifies that the dest_reg()/source_reg() lookup returns "C" for
    every shift-group opcode.  Opcode = (op << 3) | 001. */
@@ -1880,6 +1887,11 @@ debugger_disassemble_unittest( void )
   r += run_test( test293_data, sizeof( test293_data ), "BIT 7,(HL)" );
   r += run_test( test294_data, sizeof( test294_data ), "RES 7,(HL)" );
   r += run_test( test295_data, sizeof( test295_data ), "SET 7,(HL)" );
+
+  /* CB prefix: BIT, RES, SET with bit 0 and (HL) */
+  r += run_test( test361_data, sizeof( test361_data ), "BIT 0,(HL)" );
+  r += run_test( test362_data, sizeof( test362_data ), "RES 0,(HL)" );
+  r += run_test( test363_data, sizeof( test363_data ), "SET 0,(HL)" );
 
   /* CB prefix: all rotation/shift ops for register C (rrr = 001) */
   r += run_test( test296_data, sizeof( test296_data ), "RLC C" );
