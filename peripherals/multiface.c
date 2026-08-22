@@ -262,12 +262,12 @@ multiface_reset_real( int idx, int hard_reset )
 
   memset( mf[idx].xfdd_reg, 0x00, 4 );
 
-  *mf[idx].c_settings = 0;
-  periph_activate_type( mf[idx].type, 0 );
-
   if( machine_load_rom_bank( multiface_memory_map_romcs_rom, 0,
-                             *mf[idx].c_rom, *mf[idx].d_rom, 0x2000 ) )
+                             *mf[idx].c_rom, *mf[idx].d_rom, 0x2000 ) ) {
+    *mf[idx].c_settings = 0;
+    periph_activate_type( mf[idx].type, 0 );
     return;
+  }
 
   machine_current->ram.romcs = 0;
 
@@ -282,9 +282,7 @@ multiface_reset_real( int idx, int hard_reset )
     page->writable = 1;
   }
 
-  *mf[idx].c_settings = 1;
   SET( multiface_available, idx, 1 );
-  periph_activate_type( mf[idx].type, 1 );
   ui_menu_activate( UI_MENU_ITEM_MACHINE_MULTIFACE, 1 );
 }
 
