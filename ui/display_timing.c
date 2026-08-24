@@ -23,7 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef UI_WIN32
+#ifdef _WIN32
 #include <windows.h>
 #else
 #include <glib.h>
@@ -55,7 +55,7 @@ static struct display_timing timing;
 static long long
 now_us( void )
 {
-#ifdef UI_WIN32
+#ifdef _WIN32
   static LARGE_INTEGER frequency;
   LARGE_INTEGER now;
 
