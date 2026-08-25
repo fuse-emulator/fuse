@@ -5,7 +5,7 @@
         * Emulation core improvements:
           * Improve ZX Spectrum ULA beeper emulation with separate MIC and
             speaker paths and improved speaker-response modelling (Fredrick
-            Meunier).
+            Meunier) (thanks, kolbeck and experiment participants).
           * Preserve snapshot peripheral ROMs across soft resets (fixes bug
             #132) (Fredrick Meunier).
           * Correct Multiface ROM handling after a machine reset (Sergio
