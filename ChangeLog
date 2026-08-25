@@ -1,4 +1,4 @@
-2026-08-23  Fredrick Meunier  <fredm@spamcop.net>
+2026-08-25  Philip Kendall  <philip-fuse@shadowmagic.org.uk>
 
         * Fuse 1.9.2 released.
 
@@ -10,6 +10,12 @@
             #132) (Fredrick Meunier).
           * Correct Multiface ROM handling after a machine reset (Sergio
             Baldoví).
+          * Handle short ROM tape blocks correctly with tape traps, fixing
+            Gauntlet II and splATTR (fixes bugs #400 and #403) (Fredrick
+            Meunier).
+          * Emulate the ROM flag comparison during tape traps, preserving the
+            accumulator and flags as on real hardware (part of bug #310)
+            (thanks, Woody) (Fredrick Meunier).
 
         * UI improvements:
           * GTK3, SDL2 and Win32: coalesce dirty display areas per frame to
