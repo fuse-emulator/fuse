@@ -540,8 +540,11 @@ trap_load_block( libspectrum_tape_block *block )
 
   AF_ = 0x0145;
 
-  /* If the block ID byte != the flag byte, clear carry and return */
-  if( parity != i )
+  /* The ROM compares the block ID with the requested flag using XOR,
+     leaving the difference in A on a mismatch */
+  A = i;
+  XOR( parity );
+  if( A )
     goto error_ret;
 
   /* Now set L to the *last* byte in the block */
