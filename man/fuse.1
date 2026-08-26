@@ -1799,8 +1799,8 @@ support a single frequency or a limited range (e.g.
 .B \-\-speaker\-type
 .I type
 .RS
-Select the output speaker emulation, type can be TV speaker, Beeper
-or Unfiltered. Same as the Sound Options dialog's
+Select the output speaker emulation, type can be Automatic, TV speaker,
+Beeper or Unfiltered. Same as the Sound Options dialog's
 .I "Speaker type"
 option.
 .RE
@@ -2685,10 +2685,12 @@ this option unless you have a specific need for it.
 .PP
 .I "Speaker type"
 .RS
-Choose the character of ULA beeper sound. \(lqTV speaker\(rq is suited to
-sound heard through an external audio connection from the MIC socket.
-\(lqBeeper\(rq emulates the Spectrum's built-in speaker. \(lqUnfiltered\(rq
-gives the direct ULA signal without sound colouring.
+Choose the character of ULA beeper sound. \(lqAutomatic\(rq uses the built-in
+speaker response for machines which have one and the TV speaker response for
+other machines. \(lqTV speaker\(rq is suited to sound heard through a TV or an
+external audio connection from the MIC socket. \(lqBeeper\(rq emulates a
+built-in speaker. \(lqUnfiltered\(rq gives the direct ULA signal without sound
+colouring. The non-automatic choices apply to every machine.
 .RE
 .PP
 .I "AY volume"

@@ -1,4 +1,4 @@
-2026-08-25  Fredrick Meunier  <fredm@spamcop.net>
+2026-08-26  Fredrick Meunier  <fredm@spamcop.net>
 
         * Fuse 1.9.2 released.
 
@@ -6,6 +6,9 @@
           * Improve ZX Spectrum ULA beeper emulation with separate MIC and
             speaker paths and improved speaker-response modelling (Fredrick
             Meunier) (thanks, kolbeck and experiment participants).
+          * Default to automatically selecting the appropriate speaker
+            response for each emulated machine and support universal manual
+            overrides (Fredrick Meunier).
           * Preserve snapshot peripheral ROMs across soft resets (fixes bug
             #132) (Fredrick Meunier).
           * Correct Multiface ROM handling after a machine reset (Sergio

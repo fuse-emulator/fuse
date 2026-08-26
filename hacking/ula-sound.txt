@@ -60,9 +60,14 @@ count accessors, until the next sound_frame().
 
 The Speaker type setting selects the final ULA contribution:
 
+  Automatic   Beeper for machines with the libspectrum beeper capability;
+              TV speaker otherwise
   TV speaker  MIC path -> electrical pole
   Beeper      internal-speaker path -> electrical pole -> built-in speaker model
   Unfiltered  MIC path, with neither filter
+
+The three explicit output types are universal overrides. Automatic follows the
+physical output provided by the emulated machine.
 
 The electrical pole is the frozen asymmetric first-order candidate from a
 listening experiment which had respondants comparing recordings of real

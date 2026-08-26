@@ -53,6 +53,7 @@ static int sound_enabled_ever = 0; /* whether sound has *ever* been in use; see
 int sound_stereo_ay = SOUND_STEREO_AY_NONE; /* local copy of settings_current.stereo_ay */
 
 enum sound_speaker_type {
+  SOUND_SPEAKER_TYPE_AUTOMATIC,
   SOUND_SPEAKER_TYPE_TV,
   SOUND_SPEAKER_TYPE_BEEPER,
   SOUND_SPEAKER_TYPE_UNFILTERED
@@ -754,12 +755,24 @@ sound_sp0256_write( libspectrum_dword at_tstates, libspectrum_signed_word val )
   }
 }
 
+static int
+sound_get_speaker_type( void )
+{
+  int speaker_type = option_enumerate_sound_speaker_type();
+
+  if( speaker_type != SOUND_SPEAKER_TYPE_AUTOMATIC ) return speaker_type;
+
+  return machine_current->capabilities &
+           LIBSPECTRUM_MACHINE_CAPABILITY_BEEPER ?
+           SOUND_SPEAKER_TYPE_BEEPER : SOUND_SPEAKER_TYPE_TV;
+}
+
 static void
 sound_mix_ula_speaker( long count )
 {
   int filter_speaker = 0;
   int filter_ula = 0;
-  int speaker_type = option_enumerate_sound_speaker_type();
+  int speaker_type = sound_get_speaker_type();
   long i;
   long frames = sound_channels == 2 ? count / 2 : count;
 
@@ -868,7 +881,7 @@ sound_ula_update( libspectrum_dword at_tstates )
 {
   int mic_on = ula_mic_on || tape_microphone;
   int mic_ampl, beeper_ampl;
-  int speaker_type = option_enumerate_sound_speaker_type();
+  int speaker_type = sound_get_speaker_type();
 
   /* This is the ULA output-node path. Unlike the speaker path, its MIC-only
    * state is retained for a future MIC output selection. */
