@@ -56,6 +56,8 @@ ui_init( int *argc, char ***argv )
    mode */
   atexit(atexit_proc);
 
+  SDL_putenv( (char *)"SDL_VIDEO_X11_WMCLASS=" FUSE_APP_ID );
+
   error = SDL_Init( SDL_INIT_VIDEO );
   if ( error )
     return error;
