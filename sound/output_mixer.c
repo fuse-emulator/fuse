@@ -120,7 +120,7 @@ output_mixer_reset( void )
     blip_synth_set_output( ula_synth, ula_buf );
     blip_synth_set_level( ula_synth,
                           speaker_type == SOUND_SPEAKER_TYPE_BEEPER ?
-                            levels.beeper : levels.mic );
+                          levels.beeper : levels.mic );
   }
   ula_output_count = 0;
 }
@@ -195,7 +195,7 @@ clip_sample( double sample )
 }
 
 static void
-mix_channel( blip_sample_t *dry_samples, long offset, int channel,
+mix_channel( blip_sample_t *main_samples, long offset, int channel,
              int speaker_type, double ula_sample )
 {
   double routed_sample = ula_sample;
@@ -203,11 +203,11 @@ mix_channel( blip_sample_t *dry_samples, long offset, int channel,
     if( offset < tv_output_count ) routed_sample += tv_samples[offset];
     routed_sample = tv_filter_apply( &tv_filters[channel], routed_sample );
   }
-  dry_samples[offset] = clip_sample( dry_samples[offset] + routed_sample );
+  main_samples[offset] = clip_sample( main_samples[offset] + routed_sample );
 }
 
 static void
-mix_output( blip_sample_t *dry_samples, long count )
+mix_output( blip_sample_t *main_samples, long count )
 {
   int filter_speaker, filter_ula;
   int speaker_type = output_mixer_speaker_type();
@@ -221,14 +221,14 @@ mix_output( blip_sample_t *dry_samples, long count )
                                            filter_speaker );
     int channel;
     for( channel = 0; channel < channels; channel++ )
-      mix_channel( dry_samples, i * channels + channel, channel, speaker_type,
+      mix_channel( main_samples, i * channels + channel, channel, speaker_type,
                    ula_sample );
   }
 }
 
 void
 output_mixer_end_frame( libspectrum_dword tstates_per_frame,
-                        blip_sample_t *dry_samples, long count )
+                        blip_sample_t *main_samples, long count )
 {
   blip_buffer_end_frame( tv_left_buf, tstates_per_frame );
   blip_buffer_end_frame( ula_buf, tstates_per_frame );
@@ -245,7 +245,7 @@ output_mixer_end_frame( libspectrum_dword tstates_per_frame,
   }
   ula_output_count = blip_buffer_read_samples( ula_buf, ula_samples,
                                                count / channels, 0 );
-  mix_output( dry_samples, count );
+  mix_output( main_samples, count );
 }
 
 void
@@ -293,7 +293,7 @@ ula_update( libspectrum_dword at_tstates )
   }
   blip_synth_update( ula_synth, at_tstates,
                      speaker_type == SOUND_SPEAKER_TYPE_BEEPER ?
-                       levels.beeper : levels.mic );
+                     levels.beeper : levels.mic );
 }
 
 void

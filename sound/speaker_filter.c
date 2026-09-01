@@ -60,13 +60,23 @@ speaker_filter_reset( speaker_filter_t *filter )
 {
   filter->z1 = 0.0;
   filter->z2 = 0.0;
+  filter->initialized = 0;
 }
 
 double
 speaker_filter_apply( speaker_filter_t *filter, double input )
 {
-  double output = filter->b0 * input + filter->z1;
+  double output;
 
+  if( !filter->initialized ) {
+    /* Begin a newly selected steady level without an artificial transient. */
+    filter->z1 = -filter->b0 * input;
+    filter->z2 = filter->b2 * input;
+    filter->initialized = 1;
+    return 0.0;
+  }
+
+  output = filter->b0 * input + filter->z1;
   filter->z1 = filter->b1 * input - filter->a1 * output + filter->z2;
   filter->z2 = filter->b2 * input - filter->a2 * output;
 

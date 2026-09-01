@@ -29,6 +29,7 @@ typedef struct speaker_filter_tag {
   double b0, b1, b2;
   double a1, a2;
   double z1, z2;
+  int initialized;
 } speaker_filter_t;
 
 int speaker_filter_configure( speaker_filter_t *filter, int sample_rate,

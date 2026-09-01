@@ -14,6 +14,6 @@ Blip_Buffer *output_mixer_tv_left( void );
 Blip_Buffer *output_mixer_tv_right( void );
 void output_mixer_route_changed( void );
 void output_mixer_end_frame( libspectrum_dword tstates_per_frame,
-                             blip_sample_t *dry_samples, long count );
+                             blip_sample_t *main_samples, long count );
 
 #endif

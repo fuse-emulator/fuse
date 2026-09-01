@@ -65,6 +65,7 @@
 #include "sound.h"
 #include "sound/blipbuffer.h"
 #include "sound/speaker_filter.h"
+#include "sound/tv_filter.h"
 #include "sound/ula_filter.h"
 #include "snapshot.h"
 #include "tape.h"
@@ -369,12 +370,85 @@ speaker_filter_test( void )
   TEST_ASSERT( !speaker_filter_configure( &filter, 48000,
                                           SPEAKER_FILTER_DEFAULT_FREQUENCY,
                                           SPEAKER_FILTER_DEFAULT_Q ) );
+  TEST_ASSERT( speaker_filter_apply( &filter, 1234.0 ) == 0.0 );
+  TEST_ASSERT( fabs( speaker_filter_apply( &filter, 1234.0 ) ) < 1.0e-12 );
   for( i = 0; i < ARRAY_SIZE( output ); i++ )
-    output[ i ] = speaker_filter_apply( &filter, i == 0 ? 1.0 : 0.0 );
+    output[ i ] = speaker_filter_apply( &filter,
+                                         i == 0 ? 2234.0 : 1234.0 );
+  TEST_ASSERT( output[ 0 ] != 0.0 );
+
   speaker_filter_reset( &filter );
+  TEST_ASSERT( speaker_filter_apply( &filter, 1234.0 ) == 0.0 );
+  TEST_ASSERT( fabs( speaker_filter_apply( &filter, 1234.0 ) ) < 1.0e-12 );
   for( i = 0; i < ARRAY_SIZE( output ); i++ )
-    TEST_ASSERT( output[ i ] == speaker_filter_apply( &filter,
-                                                       i == 0 ? 1.0 : 0.0 ) );
+    TEST_ASSERT( output[ i ] == speaker_filter_apply(
+                                   &filter, i == 0 ? 2234.0 : 1234.0 ) );
+
+  return 0;
+}
+
+static double
+tv_filter_response( const tv_filter_t *filter, double frequency,
+                    int sample_rate )
+{
+  double omega = 2.0 * 3.14159265358979323846 * frequency / sample_rate;
+  double complex_z_real = cos( omega );
+  double complex_z_imaginary = -sin( omega );
+  double one_minus_z_real = 1.0 - complex_z_real;
+  double one_minus_z_imaginary = -complex_z_imaginary;
+  double hp_den_real = 1.0 - filter->high_pass_decay * complex_z_real;
+  double hp_den_imaginary = -filter->high_pass_decay * complex_z_imaginary;
+  double lp_decay = 1.0 - filter->low_pass_alpha;
+  double lp_den_real = 1.0 - lp_decay * complex_z_real;
+  double lp_den_imaginary = -lp_decay * complex_z_imaginary;
+  double hp = filter->high_pass_decay *
+              hypot( one_minus_z_real, one_minus_z_imaginary ) /
+              hypot( hp_den_real, hp_den_imaginary );
+  double lp = filter->low_pass_alpha /
+              hypot( lp_den_real, lp_den_imaginary );
+
+  return hp * lp;
+}
+
+static int
+tv_filter_test( void )
+{
+  static const int sample_rates[] = { 44100, 48000, 96000 };
+  tv_filter_t filter;
+  double impulse[16];
+  int i, rate;
+
+  for( rate = 0; rate < ARRAY_SIZE( sample_rates ); rate++ ) {
+    TEST_ASSERT( !tv_filter_configure( &filter, sample_rates[rate] ) );
+    TEST_ASSERT( filter.high_pass_decay > 0.0 &&
+                 filter.high_pass_decay < 1.0 );
+    TEST_ASSERT( filter.low_pass_alpha > 0.0 &&
+                 filter.low_pass_alpha < 1.0 );
+    TEST_ASSERT( tv_filter_response( &filter, 10.0,
+                                     sample_rates[rate] ) < 0.11 );
+    TEST_ASSERT( tv_filter_response( &filter, 1000.0,
+                                     sample_rates[rate] ) > 0.9 );
+    TEST_ASSERT( tv_filter_response( &filter, 20000.0,
+                                     sample_rates[rate] ) < 0.65 );
+  }
+
+  TEST_ASSERT( tv_filter_configure( &filter, 0 ) );
+  TEST_ASSERT( tv_filter_configure( &filter, 20000 ) );
+  TEST_ASSERT( !tv_filter_configure( &filter, 48000 ) );
+  TEST_ASSERT( tv_filter_apply( &filter, 1234.0 ) == 0.0 );
+  for( i = 0; i < ARRAY_SIZE( impulse ); i++ )
+    impulse[i] = tv_filter_apply( &filter, i == 0 ? 2234.0 : 1234.0 );
+  tv_filter_reset( &filter );
+  TEST_ASSERT( tv_filter_apply( &filter, 1234.0 ) == 0.0 );
+  for( i = 0; i < ARRAY_SIZE( impulse ); i++ )
+    TEST_ASSERT( impulse[i] ==
+                 tv_filter_apply( &filter, i == 0 ? 2234.0 : 1234.0 ) );
+
+  tv_filter_reset( &filter );
+  TEST_ASSERT( tv_filter_apply( &filter, 0.0 ) == 0.0 );
+  TEST_ASSERT( fabs( tv_filter_apply( &filter, 1.0e-30 ) ) < 1.0e-20 );
+  TEST_ASSERT( filter.high_pass_state == 0.0 );
+  TEST_ASSERT( filter.low_pass_state == 0.0 );
 
   return 0;
 }
@@ -445,6 +519,40 @@ ula_filter_test( void )
     TEST_ASSERT( ula_filter_apply( &split, input[ i ] ) == continuous_output[ i ] );
   for( ; i < ARRAY_SIZE( input ); i++ )
     TEST_ASSERT( ula_filter_apply( &split, input[ i ] ) == continuous_output[ i ] );
+
+  return 0;
+}
+
+static int
+sound_source_routes_test( void )
+{
+  int beeper = LIBSPECTRUM_MACHINE_CAPABILITY_BEEPER;
+  int ay = LIBSPECTRUM_MACHINE_CAPABILITY_AY;
+  unsigned int tv_base = SOUND_ROUTE_ULA_MIC | SOUND_ROUTE_USPEECH;
+
+  TEST_ASSERT( sound_resolve_speaker_type( SOUND_SPEAKER_TYPE_AUTOMATIC,
+                                           beeper, 0 ) ==
+               SOUND_SPEAKER_TYPE_BEEPER );
+  TEST_ASSERT( sound_resolve_speaker_type( SOUND_SPEAKER_TYPE_AUTOMATIC,
+                                           beeper, 1 ) ==
+               SOUND_SPEAKER_TYPE_TV );
+  TEST_ASSERT( sound_resolve_speaker_type( SOUND_SPEAKER_TYPE_AUTOMATIC,
+                                           0, 0 ) == SOUND_SPEAKER_TYPE_TV );
+  TEST_ASSERT( sound_resolve_speaker_type( SOUND_SPEAKER_TYPE_BEEPER,
+                                           0, 1 ) ==
+               SOUND_SPEAKER_TYPE_BEEPER );
+
+  TEST_ASSERT( sound_tv_source_routes( SOUND_SPEAKER_TYPE_TV, 0 ) ==
+               tv_base );
+  TEST_ASSERT( sound_tv_source_routes( SOUND_SPEAKER_TYPE_TV, ay ) ==
+               ( tv_base | SOUND_ROUTE_BUILTIN_AY ) );
+  TEST_ASSERT( sound_tv_source_routes( SOUND_SPEAKER_TYPE_BEEPER,
+                                       beeper | ay ) == 0 );
+  TEST_ASSERT( sound_tv_source_routes( SOUND_SPEAKER_TYPE_UNFILTERED,
+                                       beeper | ay ) == 0 );
+
+  /* Covox, SpecDrum and external AY deliberately have no TV route bits. */
+  TEST_ASSERT( ( tv_base | SOUND_ROUTE_BUILTIN_AY ) == 0x0d );
 
   return 0;
 }
@@ -2160,7 +2268,9 @@ unittests_run( void )
   r += floating_bus_test();
   r += blip_synth_level_test();
   r += speaker_filter_test();
+  r += tv_filter_test();
   r += ula_filter_test();
+  r += sound_source_routes_test();
   r += ula_sound_levels_test();
   r += floating_bus_merge_test();
   r += snapshot_copy_from_releases_keyboard_test();

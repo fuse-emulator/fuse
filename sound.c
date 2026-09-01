@@ -44,7 +44,6 @@
 #include "sound/output_mixer.h"
 #include "sound/source_synths.h"
 
-
 /* Do we have any of our sound devices available? */
 
 /* configuration */
@@ -54,25 +53,17 @@ static int sound_enabled_ever = 0; /* whether sound has *ever* been in use; see
 				      sound_ay_write() and sound_ay_reset() */
 int sound_stereo_ay = SOUND_STEREO_AY_NONE; /* local copy of settings_current.stereo_ay */
 
-enum sound_speaker_type {
-  SOUND_SPEAKER_TYPE_AUTOMATIC,
-  SOUND_SPEAKER_TYPE_TV,
-  SOUND_SPEAKER_TYPE_BEEPER,
-  SOUND_SPEAKER_TYPE_UNFILTERED
-};
-
 int sound_framesiz;
 
 static int sound_channels;
 
-/* The main buffers contain dry AY and peripheral sources. */
+/* The main buffers contain sources which bypass speaker processing. */
 Blip_Buffer *left_buf = NULL;
 Blip_Buffer *right_buf = NULL;
 blip_sample_t *samples = NULL;
 static int sound_tv_route = -1;
 
 static void sound_update_source_routes( void );
-
 
 /* Returns the emulation speed adjusted processor speed */
 libspectrum_dword
@@ -131,7 +122,6 @@ sound_init( const char *device )
       sound_lowlevel_init( device, &settings_current.sound_freq,
                            &sound_stereo_ay ) )
     return;
-
   if( sound_stereo_ay != SOUND_STEREO_AY_NONE &&
       sound_stereo_ay != SOUND_STEREO_AY_ACB &&
       sound_stereo_ay != SOUND_STEREO_AY_ABC ) {
@@ -165,7 +155,6 @@ sound_init( const char *device )
   sound_enabled = sound_enabled_ever = 1;
   sound_tv_route = -1;
   sound_update_source_routes();
-
   movie_init_sound( settings_current.sound_freq, sound_stereo_ay );
 }
 
@@ -196,10 +185,8 @@ sound_end( void )
     delete_Blip_Buffer( &left_buf );
     delete_Blip_Buffer( &right_buf );
 
-
     if( settings_current.sound ) sound_lowlevel_end();
     libspectrum_free( samples );
-
     sound_enabled = 0;
   }
 }
@@ -224,13 +211,13 @@ sound_ay_reset( void )
   ay_engine_reset();
   output_mixer_reset();
   sound_tv_route = -1;
-
 }
 
 void
 sound_sp0256_write( libspectrum_dword at_tstates, libspectrum_signed_word val )
 {
   if( !sound_enabled ) return;
+  sound_update_source_routes();
   source_synths_sp0256_write( at_tstates, val );
 }
 
@@ -281,7 +268,6 @@ sound_update_source_routes( void )
   sound_tv_route = tv_route;
 }
 
-
 void
 sound_frame( void )
 {
@@ -290,6 +276,7 @@ sound_frame( void )
   if( !sound_enabled )
     return;
 
+  sound_update_source_routes();
   sp0256_do_frame();
 
   /* overlay AY sound */
@@ -300,7 +287,6 @@ sound_frame( void )
   if( sound_stereo_ay != SOUND_STEREO_AY_NONE ) {
     blip_buffer_end_frame( right_buf,
                            machine_current->timings.tstates_per_frame );
-
 
     /* Read left channel into even samples, right channel into odd samples:
        LRLRLRLRLR... */
@@ -314,7 +300,6 @@ sound_frame( void )
 
   output_mixer_end_frame( machine_current->timings.tstates_per_frame,
                           samples, count );
-
 
   if( settings_current.sound )
     sound_lowlevel_frame( samples, count );

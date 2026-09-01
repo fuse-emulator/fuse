@@ -2685,12 +2685,14 @@ this option unless you have a specific need for it.
 .PP
 .I "Speaker type"
 .RS
-Choose the character of ULA beeper sound. \(lqAutomatic\(rq uses the built-in
-speaker response for machines which have one and the TV speaker response for
-other machines. \(lqTV speaker\(rq is suited to sound heard through a TV or an
-external audio connection from the MIC socket. \(lqBeeper\(rq emulates a
-built-in speaker. \(lqUnfiltered\(rq gives the direct ULA signal without sound
-colouring. The non-automatic choices apply to every machine.
+Choose the character of the emulated sound output. \(lqAutomatic\(rq uses the
+built-in speaker response for machines which have one and the TV speaker
+response for other machines. A Currah \(mcSpeech also selects the TV response.
+\(lqTV speaker\(rq is suited to sound heard through a TV or an external speaker
+connected to the MIC socket. \(lqBeeper\(rq emulates a built-in speaker.
+\(lqUnfiltered\(rq gives the direct sound signal without speaker colouring. The
+non-automatic choices apply to every machine. Speaker colouring does not alter
+unrelated sound interfaces such as Covox or SpecDrum.
 .RE
 .PP
 .I "AY volume"
@@ -5477,6 +5479,11 @@ sp0256-al2.rom in your ROMs directory and its CRC-32 is b504ac15.
 An alternative authorised ROM is distributed by Joe Zbiciak with
 CRC-32 df8de0b0. In this case, bit ordering in data bytes is reversed
 and need to be adjusted.
+.PP
+The original interface mixed its speech and the Spectrum MIC output into the
+television signal. Fuse therefore uses the TV speaker response for both when
+\(mcSpeech is enabled and \(lqAutomatic\(rq or \(lqTV speaker\(rq is selected.
+Other external sound interfaces are not routed through this response.
 .\"
 .\"------------------------------------------------------------------
 .\"
