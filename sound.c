@@ -42,6 +42,7 @@
 #include "sound/ay_engine.h"
 #include "sound/blipbuffer.h"
 #include "sound/speaker_filter.h"
+#include "sound/source_synths.h"
 #include "sound/ula_filter.h"
 
 /* Do we have any of our sound devices available? */
@@ -86,11 +87,7 @@ static Blip_Synth *ula_synth = NULL;
 static int ula_mic_on;
 static int ula_beeper_on;
 
-Blip_Synth *left_specdrum_synth = NULL, *right_specdrum_synth = NULL;
 
-Blip_Synth *left_covox_synth = NULL, *right_covox_synth = NULL;
-
-Blip_Synth *left_sp0256_synth = NULL, *right_sp0256_synth = NULL;
 
 static double
 sound_get_volume( int volume )
@@ -197,43 +194,11 @@ sound_init( const char *device )
   }
   ay_engine_init( settings_current.volume_ay, sound_stereo_ay );
 
-  left_specdrum_synth = new_Blip_Synth();
-  blip_synth_set_volume( left_specdrum_synth,
-                         sound_get_volume( settings_current.volume_specdrum ) );
-  blip_synth_set_output( left_specdrum_synth, left_buf );
-  blip_synth_set_treble_eq( left_specdrum_synth, 0.0 );
-
-  left_covox_synth = new_Blip_Synth();
-  blip_synth_set_volume( left_covox_synth,
-                         sound_get_volume( settings_current.volume_covox ) );
-  blip_synth_set_output( left_covox_synth, left_buf );
-  blip_synth_set_treble_eq( left_covox_synth, 0.0 );
-  
-  left_sp0256_synth = new_Blip_Synth();
-  blip_synth_set_volume( left_sp0256_synth,
-                         sound_get_volume( settings_current.volume_uspeech ) );
-  blip_synth_set_output( left_sp0256_synth, left_buf );
-  blip_synth_set_treble_eq( left_sp0256_synth, 0.0 );
-
-  if( sound_stereo_ay != SOUND_STEREO_AY_NONE ) {
-    right_specdrum_synth = new_Blip_Synth();
-    blip_synth_set_volume( right_specdrum_synth,
-                           sound_get_volume( settings_current.volume_specdrum ) );
-    blip_synth_set_output( right_specdrum_synth, right_buf );
-    blip_synth_set_treble_eq( right_specdrum_synth, 0.0 );
-
-    right_covox_synth = new_Blip_Synth();
-    blip_synth_set_volume( right_covox_synth,
-                           sound_get_volume( settings_current.volume_covox ) );
-    blip_synth_set_output( right_covox_synth, right_buf );
-    blip_synth_set_treble_eq( right_covox_synth, 0.0 );
-
-    right_sp0256_synth = new_Blip_Synth();
-    blip_synth_set_volume( right_sp0256_synth,
-                           sound_get_volume( settings_current.volume_uspeech ) );
-    blip_synth_set_output( right_sp0256_synth, right_buf );
-    blip_synth_set_treble_eq( right_sp0256_synth, 0.0 );
-  }
+  source_synths_init( left_buf, right_buf,
+                      sound_stereo_ay != SOUND_STEREO_AY_NONE,
+                      settings_current.volume_specdrum,
+                      settings_current.volume_covox,
+                      settings_current.volume_uspeech );
 
   sound_enabled = sound_enabled_ever = 1;
 
@@ -292,14 +257,7 @@ sound_end( void )
     delete_Blip_Synth( &ula_synth );
     ay_engine_end();
 
-    delete_Blip_Synth( &left_specdrum_synth );
-    delete_Blip_Synth( &right_specdrum_synth );
-
-    delete_Blip_Synth( &left_covox_synth );
-    delete_Blip_Synth( &right_covox_synth );
-
-    delete_Blip_Synth( &left_sp0256_synth );
-    delete_Blip_Synth( &right_sp0256_synth );
+    source_synths_end();
 
     delete_Blip_Buffer( &left_buf );
     delete_Blip_Buffer( &right_buf );
@@ -338,53 +296,11 @@ sound_ay_reset( void )
   ula_synth_speaker_type = -1;
 }
 
-/*
- * sound_specdrum_write - very simple routine
- * as the output is already a digitized waveform
- */
-void
-sound_specdrum_write( libspectrum_word port GCC_UNUSED, libspectrum_byte val )
-{
-  if( periph_is_active( PERIPH_TYPE_SPECDRUM ) ) {
-    blip_synth_update( left_specdrum_synth, tstates, ( val - 128) * 128);
-    if( right_specdrum_synth ) {
-      blip_synth_update( right_specdrum_synth, tstates, ( val - 128) * 128);
-    }
-    machine_current->specdrum.specdrum_dac = val - 128;
-  }
-}
-
-/*
- * sound_covox_write - very simple routine
- * as the output is already a digitized waveform
- */
-void
-sound_covox_write( libspectrum_word port GCC_UNUSED, libspectrum_byte val )
-{
-  if( periph_is_active( PERIPH_TYPE_COVOX_FB ) ||
-      periph_is_active( PERIPH_TYPE_COVOX_DD ) ) {
-    blip_synth_update( left_covox_synth, tstates, val * 128);
-    if( right_covox_synth ) {
-      blip_synth_update( right_covox_synth, tstates, val * 128);
-    }
-    machine_current->covox.covox_dac = val;
-  }
-}
-
-/*
- * sound_sp0256_write - very simple routine
- * as the output is already a digitized waveform
- */
 void
 sound_sp0256_write( libspectrum_dword at_tstates, libspectrum_signed_word val )
 {
-  if( !sound_enabled )
-    return;
-
-  blip_synth_update( left_sp0256_synth, at_tstates, val );
-  if( right_sp0256_synth ) {
-    blip_synth_update( right_sp0256_synth, at_tstates, val );
-  }
+  if( !sound_enabled ) return;
+  source_synths_sp0256_write( at_tstates, val );
 }
 
 static int
@@ -419,6 +335,7 @@ sound_mix_ula_speaker( long count )
   case SOUND_SPEAKER_TYPE_UNFILTERED: /* Unfiltered: raw ULA/MIC output */
     break;
   default:
+
     fuse_abort();
   }
 
