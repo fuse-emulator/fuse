@@ -156,6 +156,8 @@ EXTRA_DIST = AUTHORS \
 	     settings.pl \
 	     settings-header.pl \
 	     update-release.py \
+	     tools/metrics \
+	     tools/test_metrics.py \
 	     .agents/skills/README.md \
 	     .agents/skills/update-changelog/SKILL.md
 
@@ -171,6 +173,14 @@ test: z80/coretest unittests/displaytest
 	z80/coretest $(srcdir)/z80/tests/tests.in > z80/tests.actual
 	cmp z80/tests.actual $(srcdir)/z80/tests/tests.expected
 	./unittests/displaytest
+
+metrics:
+	@if test -n "$(FILE)"; then $(srcdir)/tools/metrics "$(FILE)"; else $(srcdir)/tools/metrics; fi
+
+check-metrics:
+	python3 $(srcdir)/tools/test_metrics.py
+
+.PHONY: metrics check-metrics
 
 
 ## Resources for Windows executables
