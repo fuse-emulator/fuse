@@ -35,6 +35,13 @@ static int beeper_filter_active;
 static int filter_speaker_type = -1;
 static int synth_speaker_type = -1;
 
+typedef struct ula_levels_tag {
+  int mic;
+  int beeper;
+} ula_levels_t;
+
+static ula_levels_t current_ula_levels( void );
+
 static int
 output_buffer_init( Blip_Buffer **buffer, libspectrum_dword clock_rate,
                     int sample_rate )
@@ -97,12 +104,25 @@ output_mixer_end( void )
 void
 output_mixer_reset( void )
 {
+  int speaker_type = output_mixer_speaker_type();
+
   speaker_filter_reset( &beeper_filter );
   tv_filter_reset( &tv_filters[0] );
   tv_filter_reset( &tv_filters[1] );
   ula_filter_reset( &ula_filter );
-  beeper_filter_active = 0;
-  filter_speaker_type = synth_speaker_type = -1;
+  beeper_filter_active = speaker_type == SOUND_SPEAKER_TYPE_BEEPER;
+  filter_speaker_type = synth_speaker_type = speaker_type;
+
+  if( sound_enabled ) {
+    ula_levels_t levels = current_ula_levels();
+
+    blip_buffer_clear( ula_buf, BLIP_BUFFER_DEF_ENTIRE_BUFF );
+    blip_synth_set_output( ula_synth, ula_buf );
+    blip_synth_set_level( ula_synth,
+                          speaker_type == SOUND_SPEAKER_TYPE_BEEPER ?
+                            levels.beeper : levels.mic );
+  }
+  ula_output_count = 0;
 }
 
 int
@@ -237,22 +257,31 @@ sound_ula_levels( int mic_on, int beeper_on, int *mic_ampl, int *beeper_ampl )
                  ( mic_on ? SOUND_AMPL_TAPE : 0 ) : 0;
 }
 
-static void
-ula_update( libspectrum_dword at_tstates )
+static ula_levels_t
+current_ula_levels( void )
 {
+  ula_levels_t levels;
   /* Tape input is combined at the ULA node, while the raw MIC latch remains
    * separate for tape saving and subsequent edge handling. */
   int mic_on = ula_mic_on || tape_microphone;
-  int mic_ampl, beeper_ampl;
-  int speaker_type = output_mixer_speaker_type();
 
-  sound_ula_levels( mic_on, ula_beeper_on, &mic_ampl, &beeper_ampl );
+  sound_ula_levels( mic_on, ula_beeper_on, &levels.mic, &levels.beeper );
   /* Preserve the legacy loading-noise policy. Disabling loading sound, or
    * using a Timex machine, removes the tape/MIC contribution only from the
    * internal-speaker path; the electrical MIC output remains intact. */
   if( tape_is_playing() &&
       ( !settings_current.sound_load || machine_current->timex ) )
-    beeper_ampl = ula_beeper_on ? SOUND_AMPL_BEEPER : 0;
+    levels.beeper = ula_beeper_on ? SOUND_AMPL_BEEPER : 0;
+
+  return levels;
+}
+
+static void
+ula_update( libspectrum_dword at_tstates )
+{
+  ula_levels_t levels = current_ula_levels();
+  int speaker_type = output_mixer_speaker_type();
+
   if( !sound_enabled ) return;
 
   if( speaker_type != synth_speaker_type ) {
@@ -264,7 +293,7 @@ ula_update( libspectrum_dword at_tstates )
   }
   blip_synth_update( ula_synth, at_tstates,
                      speaker_type == SOUND_SPEAKER_TYPE_BEEPER ?
-                     beeper_ampl : mic_ampl );
+                       levels.beeper : levels.mic );
 }
 
 void

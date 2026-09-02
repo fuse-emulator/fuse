@@ -63,6 +63,7 @@
 #include "pokefinder/pokefinder.h"
 #include "settings.h"
 #include "sound.h"
+#include "sound/blipbuffer.h"
 #include "sound/speaker_filter.h"
 #include "sound/ula_filter.h"
 #include "snapshot.h"
@@ -251,6 +252,54 @@ floating_bus_test( void )
 }
 
 #define TEST_ASSERT(x) do { if( !(x) ) { printf("Test assertion failed at %s:%d: %s\n", __FILE__, __LINE__, #x ); return 1; } } while( 0 )
+
+static int
+blip_synth_level_test( void )
+{
+  Blip_Buffer *buffer = new_Blip_Buffer();
+  Blip_Synth *synth = new_Blip_Synth();
+  blip_sample_t output[ 128 ];
+  long count;
+  int i, nonzero;
+
+  TEST_ASSERT( buffer && synth );
+  blip_buffer_set_clock_rate( buffer, 1000000 );
+  TEST_ASSERT( !blip_buffer_set_sample_rate( buffer, 48000, 100 ) );
+  blip_buffer_set_bass_freq( buffer, 0 );
+  blip_synth_set_volume( synth, 1.0 );
+  blip_synth_set_output( synth, buffer );
+  blip_synth_set_treble_eq( synth, 0.0 );
+
+  blip_synth_set_level( synth, 1000 );
+  blip_synth_update( synth, 0, 1000 );
+  blip_buffer_end_frame( buffer, 2000 );
+  count = blip_buffer_read_samples( buffer, output, ARRAY_SIZE( output ), 0 );
+  TEST_ASSERT( count > 0 );
+  for( i = 0; i < count; i++ ) TEST_ASSERT( output[ i ] == 0 );
+
+  blip_synth_update( synth, 0, 2000 );
+  blip_buffer_end_frame( buffer, 2000 );
+  count = blip_buffer_read_samples( buffer, output, ARRAY_SIZE( output ), 0 );
+  nonzero = 0;
+  for( i = 0; i < count; i++ ) if( output[ i ] ) nonzero = 1;
+  TEST_ASSERT( nonzero );
+  TEST_ASSERT( buffer->reader_accum != 0 );
+
+  blip_buffer_clear( buffer, BLIP_BUFFER_DEF_ENTIRE_BUFF );
+  blip_synth_set_output( synth, buffer );
+  blip_synth_set_level( synth, 2000 );
+  TEST_ASSERT( buffer->reader_accum == 0 );
+  TEST_ASSERT( synth->impl.last_amp == 2000 );
+  blip_synth_update( synth, 0, 2000 );
+  blip_buffer_end_frame( buffer, 2000 );
+  count = blip_buffer_read_samples( buffer, output, ARRAY_SIZE( output ), 0 );
+  TEST_ASSERT( count > 0 );
+  for( i = 0; i < count; i++ ) TEST_ASSERT( output[ i ] == 0 );
+
+  delete_Blip_Synth( &synth );
+  delete_Blip_Buffer( &buffer );
+  return 0;
+}
 
 static double
 speaker_filter_response( const speaker_filter_t *filter, double frequency,
@@ -2109,6 +2158,7 @@ unittests_run( void )
 
   r += contention_test();
   r += floating_bus_test();
+  r += blip_synth_level_test();
   r += speaker_filter_test();
   r += ula_filter_test();
   r += ula_sound_levels_test();

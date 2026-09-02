@@ -76,10 +76,12 @@ approximation, not a claim that the physical ULA circuit is one pole and not a
 model of the internal speaker. It operates on the generated post-Blip PCM, so
 Blip ringing deliberately participates in the choice of rise or fall
 coefficient. Its one state belongs to the selected ULA path. A new sound
-generator, explicit reset, or speaker-type selection initializes it from the
-first PCM target; state never resets at a frame boundary. This is the same
-convention used to generate the listening-test material, and avoids an
-artificial transition at the beginning of a stream.
+generator or speaker-type selection initializes it from the first PCM target;
+state never resets at a frame boundary. An explicit machine reset atomically
+clears the rendered ULA buffer and reader state, resets the pole, and makes the
+current logical ULA level the Blip synth's silent baseline. This prevents the
+first post-reset sound frame and ULA write from observing different old state,
+and avoids manufacturing an artificial transition at reset.
 
 The frozen time constants are 36.53558495933805 us rising and
 68.86073172982108 us falling. At the real output sample rate Fs their
