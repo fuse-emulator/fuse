@@ -64,6 +64,7 @@
 #include "settings.h"
 #include "sound.h"
 #include "sound/blipbuffer.h"
+#include "sound/dc_filter.h"
 #include "sound/speaker_filter.h"
 #include "sound/tv_filter.h"
 #include "sound/ula_filter.h"
@@ -303,6 +304,64 @@ blip_synth_level_test( void )
 }
 
 static double
+dc_filter_response( const dc_filter_t *filter, double frequency,
+                    int sample_rate )
+{
+  double omega = 2.0 * 3.14159265358979323846 * frequency / sample_rate;
+  double cosine = cos( omega );
+  double sine = sin( omega );
+  double numerator = filter->decay *
+                     hypot( 1.0 - cosine, sine );
+  double denominator = hypot( 1.0 - filter->decay * cosine,
+                              filter->decay * sine );
+
+  return numerator / denominator;
+}
+
+static int
+dc_filter_test( void )
+{
+  static const int sample_rates[] = { 44100, 48000, 96000 };
+  dc_filter_t filter;
+  double impulse[16];
+  int i, rate;
+
+  for( rate = 0; rate < ARRAY_SIZE( sample_rates ); rate++ ) {
+    TEST_ASSERT( !dc_filter_configure( &filter, sample_rates[rate] ) );
+    TEST_ASSERT( filter.decay > 0.0 && filter.decay < 1.0 );
+    TEST_ASSERT( dc_filter_response( &filter, 1.0,
+                                     sample_rates[rate] ) < 0.07 );
+    TEST_ASSERT( dc_filter_response( &filter, 16.0,
+                                     sample_rates[rate] ) > 0.70 );
+    TEST_ASSERT( dc_filter_response( &filter, 16.0,
+                                     sample_rates[rate] ) < 0.71 );
+    TEST_ASSERT( dc_filter_response( &filter, 1000.0,
+                                     sample_rates[rate] ) > 0.98 );
+  }
+
+  TEST_ASSERT( dc_filter_configure( &filter, 0 ) );
+  TEST_ASSERT( !dc_filter_configure( &filter, 48000 ) );
+  TEST_ASSERT( dc_filter_apply( &filter, 1234.0 ) == 0.0 );
+  TEST_ASSERT( dc_filter_apply( &filter, 1234.0 ) == 0.0 );
+  for( i = 0; i < ARRAY_SIZE( impulse ); i++ )
+    impulse[i] = dc_filter_apply( &filter, i == 0 ? 2234.0 : 1234.0 );
+  TEST_ASSERT( impulse[0] > 0.0 );
+
+  dc_filter_reset( &filter );
+  TEST_ASSERT( dc_filter_apply( &filter, 1234.0 ) == 0.0 );
+  for( i = 0; i < ARRAY_SIZE( impulse ); i++ )
+    TEST_ASSERT( impulse[i] ==
+                 dc_filter_apply( &filter, i == 0 ? 2234.0 : 1234.0 ) );
+
+  dc_filter_reset( &filter );
+  TEST_ASSERT( dc_filter_apply( &filter, 0.0 ) == 0.0 );
+  TEST_ASSERT( fabs( dc_filter_apply( &filter, 1.0e-30 ) ) < 1.0e-20 );
+  TEST_ASSERT( filter.state == 0.0 );
+
+  return 0;
+}
+
+static double
 speaker_filter_response( const speaker_filter_t *filter, double frequency,
                          int sample_rate )
 {
@@ -331,9 +390,7 @@ speaker_filter_test( void )
   int i, rate;
 
   for( rate = 0; rate < ARRAY_SIZE( sample_rates ); rate++ ) {
-    TEST_ASSERT( !speaker_filter_configure( &filter, sample_rates[ rate ],
-                                            SPEAKER_FILTER_DEFAULT_FREQUENCY,
-                                            SPEAKER_FILTER_DEFAULT_Q ) );
+    TEST_ASSERT( !speaker_filter_configure( &filter, sample_rates[ rate ] ) );
     TEST_ASSERT( isfinite( filter.b0 ) && isfinite( filter.b1 ) &&
                  isfinite( filter.b2 ) && isfinite( filter.a1 ) &&
                  isfinite( filter.a2 ) );
@@ -361,15 +418,9 @@ speaker_filter_test( void )
                                            sample_rates[ rate ] ) > 0.98 );
   }
 
-  TEST_ASSERT( speaker_filter_configure( &filter, 48000, 0.0,
-                                         SPEAKER_FILTER_DEFAULT_Q ) );
-  TEST_ASSERT( speaker_filter_configure( &filter, 48000,
-                                         SPEAKER_FILTER_DEFAULT_FREQUENCY,
-                                         0.0 ) );
+  TEST_ASSERT( speaker_filter_configure( &filter, 0 ) );
 
-  TEST_ASSERT( !speaker_filter_configure( &filter, 48000,
-                                          SPEAKER_FILTER_DEFAULT_FREQUENCY,
-                                          SPEAKER_FILTER_DEFAULT_Q ) );
+  TEST_ASSERT( !speaker_filter_configure( &filter, 48000 ) );
   TEST_ASSERT( speaker_filter_apply( &filter, 1234.0 ) == 0.0 );
   TEST_ASSERT( fabs( speaker_filter_apply( &filter, 1234.0 ) ) < 1.0e-12 );
   for( i = 0; i < ARRAY_SIZE( output ); i++ )
@@ -550,6 +601,10 @@ sound_source_routes_test( void )
                                        beeper | ay ) == 0 );
   TEST_ASSERT( sound_tv_source_routes( SOUND_SPEAKER_TYPE_UNFILTERED,
                                        beeper | ay ) == 0 );
+  /* Unfiltered processes only the separate ULA stream; AY remains in the
+   * unprocessed main mix rather than entering the routed TV bus. */
+  TEST_ASSERT( !( sound_tv_source_routes( SOUND_SPEAKER_TYPE_UNFILTERED, ay ) &
+                  SOUND_ROUTE_BUILTIN_AY ) );
 
   /* Covox, SpecDrum and external AY deliberately have no TV route bits. */
   TEST_ASSERT( ( tv_base | SOUND_ROUTE_BUILTIN_AY ) == 0x0d );
@@ -2267,6 +2322,7 @@ unittests_run( void )
   r += contention_test();
   r += floating_bus_test();
   r += blip_synth_level_test();
+  r += dc_filter_test();
   r += speaker_filter_test();
   r += tv_filter_test();
   r += ula_filter_test();

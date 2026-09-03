@@ -27,21 +27,23 @@
  * speaker: a second-order resonant high-pass. It is applied only to the
  * separate internal-speaker signal, never to the MIC socket output. */
 
+/* These nominal values are retained for research and auditioning; they are
+ * not measurements of any individual Spectrum speaker. */
+#define SPEAKER_FILTER_FREQUENCY 750.0
+#define SPEAKER_FILTER_Q 0.70710678118654752440
 #define SPEAKER_FILTER_PI 3.14159265358979323846
 #define SPEAKER_FILTER_DENORMAL_LIMIT 1.0e-20
 
 int
-speaker_filter_configure( speaker_filter_t *filter, int sample_rate,
-                          double frequency, double q )
+speaker_filter_configure( speaker_filter_t *filter, int sample_rate )
 {
   double omega, alpha, cosine, a0;
 
-  if( sample_rate <= 0 || frequency <= 0.0 ||
-      frequency >= sample_rate / 2.0 || q <= 0.0 )
+  if( sample_rate <= 0 || SPEAKER_FILTER_FREQUENCY >= sample_rate / 2.0 )
     return 1;
 
-  omega = 2.0 * SPEAKER_FILTER_PI * frequency / sample_rate;
-  alpha = sin( omega ) / ( 2.0 * q );
+  omega = 2.0 * SPEAKER_FILTER_PI * SPEAKER_FILTER_FREQUENCY / sample_rate;
+  alpha = sin( omega ) / ( 2.0 * SPEAKER_FILTER_Q );
   cosine = cos( omega );
   a0 = 1.0 + alpha;
 

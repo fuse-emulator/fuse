@@ -20,11 +20,6 @@
 #ifndef FUSE_SPEAKER_FILTER_H
 #define FUSE_SPEAKER_FILTER_H
 
-/* The nominal response is deliberately kept here for research and auditioning.
- * These are not measurements of any individual Spectrum speaker. */
-#define SPEAKER_FILTER_DEFAULT_FREQUENCY 750.0
-#define SPEAKER_FILTER_DEFAULT_Q 0.70710678118654752440
-
 typedef struct speaker_filter_tag {
   double b0, b1, b2;
   double a1, a2;
@@ -32,8 +27,7 @@ typedef struct speaker_filter_tag {
   int initialized;
 } speaker_filter_t;
 
-int speaker_filter_configure( speaker_filter_t *filter, int sample_rate,
-                              double frequency, double q );
+int speaker_filter_configure( speaker_filter_t *filter, int sample_rate );
 void speaker_filter_reset( speaker_filter_t *filter );
 double speaker_filter_apply( speaker_filter_t *filter, double input );
 

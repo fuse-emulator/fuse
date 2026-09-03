@@ -16,6 +16,7 @@
 #include "settings.h"
 #include "sound.h"
 #include "tape.h"
+#include "sound/dc_filter.h"
 #include "sound/output_mixer.h"
 #include "sound/speaker_filter.h"
 #include "sound/tv_filter.h"
@@ -28,6 +29,7 @@ static int channels, tv_output_count, ula_output_count;
 /* The ULA MIC output is active-low at the port. These normalized logical
  * states are retained separately from tape input and rendered output state. */
 static int ula_mic_on, ula_beeper_on;
+static dc_filter_t unfiltered_dc_filter;
 static speaker_filter_t beeper_filter;
 static tv_filter_t tv_filters[2];
 static ula_filter_t ula_filter;
@@ -66,18 +68,13 @@ output_mixer_init( libspectrum_dword clock_rate, int sample_rate,
       ( channels == 2 &&
         output_buffer_init( &tv_right_buf, clock_rate, sample_rate ) ) )
     return 1;
-  /* ULA is a level signal, so remove its DC component independently of AY and
-   * the other sources in the main mix. */
-  blip_buffer_set_bass_freq( ula_buf, 16 );
-
   ula_synth = new_Blip_Synth();
   blip_synth_set_volume( ula_synth, volume );
   blip_synth_set_output( ula_synth, ula_buf );
   blip_synth_set_treble_eq( ula_synth, 0.0 );
 
-  if( speaker_filter_configure( &beeper_filter, sample_rate,
-                                SPEAKER_FILTER_DEFAULT_FREQUENCY,
-                                SPEAKER_FILTER_DEFAULT_Q ) ||
+  if( dc_filter_configure( &unfiltered_dc_filter, sample_rate ) ||
+      speaker_filter_configure( &beeper_filter, sample_rate ) ||
       tv_filter_configure( &tv_filters[0], sample_rate ) ||
       tv_filter_configure( &tv_filters[1], sample_rate ) ||
       ula_filter_configure( &ula_filter, sample_rate ) )
@@ -106,6 +103,7 @@ output_mixer_reset( void )
 {
   int speaker_type = output_mixer_speaker_type();
 
+  dc_filter_reset( &unfiltered_dc_filter );
   speaker_filter_reset( &beeper_filter );
   tv_filter_reset( &tv_filters[0] );
   tv_filter_reset( &tv_filters[1] );
@@ -168,6 +166,8 @@ reset_route_filters( int speaker_type, int filter_ula, int filter_speaker )
 {
   if( speaker_type != filter_speaker_type ) {
     if( filter_ula ) ula_filter_reset( &ula_filter );
+    if( speaker_type == SOUND_SPEAKER_TYPE_UNFILTERED )
+      dc_filter_reset( &unfiltered_dc_filter );
     filter_speaker_type = speaker_type;
   }
   if( filter_speaker != beeper_filter_active ) {
@@ -181,7 +181,10 @@ filter_ula_sample( double sample, int filter_ula, int filter_speaker )
 {
   /* The acoustic built-in-speaker model follows the electrical ULA response;
    * it never affects the MIC-socket path. */
-  if( filter_ula ) sample = ula_filter_apply( &ula_filter, sample );
+  if( filter_ula )
+    sample = ula_filter_apply( &ula_filter, sample );
+  else
+    sample = dc_filter_apply( &unfiltered_dc_filter, sample );
   if( filter_speaker ) sample = speaker_filter_apply( &beeper_filter, sample );
   return sample;
 }

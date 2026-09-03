@@ -75,13 +75,24 @@ The Speaker type setting selects the final ULA contribution:
               -> shared TV speaker response
   Beeper      internal-speaker path -> electrical pole -> built-in speaker
               model; AY, uSpeech and other sources remain in the main mix
-  Unfiltered  raw MIC path; all other sources remain in the main mix
+  Unfiltered  MIC path -> 16 Hz DC blocker; AY and other sources remain
+              unchanged in the main mix
 
 The three explicit output types are universal ULA-output overrides, not master
 EQ over unrelated peripherals. Covox, SpecDrum and external AY always bypass
 the speaker response and remain in the main mix. Automatic follows the
 physical output provided by the emulated machine, except that a connected
 Currah establishes a TV path on a built-in-beeper machine too.
+
+The ULA Blip buffer has no built-in DC cancellation. In Unfiltered mode only,
+the selected ULA MIC path passes through a first-order 16 Hz DC blocker. Its
+recurrence is `y = a * ( y + x - x_previous )`, where
+`a = exp( -2*pi*16/Fs )` at the runtime sample rate. The first target
+establishes its steady input level without a route-selection transient. State
+persists across frame boundaries and resets on sound initialization,
+sample-rate reconfiguration and selection of the Unfiltered route. AY and the
+other sources in the main mix bypass this blocker. The TV and Beeper paths use
+the DC rejection already provided by their respective response models.
 
 The electrical pole is the frozen asymmetric first-order candidate from a
 listening experiment which had respondants comparing recordings of real
@@ -120,7 +131,7 @@ transition, rather than a conventional narrow band-pass speaker.
   H(s) = s^2 / (s^2 + (w0 / Q)s + w0^2)
 
 It uses a conventional RBJ/bilinear digital biquad at the runtime host sample
-rate. The nominal experimental parameters, defined in sound/speaker_filter.h,
+rate. The nominal experimental parameters, defined in sound/speaker_filter.c,
 are f0 = 750 Hz and Q = 1/sqrt(2). The filter is applied only in the Beeper
 case, immediately before final PCM mixing; it never changes raw ULA PCM. Its
 state is reset on audio/AY reset and when switching between filtered and
