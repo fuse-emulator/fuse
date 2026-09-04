@@ -61,6 +61,8 @@
 
 static void init_path_context( path_context *ctx, utils_aux_type type );
 
+#define UTILS_IDENTIFY_LENGTH 64
+
 static int networking_init_count = 0;
 
 static int
@@ -376,10 +378,92 @@ utils_file_read( utils_file *file )
 int
 utils_file_identify( utils_file *file )
 {
-  if( utils_file_read( file ) ) return 1;
+  utils_file header, remainder;
+  compat_fd fd;
+  off_t length;
+  libspectrum_id_t filename_type;
+  libspectrum_class_t filename_class;
+  int error;
 
   if( file->type != LIBSPECTRUM_ID_UNKNOWN ||
       file->class != LIBSPECTRUM_CLASS_UNKNOWN ) return 0;
+
+  if( file->buffer )
+    return libspectrum_identify_file_with_class( &file->type, &file->class,
+                                                  file->filename, file->buffer,
+                                                  file->length );
+
+  fd = compat_file_open( file->filename, 0 );
+  if( fd == COMPAT_FILE_OPEN_FAILED ) {
+    ui_error( UI_ERROR_ERROR, "couldn't open '%s': %s", file->filename,
+              strerror( errno ) );
+    return 1;
+  }
+
+  length = compat_file_get_length( fd );
+  if( length == -1 ) {
+    compat_file_close( fd );
+    return 1;
+  }
+
+  utils_file_init( &header, file->filename );
+  header.length = length < UTILS_IDENTIFY_LENGTH ?
+                  length : UTILS_IDENTIFY_LENGTH;
+  header.buffer = libspectrum_new( unsigned char, header.length );
+  if( compat_file_read( fd, &header ) ) {
+    utils_file_free( &header );
+    compat_file_close( fd );
+    return 1;
+  }
+
+  /* Identify HDF images from their signature so they need not be read in
+     full. Passing no filename prevents an .hdf extension from masking an
+     invalid header. */
+  error = libspectrum_identify_file_with_class( &file->type, &file->class,
+                                                NULL, header.buffer,
+                                                header.length );
+  if( error || file->class == LIBSPECTRUM_CLASS_HARDDISK ) {
+    utils_file_free( &header );
+    if( compat_file_close( fd ) ) return 1;
+    return error;
+  }
+
+  error = libspectrum_identify_file_with_class( &filename_type,
+                                                &filename_class,
+                                                file->filename, NULL, 0 );
+  if( error || filename_class == LIBSPECTRUM_CLASS_HARDDISK ) {
+    utils_file_free( &header );
+    if( compat_file_close( fd ) ) return 1;
+    file->type = LIBSPECTRUM_ID_UNKNOWN;
+    file->class = LIBSPECTRUM_CLASS_UNKNOWN;
+    return error;
+  }
+
+  file->type = LIBSPECTRUM_ID_UNKNOWN;
+  file->class = LIBSPECTRUM_CLASS_UNKNOWN;
+
+  file->length = length;
+  file->buffer = libspectrum_new( unsigned char, file->length );
+  memcpy( file->buffer, header.buffer, header.length );
+
+  utils_file_init( &remainder, file->filename );
+  remainder.buffer = file->buffer + header.length;
+  remainder.length = file->length - header.length;
+  utils_file_free( &header );
+
+  if( remainder.length && compat_file_read( fd, &remainder ) ) {
+    libspectrum_free( file->buffer );
+    file->buffer = NULL;
+    file->length = 0;
+    compat_file_close( fd );
+    return 1;
+  }
+  if( compat_file_close( fd ) ) {
+    libspectrum_free( file->buffer );
+    file->buffer = NULL;
+    file->length = 0;
+    return 1;
+  }
 
   return libspectrum_identify_file_with_class( &file->type, &file->class,
                                                 file->filename, file->buffer,

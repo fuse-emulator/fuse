@@ -2042,6 +2042,47 @@ utils_file_lifecycle_test( void )
 }
 
 static int
+utils_file_harddisk_identify_test( void )
+{
+  char temporary_path[] = "/tmp/fuse-utils-hdf-XXXXXX";
+  char filename[ PATH_MAX ];
+  compat_file_vtable_t vtable;
+  utils_file file;
+  unsigned char header[ 128 ] = "RS-IDE\x1a";
+  int fd, r = 0;
+
+  fd = mkstemp( temporary_path );
+  snprintf( filename, sizeof( filename ), "%s.hdf", temporary_path );
+  if( fd < 0 || write( fd, header, sizeof( header ) ) != sizeof( header ) ||
+      close( fd ) || rename( temporary_path, filename ) ) {
+    if( fd >= 0 ) close( fd );
+    unlink( temporary_path );
+    unlink( filename );
+    printf( "utils_file_harddisk_identify_test: failed to create fixture\n" );
+    return 1;
+  }
+
+  compat_file_get_vtable( &utils_file_previous_vtable );
+  vtable = utils_file_previous_vtable;
+  vtable.open = utils_file_test_open;
+  vtable.read = utils_file_test_read;
+  utils_file_test_path = filename;
+  utils_file_open_count = utils_file_read_count = 0;
+  compat_file_set_vtable( &vtable );
+
+  utils_file_init( &file, filename );
+  if( utils_file_identify( &file ) ||
+      file.class != LIBSPECTRUM_CLASS_HARDDISK || file.buffer ||
+      utils_file_open_count != 1 || utils_file_read_count != 1 ) r++;
+
+  utils_file_free( &file );
+  compat_file_set_vtable( &utils_file_previous_vtable );
+  unlink( filename );
+  if( r ) printf( "utils_file_harddisk_identify_test failed\n" );
+  return r;
+}
+
+static int
 utils_open_loaded_file_test( void )
 {
   compat_file_vtable_t vtable;
@@ -2349,6 +2390,7 @@ unittests_run( void )
   r += compat_file_vtable_test();
   r += utils_file_lifecycle_test();
   r += utils_file_read_failure_test();
+  r += utils_file_harddisk_identify_test();
   r += utils_open_loaded_file_test();
   r += utils_open_loaded_if2_test();
   r += utils_open_loaded_dck_test();
