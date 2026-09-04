@@ -269,12 +269,15 @@ current_ula_levels( void )
   int mic_on = ula_mic_on || tape_microphone;
 
   sound_ula_levels( mic_on, ula_beeper_on, &levels.mic, &levels.beeper );
-  /* Preserve the legacy loading-noise policy. Disabling loading sound, or
-   * using a Timex machine, removes the tape/MIC contribution only from the
-   * internal-speaker path; the electrical MIC output remains intact. */
-  if( tape_is_playing() &&
-      ( !settings_current.sound_load || machine_current->timex ) )
-    levels.beeper = ula_beeper_on ? SOUND_AMPL_BEEPER : 0;
+  /* Preserve the legacy loading-noise policy. While a tape is playing, its
+   * input drives the internal-speaker path unless loading sound is disabled
+   * or this is a Timex machine. The electrical MIC output remains intact. */
+  if( tape_is_playing() ) {
+    if( settings_current.sound_load && !machine_current->timex )
+      levels.beeper = levels.mic;
+    else
+      levels.beeper = ula_beeper_on ? SOUND_AMPL_BEEPER : 0;
+  }
 
   return levels;
 }
