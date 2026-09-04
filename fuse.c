@@ -989,6 +989,9 @@ do_start_files( start_files_t *start_files )
   /* Input recordings */
 
   if( start_files->playback.filename ) {
+    error = utils_file_read( &start_files->playback );
+    if( error ) return error;
+
     check_snapshot = start_files->snapshot.filename ? 0 : 1;
     error = rzx_start_playback_from_buffer_with_snapshot_check(
       start_files->playback.buffer, start_files->playback.length,
