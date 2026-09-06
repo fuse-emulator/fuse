@@ -123,6 +123,7 @@ int end_event;
 
 static int start_playback( libspectrum_rzx *from_rzx );
 static int creator_is_spin_05( const libspectrum_creator *creator );
+static int creator_has_broken_r7_restore( const libspectrum_creator *creator );
 static int creator_uses_legacy_z80( const libspectrum_creator *creator );
 static int
 creator_has_selectable_z80( const libspectrum_creator *creator );
@@ -384,6 +385,21 @@ creator_is_spin_05( const libspectrum_creator *creator )
 }
 
 static int
+creator_has_broken_r7_restore( const libspectrum_creator *creator )
+{
+  const char *program;
+
+  if( !creator ) return 0;
+
+  program = libspectrum_creator_program( creator );
+  if( !program || strcmp( program, "Fuse" ) ) return 0;
+
+  /* Fuse versions before 0.7 did not restore the high bit of R from
+     snapshots, leaving it clear after the reset performed before loading. */
+  return libspectrum_creator_major( creator ) < 7;
+}
+
+static int
 creator_uses_legacy_z80( const libspectrum_creator *creator )
 {
   const char *program;
@@ -439,6 +455,11 @@ start_playback( libspectrum_rzx *from_rzx )
   if( snap ) {
     error = snapshot_copy_from( snap );
     if( error ) return error;
+
+    if( creator_has_broken_r7_restore(
+          libspectrum_rzx_creator( from_rzx )
+        ) )
+      R7 = 0;
   }
 
   rzx_spin_tape_save_compat = creator_is_spin_05(
@@ -854,6 +875,9 @@ static int playback_frame( void )
   if( snap ) {
     error = snapshot_copy_from( snap );
     if( error ) return rzx_stop_playback( 0 );
+
+    if( creator_has_broken_r7_restore( libspectrum_rzx_creator( rzx ) ) )
+      R7 = 0;
   }
 
   /* If we've got another frame to do, fetch the new instruction count and
