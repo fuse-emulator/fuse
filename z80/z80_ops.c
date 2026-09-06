@@ -186,7 +186,9 @@ z80_do_opcodes( void )
 
     CHECK( plusd, plusd_available )
 
-    if( PC == 0x0008 || PC == 0x003a || PC == 0x0066 || PC == 0x028e ) {
+    /* These addresses are decoded by the +D PAL; unlike the DISCiPLE,
+       the +D does not page in at the KEY-SCAN entry point (0x028e). */
+    if( PC == 0x0008 || PC == 0x003a || PC == 0x0066 ) {
       plusd_page();
     }
 
