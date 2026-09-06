@@ -4,6 +4,7 @@ Implementation notes for some of Fuse's systems
 Contents:
 
 1. The main emulation loop
+1.1. RZX playback compatibility
 2. The display code
 2.1. Building an image of the Spectrum's screen
 
@@ -39,6 +40,72 @@ after how many tstates the interrupt will occur. In this case, the
 interrupt is forced when it is due to occur by scheduling an event
 from the main Z80 emulation loop (z80/z80_ops.c:z80_do_opcodes) and
 then breaking out of the loop.
+
+1.1. RZX playback compatibility
+--------------------------------
+
+RZX records the number of Z80 instruction fetches and the values
+returned by port reads in each frame. This makes recordings independent
+of instruction timing and memory contention, but not of CPU semantics.
+A difference in documented or undocumented Z80 behaviour can change a
+branch and eventually make playback consume a different number of port
+reads. The resulting `wrong number of INs' error normally detects an
+earlier divergence rather than an error in the frame where it is
+reported.
+
+The RZX format does not record the CPU manufacturer or variation used
+by the recording emulator. Neither the Z80 nor SZX snapshot format has
+a standard field for this information. An RZX creator block identifies
+the program and version which wrote the file, and may contain custom
+data, but creator custom data is empty in the Spectaculator recordings
+examined so far. Creator information is also only a hint: processing a
+file with a utility such as rzxtool may replace it.
+
+Spectaculator introduced a selectable CPU model in version 6.25. Its
+release announcement says the default was NEC 780-C/SCS. Recordings
+made before 6.25 therefore used a single, simpler Z80 model; recordings
+made by later versions may depend on a user-selected model which is not
+identified in the RZX file. Spectaculator also changed undocumented Z80
+behaviour over time. For example, version 9.0.2 added the NMOS-specific
+P/V flag correction when an interrupt follows LD A,I or LD A,R.
+
+Fuse's `cmos-z80' setting is a useful compatibility model for old
+recordings, but is not an exact description of the hardware on which
+they were recorded. It changes a group of behaviours, including
+SCF/CCF undocumented flags, OUT (C),0, and the interrupted LD A,I/R
+quirk. Consequently it is unsafe to assume that every old
+Spectaculator version should use this setting. Corpus testing found
+that CMOS mode fixes recordings from Spectaculator 5.2.371, including
+Valethor and Spectrum Chess 2, while forcing it for Spectaculator 7.0
+regresses Impact levels 71-80 and Running Man.
+
+During RZX playback, Fuse therefore enables the CMOS model
+automatically only for Spectaculator versions before 6.25. In the RZX
+creator encoding, Spectaculator stores the release digits in the major
+word and the build in the minor word. The corpus contains 6.20 as major
+62, build 540, and 6.25 as major 62, builds 550 and 552; build 550 is
+therefore used as the compatibility boundary. rzx.c derives the
+override from creator metadata exposed by libspectrum_rzx_creator().
+The override lasts only for playback and rzx_stop_playback() restores
+the user's CPU setting. UI machine selection and reset actions stop RZX
+playback first, so they also restore the setting.
+
+Later Spectaculator recordings cannot be classified reliably from
+creator metadata alone. Compatibility for those recordings should be
+established by testing or by a future RZX extension which explicitly
+records the CPU model. Do not broaden the automatic version range
+without running the full RZX regression corpus: testing such a broad
+pre-9.0.2 rule produced known regressions even though it fixed other
+recordings.
+
+RZX interrupt boundaries need similar care. A short frame can represent
+an interrupt retrigger; the RZX specification recommends treating a
+frame with four fetches or fewer as a retrigger. Fuse uses a dedicated
+EI-delayed interrupt event for these frames, while retaining historical
+forced-interrupt behaviour for longer playback frames. This distinction
+is needed to support both old recordings which accepted an interrupt
+immediately after EI and recordings which include the EI-inhibited
+instruction in a short retrigger frame.
 
 2. The display code
 ===================

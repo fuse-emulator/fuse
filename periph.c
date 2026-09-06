@@ -325,6 +325,7 @@ readport_internal( libspectrum_word port )
 
     error = libspectrum_rzx_playback( rzx, &value );
     if( error ) {
+      rzx_spectaculator_cpu_hint();
       rzx_stop_playback( 1 );
 
       /* Add a null event to mean we pick up the RZX state change in

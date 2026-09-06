@@ -68,6 +68,7 @@ rzx_start_playback_from_buffer_with_snapshot_check(
   const unsigned char *buffer, size_t length, int check_snapshot );
 
 int rzx_stop_playback( int add_interrupt );
+void rzx_spectaculator_cpu_hint( void );
 
 int rzx_frame( void );
 
