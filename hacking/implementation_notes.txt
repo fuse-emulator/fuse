@@ -5,6 +5,9 @@ Contents:
 
 1. The main emulation loop
 1.1. RZX playback compatibility
+1.1.1. Spectaculator CPU models
+1.1.2. Interrupt boundaries
+1.1.3. SPIN 0.5 tape-save input
 2. The display code
 2.1. Building an image of the Spectrum's screen
 
@@ -61,6 +64,9 @@ data, but creator custom data is empty in the Spectaculator recordings
 examined so far. Creator information is also only a hint: processing a
 file with a utility such as rzxtool may replace it.
 
+1.1.1. Spectaculator CPU models
+................................
+
 Spectaculator introduced a selectable CPU model in version 6.25. Its
 release announcement says the default was NEC 780-C/SCS. Recordings
 made before 6.25 therefore used a single, simpler Z80 model; recordings
@@ -98,6 +104,9 @@ without running the full RZX regression corpus: testing such a broad
 pre-9.0.2 rule produced known regressions even though it fixed other
 recordings.
 
+1.1.2. Interrupt boundaries
+...........................
+
 RZX interrupt boundaries need similar care. A short frame can represent
 an interrupt retrigger; the RZX specification recommends treating a
 frame with four fetches or fewer as a retrigger. Fuse uses a dedicated
@@ -106,6 +115,67 @@ forced-interrupt behaviour for longer playback frames. This distinction
 is needed to support both old recordings which accepted an interrupt
 immediately after EI and recordings which include the EI-inhibited
 instruction in a short retrigger frame.
+
+SPIN 0.5 did not implement retriggered interrupts according to the RZX
+specification. It can produce anomalous short frames with more than the
+recommended four fetches, but treating every such frame as a retrigger
+is not a safe workaround. The frame length alone does not distinguish a
+bad SPIN frame from a normal frame, and increasing Fuse's threshold to
+nine did not repair the SPIN 0.5 tape-save failures described below.
+Keep the specification's four-fetch boundary unless broader corpus
+testing establishes a different rule without regressions.
+
+1.1.3. SPIN 0.5 tape-save input
+...............................
+
+An RZX frame is written when a maskable interrupt occurs, or when it
+would occur if interrupts were disabled. Its IN count is the number of
+I/O port reads actually performed by the CPU in that frame. Input bytes
+are local to that frame and must not be carried into a later frame. An
+IN count of 65535 means that the exact port-read sequence from the last
+frame is repeated; it does not mean that the keyboard state is merely
+unchanged.
+
+Some SPIN 0.5 recordings violate these rules while the 48K ROM SAVE
+routine is running. The first bad frame reaches the SAVE MIC output loop
+at 0x04d8 or 0x04de after the normal interrupt handler has performed its
+eight keyboard reads, but contains nine or ten input bytes. Later frames
+continue to contain explicit eight-byte keyboard scans even though SAVE
+has disabled interrupts and the CPU performs no port reads. These are
+not RZX repeat-frame records: SPIN wrote an IN count of eight and eight
+values into each affected frame.
+
+Fuse handles this defect only when all of the following evidence is
+present:
+
+* the creator program is SPIN 0.5 and its version words are 0 and 5;
+* the selected machine is the 48K Spectrum;
+* a frame has unread input bytes when its fetch count is exhausted; and
+* playback is in the 48K ROM SAVE range 0x04c2 to 0x053f, or recovery
+  was armed there and is draining the final transition frame.
+
+SPIN space-pads its 20-byte creator program even though the RZX field is
+specified as ASCIIZ. creator_is_spin_05() consequently accepts the exact
+`SPIN 0.5' prefix followed only by spaces, as well as a normally
+terminated string, and also checks the creator version words.
+
+When the first matching frame is found, rzx.c enters a tape-save
+compatibility state and reports one warning. At each affected frame
+boundary it uses libspectrum_rzx_playback_inputs_remaining() to detect
+the malformed tail and libspectrum_rzx_playback_discard_inputs() to move
+the current frame's input cursor to its end. The latter does not advance
+the RZX frame or alter its fetch count. Fuse leaves compatibility mode
+after draining a boundary outside the ROM SAVE range, which covers the
+last stale transition frame without making later playback permissive.
+The state and warning flag are reset when playback starts or stops.
+
+The policy belongs in Fuse because libspectrum has no knowledge of the
+emulated PC, ROM or machine. libspectrum exposes only the neutral input
+cursor operations and remains strict by default. Do not turn this into
+a general `ignore wrong number of INs' path: such an error normally
+identifies a real CPU or peripheral divergence. Testing all 1160 SPIN
+0.5 files in the RZX corpus activated this workaround for exactly the
+five known tape-save recordings and no others.
 
 2. The display code
 ===================

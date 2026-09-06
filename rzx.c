@@ -85,6 +85,11 @@ int sentinel_warning;
 /* Did RZX playback enable the legacy CMOS Z80 model? */
 static int rzx_cmos_forced;
 
+/* Did SPIN 0.5 record stale keyboard input during ROM tape saving? */
+static int rzx_spin_tape_save_compat;
+static int rzx_spin_tape_save_compat_active;
+static int rzx_spin_tape_save_compat_warned;
+
 /* Did the recording emulator offer selectable CPU behaviour? */
 static int rzx_spectaculator_selectable_cpu;
 
@@ -117,9 +122,11 @@ static const char * const end_event_detail_string = "end";
 int end_event;
 
 static int start_playback( libspectrum_rzx *from_rzx );
+static int creator_is_spin_05( const libspectrum_creator *creator );
 static int creator_uses_legacy_z80( const libspectrum_creator *creator );
 static int
 creator_has_selectable_z80( const libspectrum_creator *creator );
+static int spin_tape_save_pc( void );
 static void start_recording( libspectrum_rzx *to_rzx, int competition_mode );
 static int recording_frame( void );
 static int playback_frame( void );
@@ -134,6 +141,9 @@ rzx_init( void *context )
 {
   rzx_recording = rzx_playback = 0;
   rzx_cmos_forced = 0;
+  rzx_spin_tape_save_compat = 0;
+  rzx_spin_tape_save_compat_active = 0;
+  rzx_spin_tape_save_compat_warned = 0;
   rzx_spectaculator_selectable_cpu = 0;
 
   rzx_in_bytes = NULL;
@@ -357,6 +367,23 @@ rzx_start_playback_from_buffer_with_snapshot_check(
 }
 
 static int
+creator_is_spin_05( const libspectrum_creator *creator )
+{
+  const char *program;
+
+  if( !creator ) return 0;
+
+  program = libspectrum_creator_program( creator );
+  if( !program || strncmp( program, "SPIN 0.5", 8 ) ) return 0;
+
+  program += 8;
+  if( strspn( program, " " ) != strlen( program ) ) return 0;
+
+  return libspectrum_creator_major( creator ) == 0 &&
+         libspectrum_creator_minor( creator ) == 5;
+}
+
+static int
 creator_uses_legacy_z80( const libspectrum_creator *creator )
 {
   const char *program;
@@ -394,6 +421,13 @@ creator_has_selectable_z80( const libspectrum_creator *creator )
 }
 
 static int
+spin_tape_save_pc( void )
+{
+  return machine_current->machine == LIBSPECTRUM_MACHINE_48 &&
+         PC >= 0x04c2 && PC <= 0x053f;
+}
+
+static int
 start_playback( libspectrum_rzx *from_rzx )
 {
   int error;
@@ -407,6 +441,11 @@ start_playback( libspectrum_rzx *from_rzx )
     if( error ) return error;
   }
 
+  rzx_spin_tape_save_compat = creator_is_spin_05(
+    libspectrum_rzx_creator( from_rzx )
+  );
+  rzx_spin_tape_save_compat_active = 0;
+  rzx_spin_tape_save_compat_warned = 0;
   rzx_spectaculator_selectable_cpu = creator_has_selectable_z80(
     libspectrum_rzx_creator( from_rzx )
   );
@@ -455,6 +494,9 @@ int rzx_stop_playback( int add_interrupt )
   rzx_playback = 0;
   if( rzx_cmos_forced ) settings_current.z80_is_cmos = 0;
   rzx_cmos_forced = 0;
+  rzx_spin_tape_save_compat = 0;
+  rzx_spin_tape_save_compat_active = 0;
+  rzx_spin_tape_save_compat_warned = 0;
   rzx_spectaculator_selectable_cpu = 0;
   if( settings_current.movie_stop_after_rzx ) movie_stop();
 
@@ -768,7 +810,29 @@ static int recording_frame( void )
 static int playback_frame( void )
 {
   int error, finished;
+  size_t remaining;
   libspectrum_snap *snap;
+
+  remaining = libspectrum_rzx_playback_inputs_remaining( rzx );
+
+  if( rzx_spin_tape_save_compat && remaining &&
+      ( rzx_spin_tape_save_compat_active || spin_tape_save_pc() ) ) {
+
+    if( !rzx_spin_tape_save_compat_active ) {
+      rzx_spin_tape_save_compat_active = 1;
+      if( !rzx_spin_tape_save_compat_warned ) {
+        ui_error( UI_ERROR_WARNING,
+                  "Applying SPIN 0.5 RZX tape-save compatibility" );
+        rzx_spin_tape_save_compat_warned = 1;
+      }
+    }
+
+    error = libspectrum_rzx_playback_discard_inputs( rzx );
+    if( error ) return error;
+  }
+
+  if( rzx_spin_tape_save_compat_active && !spin_tape_save_pc() )
+    rzx_spin_tape_save_compat_active = 0;
 
   error = libspectrum_rzx_playback_frame( rzx, &finished, &snap );
   if( error ) {
