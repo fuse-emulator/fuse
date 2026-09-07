@@ -31,6 +31,7 @@
 #include "fuse.h"
 #include "periph.h"
 #include "peripherals/if1.h"
+#include "peripherals/disk/disciple.h"
 #include "peripherals/multiface.h"
 #include "peripherals/ula.h"
 #include "rzx.h"
@@ -458,6 +459,7 @@ update_peripherals_status( void )
   update_ide_menu();
   if1_update_menu();
   multiface_status_update();
+  disciple_inhibit_update();
   specplus3_765_update_fdd();
 }
 

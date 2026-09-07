@@ -5559,15 +5559,14 @@ menu option.
 .SH DISCIPLE EMULATION
 .PP
 Fuse supports emulating the DISCiPLE disk and printer interface, although
-it does not currently support emulation of the Sinclair Network, or
-support emulation of a DISCiPLE attached to a 128K machine. See the
+it does not currently support emulation of the Sinclair Network. It can be
+used with 48K, 128K and grey +2 emulation, but not +2A or +3 emulation. See the
 .B "DISK FILE FORMATS"
 section for more details on supported disk file formats, which are the
 same as for +D emulation as described above. The DISCiPLE's
 printer port is emulated. (See the
 .B "PRINTER EMULATION"
-section for more details.) The DISCiPLE may only be
-used with 48K emulation at present.  To access disks, you will first
+section for more details.) To access disks, you will first
 need to load GDOS, by inserting a disk containing the DOS file (SYS) and
 entering \(lqRUN\(rq.  Once DOS is loaded, you can load to/from DISCiPLE disks
 by prefixing filenames with
@@ -5578,6 +5577,14 @@ is the number of the drive in use.  For example,
 .RI ` "LOAD d1\(dqmyfile\(dq" '
 would load the file named `myfile' from the emulated drive\ 1.
 Microdrive syntax may also be used.
+.PP
+The
+.I "DISCiPLE inhibit"
+checkbox in the Disk Peripheral Options dialog controls the physical inhibit
+switch and shows its current state. Enabling it immediately pages the DISCiPLE
+out. With inhibit disabled, automatic paging is enabled regardless of
+control-port bit 4. With the button pressed, bit 4 clear inhibits automatic
+paging and bit 4 set permits subsequent paging triggers.
 .PP
 Snapshots can be saved in a similar manner to that of the +D as described
 above, but note that GDOS on the DISCiPLE contains a bug which causes
