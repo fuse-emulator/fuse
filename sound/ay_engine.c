@@ -73,8 +73,9 @@ static void
 ay_levels_init( void )
 {
   /* Based on Matthew Westcott's December 2001 comp.sys.sinclair
-   * measurements, with the adjustments described in the follow-up, then
-   * scaled to the internal amplitude range. */
+   * measurements, with Russell Marks's follow-up adjustment intended
+   * to model the AY as used in a Spectrum, then scaled to the internal
+   * amplitude range. */
   static const int measured_levels[AY_ENV_STEPS] = {
     0x0000, 0x0385, 0x053D, 0x0770, 0x0AD7, 0x0FD5, 0x15B0, 0x230C,
     0x2B4C, 0x43C1, 0x5A4B, 0x732F, 0x9204, 0xAFF1, 0xD921, 0xFFFF
