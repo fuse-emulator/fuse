@@ -317,7 +317,12 @@ int rzx_start_playback( const char *filename, int check_snapshot )
     /* We need to load an external snapshot. Could be skipped if the snapshot
        is preloaded from command line */
     error = utils_open_snap();
-    if( error ) return error;
+    if( error ) {
+      ui_error( UI_ERROR_ERROR,
+                "RZX recording contains no embedded snapshot and no "
+                "external snapshot was loaded" );
+      return error;
+    }
   }
 
   error = start_playback( rzx );
@@ -353,6 +358,9 @@ rzx_start_playback_from_buffer_with_snapshot_check(
   if( !snap && check_snapshot ) {
     error = utils_open_snap();
     if( error ) {
+      ui_error( UI_ERROR_ERROR,
+                "RZX recording contains no embedded snapshot and no "
+                "external snapshot was loaded" );
       libspectrum_rzx_free( rzx );
       return error;
     }
