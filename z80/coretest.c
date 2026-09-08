@@ -627,6 +627,12 @@ rzx_frame( void )
   abort();
 }
 
+int
+rzx_frame_interrupt_complete( void )
+{
+  abort();
+}
+
 void
 writeport_internal( libspectrum_word port GCC_UNUSED, libspectrum_byte b GCC_UNUSED )
 {

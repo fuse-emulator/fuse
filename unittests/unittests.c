@@ -73,9 +73,138 @@
 #include "bitmap.h"
 #include "rectangle.h"
 #include "compat.h"
+#include "rzx.h"
+#include "spectrum.h"
 #include "ui/scaler/scaler.h"
 #include "unittests.h"
 #include "utils.h"
+#include "z80/z80.h"
+#include "z80/z80_macros.h"
+
+static int
+rzx_automatic_snapshot_count( libspectrum_snap **automatic_snap )
+{
+  libspectrum_rzx_iterator it;
+  int count = 0;
+
+  *automatic_snap = NULL;
+  for( it = libspectrum_rzx_iterator_begin( rzx ); it;
+       it = libspectrum_rzx_iterator_next( it ) ) {
+    if( libspectrum_rzx_iterator_get_type( it ) ==
+          LIBSPECTRUM_RZX_SNAPSHOT_BLOCK &&
+        libspectrum_rzx_iterator_snap_is_automatic( it ) ) {
+      libspectrum_rzx_iterator next;
+
+      count++;
+      *automatic_snap = libspectrum_rzx_iterator_get_snap( it );
+      next = libspectrum_rzx_iterator_next( it );
+      if( !next || libspectrum_rzx_iterator_get_type( next ) !=
+                     LIBSPECTRUM_RZX_INPUT_BLOCK )
+        return -1;
+    }
+  }
+
+  return count;
+}
+
+static int
+rzx_post_interrupt_autosave_test( void )
+{
+  const char *filename = "/tmp/fuse-rzx-autosave-test.rzx";
+  libspectrum_snap *snap;
+  libspectrum_dword frame_tstates;
+  int old_autosaves, disabled, error = 0, i;
+
+  old_autosaves = settings_current.rzx_autosaves;
+  settings_current.rzx_autosaves = 1;
+  frame_tstates = machine_current->timings.tstates_per_frame;
+
+  for( disabled = 0; disabled < 2; disabled++ ) {
+    if( rzx_start_recording( filename, 0 ) ) {
+      error++;
+      break;
+    }
+
+    for( i = 0; i < 250; i++ ) rzx_frame();
+    if( rzx_automatic_snapshot_count( &snap ) != 0 ) error++;
+
+    PC = 0x1234; SP = 0x8000; IM = 1;
+    IFF1 = IFF2 = !disabled;
+    tstates = frame_tstates;
+    spectrum_frame();
+    z80_interrupt();
+
+    /* Interrupt acknowledge does not count as an RZX instruction fetch. */
+    if( R + rzx_instructions_offset != 0 ) error++;
+
+    rzx_frame_interrupt_complete();
+    if( rzx_automatic_snapshot_count( &snap ) != 1 || !snap ) {
+      error++;
+    } else if( libspectrum_snap_tstates( snap ) != tstates ) {
+      error++;
+    } else if( disabled ) {
+      if( libspectrum_snap_pc( snap ) != 0x1234 ||
+          libspectrum_snap_iff1( snap ) || libspectrum_snap_iff2( snap ) )
+        error++;
+    } else {
+      if( libspectrum_snap_pc( snap ) != 0x0038 ||
+          libspectrum_snap_iff1( snap ) || libspectrum_snap_iff2( snap ) ||
+          tstates >= frame_tstates )
+        error++;
+    }
+
+    if( rzx_stop_recording() ) error++;
+    unlink( filename );
+  }
+
+  settings_current.rzx_autosaves = old_autosaves;
+  if( error ) printf( "rzx_post_interrupt_autosave_test failed\n" );
+  return error;
+}
+
+static int
+rzx_retrigger_autosave_test( void )
+{
+  const char *filename = "/tmp/fuse-rzx-retrigger-test.rzx";
+  libspectrum_snap *snap;
+  int old_autosaves, delayed, error = 0, i;
+
+  old_autosaves = settings_current.rzx_autosaves;
+  settings_current.rzx_autosaves = 1;
+
+  for( delayed = 0; delayed < 2; delayed++ ) {
+    if( rzx_start_recording( filename, 0 ) ) {
+      error++;
+      break;
+    }
+
+    for( i = 0; i < 250; i++ ) rzx_frame();
+    PC = 0x2345; SP = 0x8000; IM = 1; IFF1 = IFF2 = 1;
+    tstates = delayed ? 0 : 1;
+    z80.interrupts_enabled_at = delayed ? 0 : -1;
+
+    if( delayed ) {
+      if( z80_interrupt() || rzx_frame_interrupt_complete() ||
+          rzx_automatic_snapshot_count( &snap ) != 0 ) error++;
+      tstates++;
+    }
+
+    if( !z80_interrupt() ) error++;
+    rzx_frame();
+    rzx_frame_interrupt_complete();
+    if( rzx_automatic_snapshot_count( &snap ) != 1 || !snap ||
+        libspectrum_snap_pc( snap ) != 0x0038 ||
+        libspectrum_snap_iff1( snap ) || libspectrum_snap_iff2( snap ) )
+      error++;
+
+    if( rzx_stop_recording() ) error++;
+    unlink( filename );
+  }
+
+  settings_current.rzx_autosaves = old_autosaves;
+  if( error ) printf( "rzx_retrigger_autosave_test failed\n" );
+  return error;
+}
 
 static int
 contention_test( void )
@@ -2386,6 +2515,8 @@ unittests_run( void )
   int r = 0;
 
   r += contention_test();
+  r += rzx_post_interrupt_autosave_test();
+  r += rzx_retrigger_autosave_test();
   r += floating_bus_test();
   r += blip_synth_level_test();
   r += dc_filter_test();

@@ -97,7 +97,10 @@ z80_interrupt_event_fn( libspectrum_dword event_tstates, int type,
 
   /* Otherwise, see if we actually accept an interrupt. If we do and
      we're doing RZX recording, store a frame */
-  if( z80_interrupt() ) rzx_frame();
+  if( z80_interrupt() ) {
+    rzx_frame();
+    rzx_frame_interrupt_complete();
+  }
 }
 
 static void
@@ -106,7 +109,10 @@ z80_ei_delayed_interrupt_event_fn( libspectrum_dword event_tstates, int type,
 {
   /* Unlike retriggered interrupts, an interrupt postponed by EI is still
      the interrupt generated at the RZX frame boundary. */
-  if( z80_interrupt() && !rzx_playback ) rzx_frame();
+  if( z80_interrupt() && !rzx_playback ) {
+    rzx_frame();
+    rzx_frame_interrupt_complete();
+  }
 }
 
 /* Set up the z80 emulation */

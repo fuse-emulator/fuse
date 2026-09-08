@@ -71,6 +71,7 @@ int rzx_stop_playback( int add_interrupt );
 void rzx_spectaculator_cpu_hint( void );
 
 int rzx_frame( void );
+int rzx_frame_interrupt_complete( void );
 
 int rzx_store_byte( libspectrum_byte value );
 

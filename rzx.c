@@ -62,6 +62,9 @@ size_t rzx_in_count;
 /* The number of frames we've recorded in this RZX file */
 static size_t autosave_frame_count;
 
+/* Should an autosave be taken after the frame interrupt has completed? */
+static int autosave_pending;
+
 /* And the values of those bytes */
 libspectrum_byte *rzx_in_bytes;
 
@@ -141,6 +144,7 @@ static int
 rzx_init( void *context )
 {
   rzx_recording = rzx_playback = 0;
+  autosave_pending = 0;
   rzx_cmos_forced = 0;
   rzx_spin_tape_save_compat = 0;
   rzx_spin_tape_save_compat_active = 0;
@@ -215,6 +219,7 @@ int rzx_stop_recording( void )
 
   /* Stop recording data */
   rzx_recording = 0;
+  autosave_pending = 0;
   if( settings_current.movie_stop_after_rzx ) movie_stop();
 
   /* Embed final snapshot */
@@ -572,6 +577,7 @@ start_recording( libspectrum_rzx *to_rzx, int competition_mode )
   counter_reset();
   rzx_in_count = 0;
   autosave_frame_count = 0;
+  autosave_pending = 0;
 
   rzx_recording = 1;
 
@@ -761,11 +767,32 @@ autosave_frame( void )
 {
   if( ++autosave_frame_count % AUTOSAVE_INTERVAL ) return;
 
-  rzx_add_snap( rzx, 1 );
+  autosave_pending = 1;
+}
+
+int
+rzx_frame_interrupt_complete( void )
+{
+  int error;
+
+  if( !rzx_recording || !autosave_pending ) return 0;
+
+  /* EI can postpone this frame's interrupt until after the next
+     instruction. Leave the autosave pending for that interrupt callback. */
+  if( IFF1 && tstates == z80.interrupts_enabled_at ) return 0;
+
+  autosave_pending = 0;
+
+  error = rzx_add_snap( rzx, 1 );
+  if( error ) {
+    rzx_stop_recording();
+    return error;
+  }
 
   libspectrum_rzx_start_input( rzx, tstates );
-
   autosave_prune();
+
+  return 0;
 }
 
 static void
@@ -990,6 +1017,8 @@ static int
 start_after_rollback( libspectrum_snap *snap )
 {
   int error;
+
+  autosave_pending = 0;
 
   error = snapshot_copy_from( snap );
   if( error ) return error;
