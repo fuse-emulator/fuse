@@ -44,6 +44,8 @@ fuse_SOURCES = display.c \
 	psg.c \
 	rectangle.c \
 	rzx.c \
+	rzx_recording.c \
+	rzx_internal.h \
 	screenshot.c \
 	settings.c \
 	slt.c \
