@@ -113,10 +113,15 @@ sound_init( const char *device )
 {
   float hz;
 
+  /* Allow sound as long as emulation speed is greater than 2%
+     (less than that and a single Speccy frame generates more
+     than a seconds worth of sound which is bigger than the
+     maximum Blip_Buffer of 1 second) */
   if( !( !sound_enabled && settings_current.sound &&
          is_in_sound_enabled_range() ) )
     return;
 
+  /* only try for stereo if we need it */
   sound_stereo_ay = option_enumerate_sound_stereo_ay();
   if( settings_current.sound &&
       sound_lowlevel_init( device, &settings_current.sound_freq,
