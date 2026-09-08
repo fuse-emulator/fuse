@@ -35,6 +35,7 @@
 #include "disciple.h"
 #include "event.h"
 #include "infrastructure/startup_manager.h"
+#include "keyboard.h"
 #include "machine.h"
 #include "module.h"
 #include "peripherals/printer.h"
@@ -44,6 +45,7 @@
 #include "unittests/unittests.h"
 #include "utils.h"
 #include "wd_fdc.h"
+#include "z80/z80.h"
 #include "options.h"	/* needed for get combo options */
 
 /* Two 8 KiB memory chunks accessible by the Z80 when /ROMCS is low */
@@ -63,6 +65,7 @@ int disciple_memswap = 0;        /* Are the ROM and RAM pages swapped? */
 /* int disciple_rombank = 0; */
 static int disciple_inhibit_button;
 static int disciple_reset_guard;
+static int disciple_snapshot_nmi_pending;
 
 int disciple_available = 0;
 int disciple_active = 0;
@@ -82,6 +85,9 @@ static void disciple_from_snapshot( libspectrum_snap *snap );
 static void disciple_to_snapshot( libspectrum_snap *snap );
 static void disciple_reset_guard_event( libspectrum_dword tstates, int type,
                                         void *user_data );
+static int disciple_try_page( void );
+static void disciple_snapshot_menu_activate( int active );
+static void disciple_snapshot_nmi_clear( void );
 
 /* WD1770 registers */
 static libspectrum_byte disciple_sr_read( libspectrum_word port, libspectrum_byte *attached );
@@ -140,20 +146,67 @@ disciple_page_unconditionally( void )
   debugger_event( page_event );
 }
 
-void
-disciple_page( void )
+static int
+disciple_try_page( void )
 {
-  if( disciple_reset_guard || !disciple_paging_enabled() ) return;
+  if( disciple_reset_guard || !disciple_paging_enabled() ) return 0;
 
   disciple_active = 1;
   machine_current->ram.romcs = 1;
   machine_current->memory_map();
   debugger_event( page_event );
+
+  return 1;
+}
+
+void
+disciple_page( void )
+{
+  disciple_try_page();
+}
+
+void
+disciple_nmi_page( void )
+{
+  int paged = disciple_try_page();
+
+  if( !disciple_snapshot_nmi_pending ) return;
+
+  disciple_snapshot_nmi_pending = 0;
+  if( paged )
+    keyboard_synthetic_press( KEYBOARD_SYNTHETIC_DISCIPLE, KEYBOARD_Caps );
+  else
+    keyboard_synthetic_release_all( KEYBOARD_SYNTHETIC_DISCIPLE );
+}
+
+void
+disciple_snapshot_nmi( void )
+{
+  if( !disciple_available ) return;
+
+  disciple_snapshot_nmi_pending = 1;
+  event_add( 0, z80_nmi_event );
+}
+
+static void
+disciple_snapshot_menu_activate( int active GCC_UNUSED )
+{
+#ifdef USE_WIDGET
+  ui_menu_activate( UI_MENU_ITEM_MACHINE_DISCIPLE_MAGIC_BUTTON, active );
+#endif
+}
+
+static void
+disciple_snapshot_nmi_clear( void )
+{
+  disciple_snapshot_nmi_pending = 0;
+  keyboard_synthetic_release_all( KEYBOARD_SYNTHETIC_DISCIPLE );
 }
 
 void
 disciple_unpage( void )
 {
+  disciple_snapshot_nmi_clear();
   disciple_active = 0;
   machine_current->ram.romcs = 0;
   machine_current->memory_map();
@@ -270,7 +323,9 @@ disciple_init( void *context )
 static void
 disciple_end( void )
 {
+  disciple_snapshot_nmi_clear();
   disciple_available = 0;
+  disciple_snapshot_menu_activate( 0 );
   libspectrum_free( disciple_fdc );
 }
 
@@ -292,8 +347,10 @@ disciple_reset( int hard_reset )
 {
   int i;
 
+  disciple_snapshot_nmi_clear();
   disciple_active = 0;
   disciple_available = 0;
+  disciple_snapshot_menu_activate( 0 );
 
   disciple_inhibit_button = settings_current.disciple_inhibit;
   if( !periph_is_active( PERIPH_TYPE_DISCIPLE ) ) {
@@ -322,6 +379,7 @@ disciple_reset( int hard_reset )
 
   disciple_available = 1;
   disciple_active = 0;
+  disciple_snapshot_menu_activate( 1 );
 
   disciple_memswap = 0;
   disciple_control_register = 0;
@@ -584,6 +642,49 @@ disciple_unittest( void )
   }
   disciple_unpage();
 
+  keyboard_release_all();
+  keyboard_synthetic_release_all( KEYBOARD_SYNTHETIC_PHANTOM_TYPIST );
+  disciple_snapshot_nmi_pending = 1;
+  disciple_nmi_page();
+  if( keyboard_read( 0xfe ) != 0xfe ) {
+    fprintf( stderr, "DISCiPLE snapshot NMI did not press Caps Shift\n" );
+    r++;
+  }
+  keyboard_press( KEYBOARD_Caps );
+  disciple_unpage();
+  if( keyboard_read( 0xfe ) != 0xfe ) {
+    fprintf( stderr, "DISCiPLE unpage released physical Caps Shift\n" );
+    r++;
+  }
+  keyboard_release( KEYBOARD_Caps );
+
+  keyboard_synthetic_press( KEYBOARD_SYNTHETIC_PHANTOM_TYPIST,
+                            KEYBOARD_Caps );
+  disciple_snapshot_nmi_pending = 1;
+  disciple_nmi_page();
+  disciple_unpage();
+  if( keyboard_read( 0xfe ) != 0xfe ) {
+    fprintf( stderr, "DISCiPLE unpage released phantom typist Caps Shift\n" );
+    r++;
+  }
+  keyboard_synthetic_release_all( KEYBOARD_SYNTHETIC_PHANTOM_TYPIST );
+
+  disciple_reset_guard = 1;
+  disciple_snapshot_nmi_pending = 1;
+  disciple_nmi_page();
+  if( disciple_active || disciple_snapshot_nmi_pending ||
+      keyboard_read( 0xfe ) != 0xff ) {
+    fprintf( stderr, "DISCiPLE reset guard retained snapshot NMI request\n" );
+    r++;
+  }
+  disciple_reset_guard = 0;
+  disciple_nmi_page();
+  if( !disciple_active || keyboard_read( 0xfe ) != 0xff ) {
+    fprintf( stderr, "Generic DISCiPLE NMI synthesized Caps Shift\n" );
+    r++;
+  }
+  disciple_unpage();
+
   snap = libspectrum_snap_alloc();
   if( !snap ) {
     fprintf( stderr, "Couldn't allocate DISCiPLE unit test snapshot\n" );
@@ -621,6 +722,12 @@ disciple_unittest( void )
   disciple_cn_write( 0x001f, 0x00 );
   disciple_page();
   if( disciple_active ) { fprintf( stderr, "Pressed inhibit allowed bit 4=0\n" ); r++; }
+  disciple_snapshot_nmi_pending = 1;
+  disciple_nmi_page();
+  if( disciple_snapshot_nmi_pending || keyboard_read( 0xfe ) != 0xff ) {
+    fprintf( stderr, "DISCiPLE inhibit retained snapshot NMI request\n" );
+    r++;
+  }
   disciple_cn_write( 0x001f, 0x10 );
   disciple_page();
   if( !disciple_active ) { fprintf( stderr, "Pressed inhibit blocked bit 4=1\n" ); r++; }
@@ -641,6 +748,14 @@ disciple_unittest( void )
   settings_current.disciple_inhibit = 0;
   disciple_inhibit_update();
 
+  disciple_snapshot_nmi_pending = 1;
+  disciple_nmi_page();
+  disciple_reset( 0 );
+  if( disciple_snapshot_nmi_pending || keyboard_read( 0xfe ) != 0xff ) {
+    fprintf( stderr, "DISCiPLE reset retained snapshot keyboard state\n" );
+    r++;
+  }
+  disciple_reset_guard_event( 0, reset_guard_event, NULL );
   disciple_page();
 
   r += unittests_assert_8k_page( 0x0000, disciple_memory_source_rom, 0 );

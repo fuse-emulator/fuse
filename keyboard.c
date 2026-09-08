@@ -39,6 +39,11 @@
 */
 libspectrum_byte keyboard_return_values[KEYBOARD_HALFROWS];
 
+/* Active-low keyboard overlays generated independently by emulator
+   subsystems. */
+static libspectrum_byte
+  keyboard_synthetic_values[KEYBOARD_SYNTHETIC_SOURCE_COUNT][KEYBOARD_HALFROWS];
+
 /* The hash used for storing the UI -> Fuse input layer key mappings */
 static GHashTable *keysyms_hash;
 
@@ -276,7 +281,11 @@ keyboard_init( void *context )
   keysyms_map_t *ptr3;
   struct key_text_t *ptr4;
 
+  int i;
+
   keyboard_release_all();
+  for( i = 0; i < KEYBOARD_SYNTHETIC_SOURCE_COUNT; i++ )
+    keyboard_synthetic_release_all( i );
 
   keyboard_data = g_hash_table_new( g_int_hash, g_int_equal );
 
@@ -329,7 +338,13 @@ keyboard_read( libspectrum_byte porth )
   libspectrum_byte data = 0xff; int i;
 
   for( i=0; i<KEYBOARD_HALFROWS; i++,porth>>=1 ) {
-    if(! (porth&0x01) ) data &= keyboard_return_values[i];
+    int source;
+
+    if( !( porth & 0x01 ) ) {
+      data &= keyboard_return_values[i];
+      for( source = 0; source < KEYBOARD_SYNTHETIC_SOURCE_COUNT; source++ )
+        data &= keyboard_synthetic_values[source][i];
+    }
   }
 
   return data;
@@ -363,6 +378,29 @@ int keyboard_release_all( void )
   for( i=0; i<KEYBOARD_HALFROWS; i++ ) keyboard_return_values[i] = 0xff;
 
   return 0;
+}
+
+void
+keyboard_synthetic_press( keyboard_synthetic_source source,
+                          keyboard_key_name key )
+{
+  struct key_bit *ptr;
+
+  if( source < 0 || source >= KEYBOARD_SYNTHETIC_SOURCE_COUNT ) return;
+
+  ptr = g_hash_table_lookup( keyboard_data, &key );
+  if( ptr ) keyboard_synthetic_values[source][ptr->port] &= ~ptr->bit;
+}
+
+void
+keyboard_synthetic_release_all( keyboard_synthetic_source source )
+{
+  int i;
+
+  if( source < 0 || source >= KEYBOARD_SYNTHETIC_SOURCE_COUNT ) return;
+
+  for( i = 0; i < KEYBOARD_HALFROWS; i++ )
+    keyboard_synthetic_values[source][i] = 0xff;
 }
 
 const keyboard_spectrum_keys_t*

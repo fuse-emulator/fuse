@@ -3641,16 +3641,23 @@ to help distinguish executed code from unexecuted data.
 Sends a non-maskable interrupt to the emulated Spectrum. Due to a typo
 in the standard 48K ROM, this will cause a reset, but modified ROMs are
 available which make use of this feature. When the +D (or DISCiPLE) is
-emulated, this is used to access the +D (or DISCiPLE)'s screenshot and
+emulated, this can be used to access the +D (or DISCiPLE)'s screenshot and
 snapshot features (see the
 .B "+D EMULATION"
 and
 .B "DISCIPLE EMULATION"
-sections below).  For the DISCiPLE, Caps Shift must be held down whilst
-pressing the NMI button.  For some UIs, this may be tricky, or even
-impossible to do.  Note that GDOS on the DISCiPLE contains a bug which
-causes corruption of saved snapshots, and a failure to return from the
-NMI menu correctly.  This bug is not present in G+DOS on the +D.
+sections below). This item is a literal hardware NMI and does not press any
+Spectrum keys automatically.
+.RE
+.PP
+.I "Machine, DISCiPLE Magic Button"
+.RS
+On widget UIs, presses the DISCiPLE magic (NMI) button with Caps Shift held,
+allowing its snapshot menu to be entered despite menus releasing the emulated
+keyboard state. This item is available only when DISCiPLE hardware is active.
+Note that GDOS contains a bug which causes corruption of saved snapshots and
+a failure to return from the NMI menu correctly. This bug is not present in
+G+DOS on the +D.
 .RE
 .PP
 .I "Machine, Multiface Red Button"
@@ -5601,14 +5608,13 @@ been saved/restored.)
 The NMI button works slightly differently on the DISCiPLE than on the +D.
 Caps Shift must be held down whilst pressing the NMI button, and there
 is no `X' option to exit the menu.  Also, printing of screenshots requires
-GDOS to be loaded.  Depending on the UI that you're using, holding down
-Caps Shift whilst choosing the
+GDOS to be loaded. On widget UIs, choose
+.I "Machine, DISCiPLE Magic Button"
+to have Fuse hold Caps Shift while pressing the NMI button. On GTK and Win32,
+hold Shift while selecting
 .I "Machine, NMI"
-menu option may be slightly tricky, or even impossible.  For the GTK UI,
-ensure that the Shift key is held before entering on the
-.I Machine
-menu.  For the widget UI, it does not seem possible to perform this
-action.
+with the mouse. The generic NMI item remains a literal NMI and does not press
+Caps Shift automatically.
 .\"
 .\"------------------------------------------------------------------
 .\"

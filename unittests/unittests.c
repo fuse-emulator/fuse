@@ -936,6 +936,31 @@ keyboard_read_test( void )
 }
 
 static int
+keyboard_synthetic_test( void )
+{
+  keyboard_release_all();
+  keyboard_synthetic_release_all( KEYBOARD_SYNTHETIC_PHANTOM_TYPIST );
+  keyboard_synthetic_release_all( KEYBOARD_SYNTHETIC_DISCIPLE );
+
+  keyboard_synthetic_press( KEYBOARD_SYNTHETIC_PHANTOM_TYPIST, KEYBOARD_Caps );
+  keyboard_synthetic_press( KEYBOARD_SYNTHETIC_DISCIPLE, KEYBOARD_a );
+  TEST_ASSERT( keyboard_read( 0xfe ) == 0xfe );
+  TEST_ASSERT( keyboard_read( 0xfd ) == 0xfe );
+
+  keyboard_synthetic_release_all( KEYBOARD_SYNTHETIC_PHANTOM_TYPIST );
+  TEST_ASSERT( keyboard_read( 0xfe ) == 0xff );
+  TEST_ASSERT( keyboard_read( 0xfd ) == 0xfe );
+
+  keyboard_press( KEYBOARD_a );
+  keyboard_synthetic_release_all( KEYBOARD_SYNTHETIC_DISCIPLE );
+  TEST_ASSERT( keyboard_read( 0xfd ) == 0xfe );
+  keyboard_release( KEYBOARD_a );
+  TEST_ASSERT( keyboard_read( 0xfd ) == 0xff );
+
+  return 0;
+}
+
+static int
 keyboard_simulate_keypress_test( void )
 {
   /* 'a' is in half-row 1, bit 0x01.  keyboard_simulate_keypress checks
@@ -2376,6 +2401,7 @@ unittests_run( void )
   r += slt_screen_is_cleared_by_reset_test();
   r += spec_se_dock_ram_reset_test();
   r += keyboard_read_test();
+  r += keyboard_synthetic_test();
   r += keyboard_simulate_keypress_test();
   r += utils_safe_strdup_test();
   r += bitmap_ops_test();

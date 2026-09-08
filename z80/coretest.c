@@ -502,6 +502,12 @@ disciple_page( void )
   abort();
 }
 
+void
+disciple_nmi_page( void )
+{
+  abort();
+}
+
 int didaktik80_available = 0;
 int didaktik80_active = 0;
 int didaktik80_snap = 0;

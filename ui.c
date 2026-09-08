@@ -256,6 +256,11 @@ static const struct menu_item_entries menu_item_lookup[] = {
   { UI_MENU_ITEM_MACHINE_PROFILER, "/Machine/Profiler/Stop",
     "/Machine/Profiler/Start", 1 },
 
+#ifdef USE_WIDGET
+  { UI_MENU_ITEM_MACHINE_DISCIPLE_MAGIC_BUTTON,
+    "/Machine/DISCiPLE Magic Button" },
+#endif
+
   { UI_MENU_ITEM_MACHINE_MULTIFACE, "/Machine/Multiface Red Button" },
 
   { UI_MENU_ITEM_MACHINE_DIDAKTIK80_SNAP, "/Machine/Didaktik SNAP" },
