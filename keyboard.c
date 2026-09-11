@@ -31,6 +31,7 @@
 #include "libspectrum.h"
 
 #include "infrastructure/startup_manager.h"
+#include "input.h"
 #include "keyboard.h"
 #include "ui/ui.h"
 
@@ -376,6 +377,11 @@ int keyboard_release_all( void )
   int i;
 
   for( i=0; i<KEYBOARD_HALFROWS; i++ ) keyboard_return_values[i] = 0xff;
+
+  /* The physical keys (including any held cursor keys) are all released,
+     so the shifted-arrow tracking state must be reset too.  Otherwise the
+     next cursor-key press would be treated as already held (bug #470). */
+  input_reset_shifted_arrows();
 
   return 0;
 }

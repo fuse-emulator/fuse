@@ -35,6 +35,7 @@
 #include "debugger/debugger.h"
 #include "display.h"
 #include "fuse.h"
+#include "input.h"
 #include "keyboard.h"
 #include "machine.h"
 #include "memory_pages.h"
@@ -1107,6 +1108,89 @@ keyboard_simulate_keypress_test( void )
   /* An unknown/unmapped key should return 0xff unchanged. */
   TEST_ASSERT( keyboard_simulate_keypress( 0x00, KEYBOARD_NONE ) == 0xff );
 
+  return 0;
+}
+
+static int
+keyboard_shifted_arrows_test( void )
+{
+  /* Regression test for bug #470: with keyboard_arrows_shifted enabled,
+     holding two cursor keys must keep Caps Shift pressed until the last
+     cursor key is released.  Previously releasing one of two held cursor
+     keys dropped Caps Shift while the other was still held. */
+  input_event_t event;
+  int old_shifted = settings_current.keyboard_arrows_shifted;
+
+  settings_current.keyboard_arrows_shifted = 1;
+  keyboard_release_all();
+
+  /* Caps Shift lives in half-row 0, bit 0x01, so keyboard_read( 0xfe )
+     (selecting only half-row 0) reflects whether Caps Shift is pressed. */
+
+  /* Press Up: KEYBOARD_7 plus Caps Shift */
+  event.type = INPUT_EVENT_KEYPRESS;
+  event.types.key.native_key = INPUT_KEY_Up;
+  event.types.key.spectrum_key = INPUT_KEY_Up;
+  input_event( &event );
+  TEST_ASSERT( keyboard_read( 0xfe ) == 0xfe ); /* Caps Shift pressed */
+
+  /* Press Left while Up is still held: KEYBOARD_5 plus Caps Shift */
+  event.type = INPUT_EVENT_KEYPRESS;
+  event.types.key.native_key = INPUT_KEY_Left;
+  event.types.key.spectrum_key = INPUT_KEY_Left;
+  input_event( &event );
+
+  /* Release Up: Caps Shift must stay pressed because Left is still held */
+  event.type = INPUT_EVENT_KEYRELEASE;
+  event.types.key.native_key = INPUT_KEY_Up;
+  event.types.key.spectrum_key = INPUT_KEY_Up;
+  input_event( &event );
+  TEST_ASSERT( keyboard_read( 0xfe ) == 0xfe );
+
+  /* Release Left: last cursor key released, Caps Shift released */
+  event.type = INPUT_EVENT_KEYRELEASE;
+  event.types.key.native_key = INPUT_KEY_Left;
+  event.types.key.spectrum_key = INPUT_KEY_Left;
+  input_event( &event );
+  TEST_ASSERT( keyboard_read( 0xfe ) == 0xff );
+
+  settings_current.keyboard_arrows_shifted = old_shifted;
+  return 0;
+}
+
+static int
+keyboard_shifted_arrows_release_all_test( void )
+{
+  /* Regression test for the edge case of bug #470: releasing all keys
+     (e.g. focus loss or emulation pause) must also reset the shifted-arrow
+     tracking state.  Otherwise a later cursor-key press would be treated
+     as already held and Caps Shift would not be re-pressed. */
+  input_event_t event;
+  int old_shifted = settings_current.keyboard_arrows_shifted;
+
+  settings_current.keyboard_arrows_shifted = 1;
+  keyboard_release_all();
+
+  /* Press Up: Caps Shift pressed */
+  event.type = INPUT_EVENT_KEYPRESS;
+  event.types.key.native_key = INPUT_KEY_Up;
+  event.types.key.spectrum_key = INPUT_KEY_Up;
+  input_event( &event );
+  TEST_ASSERT( keyboard_read( 0xfe ) == 0xfe );
+
+  /* Release all keys (e.g. focus loss / pause): Caps Shift released */
+  keyboard_release_all();
+  TEST_ASSERT( keyboard_read( 0xfe ) == 0xff );
+
+  /* Press Up again: Caps Shift must be re-pressed (state was reset) */
+  event.type = INPUT_EVENT_KEYPRESS;
+  event.types.key.native_key = INPUT_KEY_Up;
+  event.types.key.spectrum_key = INPUT_KEY_Up;
+  input_event( &event );
+  TEST_ASSERT( keyboard_read( 0xfe ) == 0xfe );
+
+  keyboard_release_all();
+  settings_current.keyboard_arrows_shifted = old_shifted;
   return 0;
 }
 
@@ -2534,6 +2618,8 @@ unittests_run( void )
   r += keyboard_read_test();
   r += keyboard_synthetic_test();
   r += keyboard_simulate_keypress_test();
+  r += keyboard_shifted_arrows_test();
+  r += keyboard_shifted_arrows_release_all_test();
   r += utils_safe_strdup_test();
   r += bitmap_ops_test();
   r += mempool_test();
