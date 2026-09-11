@@ -76,7 +76,7 @@ jobs:
 
       - name: (2c) Restore libspectrum build cache
         id: libspectrum-cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           key: libspectrum-linux-${{ steps.libspectrum-sha.outputs.sha }}-z${{ inputs.use_zlib && '1' || '0' }}-b${{ inputs.use_bzip2 && '1' || '0' }}-g${{ inputs.use_libgcrypt && '1' || '0' }}-a${{ inputs.use_libaudiofile && '1' || '0' }}-f${{ inputs.use_fake_glib && '1' || '0' }}
           path: ${{ env.LIBSPECTRUM_DIR }}/libspectrum-installed-linux.tar
@@ -162,7 +162,7 @@ jobs:
 
       - name: (11b) Save libspectrum build cache
         if: steps.libspectrum-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           key: libspectrum-linux-${{ steps.libspectrum-sha.outputs.sha }}-z${{ inputs.use_zlib && '1' || '0' }}-b${{ inputs.use_bzip2 && '1' || '0' }}-g${{ inputs.use_libgcrypt && '1' || '0' }}-a${{ inputs.use_libaudiofile && '1' || '0' }}-f${{ inputs.use_fake_glib && '1' || '0' }}
           path: ${{ env.LIBSPECTRUM_DIR }}/libspectrum-installed-linux.tar

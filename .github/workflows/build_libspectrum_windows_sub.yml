@@ -85,7 +85,7 @@ jobs:
 
       - name: (3) Restore Cygwin packages
         id: cygwin-cache-load
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ${{ steps.cygwin-cache-path.outputs.package-cache }}
@@ -122,7 +122,7 @@ jobs:
 
       - name: (5) Save Cygwin packages
         if: steps.cygwin-cache-load.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: |
             ${{ steps.cygwin-cache-path.outputs.package-cache }}
