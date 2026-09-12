@@ -582,6 +582,33 @@ acceleration_detector_at_in( libspectrum_word pc )
   return mode;
 }
 
+static int
+loader_loop_detector( libspectrum_word pc )
+{
+  return acceleration_detector_at_in( pc ) != ACCELERATION_MODE_NONE;
+}
+
+static int
+ula_read_uses_ear( libspectrum_word pc )
+{
+  int i;
+
+  /* A loader normally either tests EAR directly with bit 6, or rotates it
+     into bit 5 first. Requiring that use prevents keyboard scans from
+     satisfying the fallback timing heuristic. */
+  if( readbyte_internal( pc ) == 0x1f ) {   /* RRA */
+    for( i = 1; i < 6; i++ )
+      if( readbyte_internal( pc + i ) == 0xe6 &&
+          readbyte_internal( pc + i + 1 ) == 0x20 ) return 1;
+  }
+
+  for( i = 0; i < 5; i++ )
+    if( readbyte_internal( pc + i ) == 0xe6 &&
+        readbyte_internal( pc + i + 1 ) == 0x40 ) return 1;
+
+  return 0;
+}
+
 int
 loader_unittest( void )
 {
@@ -677,6 +704,20 @@ loader_unittest( void )
 
   for( i = 0; i < sizeof( gremlin_loader ); i++ )
     writebyte_internal( base + i, saved[ i ] );
+
+  for( i = 0; i < sizeof( gremlin_loader ); i++ )
+    writebyte_internal( base + i, 0x00 );
+
+  /* A keyboard scan's AND 1f does not consume the EAR input. */
+  writebyte_internal( base + 5, 0xdb );       /* IN A,(fe) */
+  writebyte_internal( base + 6, 0xfe );
+  writebyte_internal( base + 7, 0x2f );       /* CPL */
+  writebyte_internal( base + 8, 0xe6 );       /* AND 1f */
+  writebyte_internal( base + 9, 0x1f );
+  if( ula_read_uses_ear( base + 7 ) ) error++;
+
+  for( i = 0; i < sizeof( gremlin_loader ); i++ )
+    writebyte_internal( base + i, saved[ i ] );
   z80.bc.b.h = saved_b; z80.af_.b.h = saved_a_; z80.pc.w = saved_pc;
   acceleration_pc = saved_acceleration_pc;
   acceleration_mode = saved_acceleration_mode;
@@ -724,7 +765,14 @@ loader_detect_loader( void )
 	successive_reads = 0;
       }
     } else {
-      if( tstates_diff <= 500 && ( b_diff == 1 || b_diff == 0xff ) ) {
+      if( loader_loop_detector( z80.pc.w ) ) {
+        /* An instruction-level match also covers loaders which count outside
+           B. Wait for repeated reads so playback starts between samples, as
+           it does with the timing heuristic. */
+        successive_reads++;
+        if( successive_reads >= 10 ) tape_do_play( 1 );
+      } else if( ula_read_uses_ear( z80.pc.w ) && tstates_diff <= 500 &&
+                 ( b_diff == 1 || b_diff == 0xff ) ) {
 	successive_reads++;
 	if( successive_reads >= 10 ) {
 	  tape_do_play( 1 );
