@@ -63,6 +63,7 @@ static size_t acceleration_pc;
 /* Movieload needs time to settle after the previous block before playback is
    restarted. Starting on the first recognised read corrupts the load. */
 #define MOVIELOAD_DETECTION_READS 128
+#define LOADER_STOP_NON_EAR_READS 10
 
 void
 loader_frame( libspectrum_dword frame_length )
@@ -607,9 +608,27 @@ movieload_loader_detector( libspectrum_word pc )
 }
 
 static int
+sign_flag_loader_detector( libspectrum_word pc )
+{
+  libspectrum_byte jump = readbyte_internal( pc + 1 );
+
+  /* INC B; RET Z; IN A,(fe); ADD A,A; JP P/M,<INC B>. The loader tests
+     EAR by moving bit 6 into the sign flag. */
+  return readbyte_internal( pc - 4 ) == 0x04 &&
+         readbyte_internal( pc - 3 ) == 0xc8 &&
+         readbyte_internal( pc - 2 ) == 0xdb &&
+         readbyte_internal( pc - 1 ) == 0xfe &&
+         readbyte_internal( pc ) == 0x87 &&
+         ( jump == 0xf2 || jump == 0xfa ) &&
+         readbyte_internal( pc + 2 ) == ( pc - 4 ) % 0x100 &&
+         readbyte_internal( pc + 3 ) == ( pc - 4 ) / 0x100;
+}
+
+static int
 loader_loop_detector( libspectrum_word pc )
 {
-  return acceleration_detector_at_in( pc ) != ACCELERATION_MODE_NONE;
+  return acceleration_detector_at_in( pc ) != ACCELERATION_MODE_NONE ||
+         sign_flag_loader_detector( pc );
 }
 
 static int
@@ -652,6 +671,9 @@ loader_unittest( void )
   static const libspectrum_byte movieload_loader[] = {
     0x14, 0xc8, 0x3e, 0x7f, 0xdb, 0xfe, 0x1f,
     0x00, 0xab, 0xe6, 0x20, 0x28, 0xf3
+  };
+  static const libspectrum_byte sign_flag_loader[] = {
+    0x04, 0xc8, 0xdb, 0xfe, 0x87, 0xfa, 0x00, 0x80
   };
   const libspectrum_word base = 0x8000;
   libspectrum_byte saved[ sizeof( gremlin_loader ) ];
@@ -760,6 +782,18 @@ loader_unittest( void )
 
   for( i = 0; i < sizeof( movieload_loader ); i++ )
     writebyte_internal( base + i, saved[ i ] );
+
+  for( i = 0; i < sizeof( sign_flag_loader ); i++ ) {
+    saved[ i ] = readbyte_internal( base + i );
+    writebyte_internal( base + i, sign_flag_loader[ i ] );
+  }
+
+  if( !sign_flag_loader_detector( base + 4 ) ) error++;
+  writebyte_internal( base + 6, 0x01 );
+  if( sign_flag_loader_detector( base + 4 ) ) error++;
+
+  for( i = 0; i < sizeof( sign_flag_loader ); i++ )
+    writebyte_internal( base + i, saved[ i ] );
   z80.bc.b.h = saved_b; z80.af_.b.h = saved_a_; z80.pc.w = saved_pc;
   acceleration_pc = saved_acceleration_pc;
   acceleration_mode = saved_acceleration_mode;
@@ -797,12 +831,16 @@ loader_detect_loader( void )
   if( settings_current.detect_loader ) {
 
     if( tape_is_playing() ) {
-      if( tstates_diff > 1000 || ( b_diff != 1 && b_diff != 0 &&
-				   b_diff != 0xff ) ) {
+      if( loader_loop_detector( z80.pc.w ) ||
+          movieload_loader_detector( z80.pc.w ) ||
+          ula_read_uses_ear( z80.pc.w ) ) {
+        successive_reads = 0;
+      } else if( tstates_diff > 1000 ||
+                 ( b_diff != 1 && b_diff != 0 && b_diff != 0xff ) ) {
 	successive_reads++;
-	if( successive_reads >= 2 ) {
-	  tape_stop();
-	}
+	/* A loader may be interrupted by an eight-read keyboard scan. Do not
+           stop the tape unless non-EAR reads persist beyond that interrupt. */
+	if( successive_reads >= LOADER_STOP_NON_EAR_READS ) tape_stop();
       } else {
 	successive_reads = 0;
       }
