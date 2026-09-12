@@ -2549,7 +2549,9 @@ If this option is enabled, Fuse will attempt to detect when a loading
 routine is in progress, and then automatically start the virtual tape
 to load the program in. This is done by using a heuristic to identify
 a loading routine, so is by no means infallible, but works in most
-cases.
+cases. After reaching the end of a tape, automatic detection will not
+restart it from the beginning. Insert another tape, select or rewind a
+tape, or start playback manually to allow playback again.
 .RE
 .PP
 .I "Phantom typist mode"
@@ -3712,7 +3714,9 @@ starting the loading process in the emulated machine isn't enough. You
 also have to `press play', so to speak :\-), and this is how you do
 that. You may also need to `press play' like this in certain other
 circumstances, e.g. TZXs containing multi-load games may have a
-stop-the-tape request (which Fuse obeys).
+stop-the-tape request (which Fuse obeys). Manual playback can also restart a
+tape after it has reached the end; automatic loader detection deliberately
+does not restart an automatically rewound tape.
 .RE
 .PP
 .I "Media, Tape, Browse"
