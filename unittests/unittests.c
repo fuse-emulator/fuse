@@ -2262,6 +2262,7 @@ machine_load_rom_bank_with_sizes_test( void )
   char rom8[] = "/tmp/fuse-rom-8k-XXXXXX";
   char rom16[] = "/tmp/fuse-rom-16k-XXXXXX";
   char rom_bad[] = "/tmp/fuse-rom-bad-XXXXXX";
+  const char *missing_rom = "/tmp/fuse-rom-does-not-exist";
   memory_page map[MEMORY_PAGES_IN_16K];
   libspectrum_byte snapshot_rom[0x4000];
   size_t loaded_length = 0;
@@ -2291,9 +2292,32 @@ machine_load_rom_bank_with_sizes_test( void )
       map[0].save_to_snapshot )
     r++;
 
+  /* A missing custom ROM should also fall back to the default. */
+  if( machine_load_rom_bank_with_sizes(
+        map, 0, missing_rom, rom8, allowed_lengths,
+        ARRAY_SIZE( allowed_lengths ), &loaded_length ) ||
+      loaded_length != 0x2000 || map[0].page[0] != 0x08 ||
+      map[0].save_to_snapshot )
+    r++;
+
   if( !machine_load_rom_bank_with_sizes(
          map, 0, rom_bad, NULL, allowed_lengths,
          ARRAY_SIZE( allowed_lengths ), &loaded_length ) )
+    r++;
+
+  /* The result length is optional, but the list of accepted sizes is not. */
+  if( machine_load_rom_bank_with_sizes(
+        map, 0, rom8, NULL, allowed_lengths,
+        ARRAY_SIZE( allowed_lengths ), NULL ) ||
+      !machine_load_rom_bank_with_sizes(
+         map, 0, rom8, NULL, NULL, 0, &loaded_length ) ||
+      loaded_length != 0 )
+    r++;
+
+  /* Keep the original fixed-size API on the same common loading path. */
+  if( machine_load_rom_bank( map, 0, rom8, NULL, 0x2000 ) ||
+      map[0].page[0] != 0x08 ||
+      !machine_load_rom_bank( map, 0, rom_bad, NULL, 0x2000 ) )
     r++;
 
   memset( snapshot_rom, 0x5a, sizeof( snapshot_rom ) );
@@ -2303,6 +2327,15 @@ machine_load_rom_bank_with_sizes_test( void )
         map, 0, rom8, NULL, allowed_lengths,
         ARRAY_SIZE( allowed_lengths ), &loaded_length ) ||
       loaded_length != sizeof( snapshot_rom ) || map[7].page[0] != 0x5a )
+    r++;
+  machine_clear_snapshot_rom_bank( map, 0 );
+
+  /* A cached snapshot ROM must satisfy the same size constraints as a file. */
+  if( machine_load_rom_bank_from_snapshot( map, 0, snapshot_rom, 0x3000, 1 ) ||
+      !machine_load_rom_bank_with_sizes(
+         map, 0, rom8, NULL, allowed_lengths,
+         ARRAY_SIZE( allowed_lengths ), &loaded_length ) ||
+      loaded_length != 0 )
     r++;
   machine_clear_snapshot_rom_bank( map, 0 );
 
