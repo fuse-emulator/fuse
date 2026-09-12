@@ -60,6 +60,10 @@ static size_t acceleration_pc;
 #define GREMLIN_SHORT_PULSE_ITERATIONS 24
 #define GREMLIN_LONG_PULSE_ITERATIONS 48
 
+/* Movieload needs time to settle after the previous block before playback is
+   restarted. Starting on the first recognised read corrupts the load. */
+#define MOVIELOAD_DETECTION_READS 128
+
 void
 loader_frame( libspectrum_dword frame_length )
 {
@@ -583,6 +587,26 @@ acceleration_detector_at_in( libspectrum_word pc )
 }
 
 static int
+movieload_loader_detector( libspectrum_word pc )
+{
+  /* INC D; RET Z; LD A,7f; IN A,(fe); RRA; NOP; XOR E;
+     AND 20; JR Z,<INC D>. Movieload uses D rather than B as its counter. */
+  return readbyte_internal( pc - 6 ) == 0x14 &&
+         readbyte_internal( pc - 5 ) == 0xc8 &&
+         readbyte_internal( pc - 4 ) == 0x3e &&
+         readbyte_internal( pc - 3 ) == 0x7f &&
+         readbyte_internal( pc - 2 ) == 0xdb &&
+         readbyte_internal( pc - 1 ) == 0xfe &&
+         readbyte_internal( pc ) == 0x1f &&
+         readbyte_internal( pc + 1 ) == 0x00 &&
+         readbyte_internal( pc + 2 ) == 0xab &&
+         readbyte_internal( pc + 3 ) == 0xe6 &&
+         readbyte_internal( pc + 4 ) == 0x20 &&
+         readbyte_internal( pc + 5 ) == 0x28 &&
+         readbyte_internal( pc + 6 ) == 0xf3;
+}
+
+static int
 loader_loop_detector( libspectrum_word pc )
 {
   return acceleration_detector_at_in( pc ) != ACCELERATION_MODE_NONE;
@@ -624,6 +648,10 @@ loader_unittest( void )
     0x2e, 0x00, 0x2c, 0xdb, 0xfe, 0xa4, 0xca, 0x02, 0x80,
     0x3e, 0x08, 0xd3, 0xfe, 0x2c, 0xdb, 0xfe, 0xa4, 0xc2, 0x0d, 0x80,
     0x7d, 0xc9
+  };
+  static const libspectrum_byte movieload_loader[] = {
+    0x14, 0xc8, 0x3e, 0x7f, 0xdb, 0xfe, 0x1f,
+    0x00, 0xab, 0xe6, 0x20, 0x28, 0xf3
   };
   const libspectrum_word base = 0x8000;
   libspectrum_byte saved[ sizeof( gremlin_loader ) ];
@@ -718,6 +746,20 @@ loader_unittest( void )
 
   for( i = 0; i < sizeof( gremlin_loader ); i++ )
     writebyte_internal( base + i, saved[ i ] );
+
+  for( i = 0; i < sizeof( movieload_loader ); i++ ) {
+    saved[ i ] = readbyte_internal( base + i );
+    writebyte_internal( base + i, movieload_loader[ i ] );
+  }
+
+  if( !movieload_loader_detector( base + 6 ) ) error++;
+
+  /* The branch must return to this sampling loop. */
+  writebyte_internal( base + 12, 0xf2 );
+  if( movieload_loader_detector( base + 6 ) ) error++;
+
+  for( i = 0; i < sizeof( movieload_loader ); i++ )
+    writebyte_internal( base + i, saved[ i ] );
   z80.bc.b.h = saved_b; z80.af_.b.h = saved_a_; z80.pc.w = saved_pc;
   acceleration_pc = saved_acceleration_pc;
   acceleration_mode = saved_acceleration_mode;
@@ -765,7 +807,12 @@ loader_detect_loader( void )
 	successive_reads = 0;
       }
     } else {
-      if( loader_loop_detector( z80.pc.w ) ) {
+      if( movieload_loader_detector( z80.pc.w ) && tstates_diff <= 500 ) {
+        /* Unlike the other recognised loops, Movieload must sample the idle
+           input for a while before playback starts. */
+        successive_reads++;
+        if( successive_reads >= MOVIELOAD_DETECTION_READS ) tape_do_play( 1 );
+      } else if( loader_loop_detector( z80.pc.w ) ) {
         /* An instruction-level match also covers loaders which count outside
            B. Wait for repeated reads so playback starts between samples, as
            it does with the timing heuristic. */
