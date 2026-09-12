@@ -44,10 +44,14 @@ typedef enum acceleration_mode_t {
   ACCELERATION_MODE_NONE = 0,
   ACCELERATION_MODE_INCREASING,
   ACCELERATION_MODE_DECREASING,
+  ACCELERATION_MODE_SOFTWARE_PROJECTS,
 } acceleration_mode_t;
 
 static acceleration_mode_t acceleration_mode;
 static size_t acceleration_pc;
+
+#define SOFTWARE_PROJECTS_SHORT_PULSE_ITERATIONS 10
+#define SOFTWARE_PROJECTS_LONG_PULSE_ITERATIONS 20
 
 void
 loader_frame( libspectrum_dword frame_length )
@@ -72,26 +76,45 @@ loader_tape_stop( void )
 }
 
 static void
+software_projects_accelerate( int long_pulse )
+{
+  int iterations = long_pulse ? SOFTWARE_PROJECTS_LONG_PULSE_ITERATIONS :
+                                SOFTWARE_PROJECTS_SHORT_PULSE_ITERATIONS;
+
+  z80.bc.b.h = z80.af_.b.h - iterations;
+
+  /* Continue with the loader's edge-found path. */
+  z80.pc.w = acceleration_pc + 9;
+}
+
+static void
 do_acceleration( void )
 {
   if( length_known1 ) {
-    /* B is used to indicate the length of the pulses */
-    int set_b_high = length_long1;
-    set_b_high ^= ( acceleration_mode == ACCELERATION_MODE_DECREASING );
-    if( set_b_high ) {
-      z80.bc.b.h = 0xfe;
+    if( acceleration_mode == ACCELERATION_MODE_SOFTWARE_PROJECTS ) {
+      /* The loader converts the number of loop iterations to a pulse length
+         by subtracting B from A' and multiplying the result by four. */
+      software_projects_accelerate( length_long1 );
     } else {
-      z80.bc.b.h = 0x00;
+      /* B is used to indicate the length of the pulses */
+      int set_b_high = length_long1;
+      set_b_high ^= ( acceleration_mode == ACCELERATION_MODE_DECREASING );
+      if( set_b_high ) {
+        z80.bc.b.h = 0xfe;
+      } else {
+        z80.bc.b.h = 0x00;
+      }
+
+      /* Bit 5 of C is used to indicate the current microphone level */
+      z80.bc.b.l = (z80.bc.b.l & ~0x20) |
+                   (tape_microphone ? 0x00 : 0x20);
+
+      z80.af.b.l |= 0x01;
+
+      /* Simulate the RET at the end of the edge-finding loop */
+      z80.pc.b.l = readbyte_internal( z80.sp.w ); z80.sp.w++;
+      z80.pc.b.h = readbyte_internal( z80.sp.w ); z80.sp.w++;
     }
-
-    /* Bit 5 of C is used to indicate the current microphone level */
-    z80.bc.b.l = (z80.bc.b.l & ~0x20) | (tape_microphone ? 0x00 : 0x20);
-
-    z80.af.b.l |= 0x01;
-
-    /* Simulate the RET at the end of the edge-finding loop */
-    z80.pc.b.l = readbyte_internal( z80.sp.w ); z80.sp.w++;
-    z80.pc.b.h = readbyte_internal( z80.sp.w ); z80.sp.w++;
 
     event_remove_type( tape_edge_event );
     tape_next_edge( tstates, 1 );
@@ -114,6 +137,7 @@ acceleration_detector( libspectrum_word pc )
       switch( b ) {
       case 0x03: state = 28; break;     /* Data byte of JR NZ, ... - Alkatraz */
       case 0x04: state = 1; break;	/* INC B - Many loaders */
+      case 0x47: state = 44; break;      /* LD B,A - Software Projects */
       default: state = 13; break;	/* Possible Digital Integration */
       }
       break;
@@ -395,6 +419,86 @@ acceleration_detector( libspectrum_word pc )
       }
       break;
 
+    /* Software Projects */
+
+    case 44:
+      switch( b ) {
+      case 0x08: state = 45; break;      /* EX AF,AF' */
+      default: return ACCELERATION_MODE_NONE;
+      }
+      break;
+    case 45:
+      switch( b ) {
+      case 0x3e: state = 46; break;      /* LD A,nn */
+      default: return ACCELERATION_MODE_NONE;
+      }
+      break;
+    case 46:
+      switch( b ) {
+      case 0x7f: state = 47; break;      /* Data byte */
+      default: return ACCELERATION_MODE_NONE;
+      }
+      break;
+    case 47:
+      switch( b ) {
+      case 0xdb: state = 48; break;      /* IN A,(nn) */
+      default: return ACCELERATION_MODE_NONE;
+      }
+      break;
+    case 48:
+      switch( b ) {
+      case 0xfe: state = 49; break;      /* Data byte */
+      default: return ACCELERATION_MODE_NONE;
+      }
+      break;
+    case 49:
+      switch( b ) {
+      case 0xa9: state = 50; break;      /* XOR C */
+      default: return ACCELERATION_MODE_NONE;
+      }
+      break;
+    case 50:
+      switch( b ) {
+      case 0xe6: state = 51; break;      /* AND nn */
+      default: return ACCELERATION_MODE_NONE;
+      }
+      break;
+    case 51:
+      switch( b ) {
+      case 0x40: state = 52; break;      /* Data byte */
+      default: return ACCELERATION_MODE_NONE;
+      }
+      break;
+    case 52:
+      switch( b ) {
+      case 0x20: state = 53; break;      /* JR NZ,nn */
+      default: return ACCELERATION_MODE_NONE;
+      }
+      break;
+    case 53:
+      switch( b ) {
+      case 0x04: state = 54; break;      /* Data byte */
+      default: return ACCELERATION_MODE_NONE;
+      }
+      break;
+    case 54:
+      switch( b ) {
+      case 0x05: state = 55; break;      /* DEC B */
+      default: return ACCELERATION_MODE_NONE;
+      }
+      break;
+    case 55:
+      switch( b ) {
+      case 0x20: state = 56; break;      /* JR NZ,nn */
+      default: return ACCELERATION_MODE_NONE;
+      }
+      break;
+    case 56:
+      switch( b ) {
+      case 0xf4: return ACCELERATION_MODE_SOFTWARE_PROJECTS;
+      default: return ACCELERATION_MODE_NONE;
+      }
+
     default:
       /* Can't happen */
       break;
@@ -422,8 +526,15 @@ loader_unittest( void )
     0x04, 0xc8, 0x3e, 0x7f, 0x3e, 0x7f, 0xdb, 0xfe,
     0x1f, 0x00, 0xa9, 0xe6, 0x20, 0x28, 0xf1
   };
+  static const libspectrum_byte software_projects_loader[] = {
+    0x47, 0x08, 0x3e, 0x7f, 0xdb, 0xfe, 0xa9,
+    0xe6, 0x40, 0x20, 0x04, 0x05, 0x20, 0xf4
+  };
   const libspectrum_word base = 0x8000;
   libspectrum_byte saved[ sizeof( microprose_loader ) ];
+  libspectrum_byte saved_b = z80.bc.b.h, saved_a_ = z80.af_.b.h;
+  libspectrum_word saved_pc = z80.pc.w;
+  size_t saved_acceleration_pc = acceleration_pc;
   size_t i;
   int error = 0;
 
@@ -442,6 +553,32 @@ loader_unittest( void )
 
   for( i = 0; i < sizeof( microprose_loader ); i++ )
     writebyte_internal( base + i, saved[ i ] );
+
+  for( i = 0; i < sizeof( software_projects_loader ); i++ ) {
+    saved[ i ] = readbyte_internal( base + i );
+    writebyte_internal( base + i, software_projects_loader[ i ] );
+  }
+
+  if( acceleration_detector_at_in( base + 6 ) !=
+      ACCELERATION_MODE_SOFTWARE_PROJECTS ) error++;
+
+  /* The branch must return to the start of this specific sampling loop. */
+  writebyte_internal( base + 13, 0xf5 );
+  if( acceleration_detector_at_in( base + 6 ) != ACCELERATION_MODE_NONE )
+    error++;
+  writebyte_internal( base + 13, software_projects_loader[ 13 ] );
+
+  acceleration_pc = base + 6;
+  z80.af_.b.h = 0x24;
+  software_projects_accelerate( 0 );
+  if( z80.bc.b.h != 0x1a || z80.pc.w != base + 15 ) error++;
+  software_projects_accelerate( 1 );
+  if( z80.bc.b.h != 0x10 || z80.pc.w != base + 15 ) error++;
+
+  for( i = 0; i < sizeof( software_projects_loader ); i++ )
+    writebyte_internal( base + i, saved[ i ] );
+  z80.bc.b.h = saved_b; z80.af_.b.h = saved_a_; z80.pc.w = saved_pc;
+  acceleration_pc = saved_acceleration_pc;
 
   if( error ) printf( "loader_unittest failed\n" );
   return error;
