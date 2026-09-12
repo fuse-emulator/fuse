@@ -82,6 +82,9 @@ static int tape_stop_pending = 0;
 /* Was the tape playing started automatically? */
 static int tape_autoplay;
 
+/* Has the tape reached a point which requires an explicit user action? */
+static int tape_autoplay_blocked;
+
 /* Is there a high input to the EAR socket? */
 int tape_microphone;
 
@@ -151,6 +154,7 @@ tape_init( void *context )
   tape_playing = 0;
   tape_microphone = 0;
   tape_stop_pending = 0;
+  tape_autoplay_blocked = 0;
 
   next_tape_edge_tstates = 0;
   
@@ -209,6 +213,7 @@ tape_read_buffer( unsigned char *buffer, size_t length, libspectrum_id_t type,
   error = libspectrum_tape_read( tape, buffer, length, type, filename );
   if( error ) return error;
 
+  tape_autoplay_blocked = 0;
   tape_modified = 0;
   ui_tape_browser_update( UI_TAPE_BROWSER_NEW_TAPE, NULL );
 
@@ -326,6 +331,7 @@ tape_select_block( size_t n )
 
   error = tape_select_block_no_update( n ); if( error ) return error;
 
+  tape_autoplay_blocked = 0;
   ui_tape_browser_update( UI_TAPE_BROWSER_SELECT_BLOCK, NULL );
 
   return 0;
@@ -659,6 +665,8 @@ static int
 tape_play( int autoplay )
 {
   if( !libspectrum_tape_present( tape ) ) return 1;
+  if( autoplay && tape_autoplay_blocked ) return 0;
+  if( !autoplay ) tape_autoplay_blocked = 0;
   
   /* Otherwise, start the tape going */
   tape_playing = 1;
@@ -940,6 +948,14 @@ tape_next_edge( libspectrum_dword last_tstates, int from_acceleration )
     )
   {
     tape_stop_pending = 1;
+    /* At end-of-tape, STOP and BLOCK are returned together. Do not let loader
+       detection immediately start the automatically rewound tape; inserting,
+       selecting or manually playing a tape makes autoplay eligible again.
+       Explicit stop blocks remain eligible because multiload tapes use them
+       between levels. */
+    if( ( flags & LIBSPECTRUM_TAPE_FLAGS_STOP ) &&
+        ( flags & LIBSPECTRUM_TAPE_FLAGS_BLOCK ) )
+      tape_autoplay_blocked = 1;
   }
 
   /* If that was the end of a block, update the browser. This is skipped
