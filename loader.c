@@ -23,6 +23,8 @@
 
 #include "config.h"
 
+#include <stdio.h>
+
 #include "event.h"
 #include "loader.h"
 #include "memory_pages.h"
@@ -139,6 +141,7 @@ acceleration_detector( libspectrum_word pc )
       break;
     case 4:
       switch( b ) {
+      case 0x3e: state = 42; break;      /* Second LD A,nn - Microprose */
       case 0xdb: state = 5; break;	/* IN A,(nn) */
       default: return ACCELERATION_MODE_NONE;
       }
@@ -377,6 +380,21 @@ acceleration_detector( libspectrum_word pc )
       }
       break;
 
+    /* Microprose */
+
+    case 42:
+      switch( b ) {
+      case 0x7f: state = 43; break;     /* Data byte */
+      default: return ACCELERATION_MODE_NONE;
+      }
+      break;
+    case 43:
+      switch( b ) {
+      case 0xdb: state = 5; break;      /* IN A,(nn) */
+      default: return ACCELERATION_MODE_NONE;
+      }
+      break;
+
     default:
       /* Can't happen */
       break;
@@ -384,6 +402,50 @@ acceleration_detector( libspectrum_word pc )
   }
 
 }      
+
+static acceleration_mode_t
+acceleration_detector_at_in( libspectrum_word pc )
+{
+  acceleration_mode_t mode;
+
+  mode = acceleration_detector( pc - 6 );
+  /* Microprose inserts another LD A,0x7f before the IN instruction */
+  if( !mode ) mode = acceleration_detector( pc - 8 );
+
+  return mode;
+}
+
+int
+loader_unittest( void )
+{
+  static const libspectrum_byte microprose_loader[] = {
+    0x04, 0xc8, 0x3e, 0x7f, 0x3e, 0x7f, 0xdb, 0xfe,
+    0x1f, 0x00, 0xa9, 0xe6, 0x20, 0x28, 0xf1
+  };
+  const libspectrum_word base = 0x8000;
+  libspectrum_byte saved[ sizeof( microprose_loader ) ];
+  size_t i;
+  int error = 0;
+
+  for( i = 0; i < sizeof( microprose_loader ); i++ ) {
+    saved[ i ] = readbyte_internal( base + i );
+    writebyte_internal( base + i, microprose_loader[ i ] );
+  }
+
+  if( acceleration_detector_at_in( base + 8 ) !=
+      ACCELERATION_MODE_INCREASING ) error++;
+
+  /* Do not accept an arbitrary second immediate value. */
+  writebyte_internal( base + 5, 0x00 );
+  if( acceleration_detector_at_in( base + 8 ) != ACCELERATION_MODE_NONE )
+    error++;
+
+  for( i = 0; i < sizeof( microprose_loader ); i++ )
+    writebyte_internal( base + i, saved[ i ] );
+
+  if( error ) printf( "loader_unittest failed\n" );
+  return error;
+}
 
 static void
 check_for_acceleration( void )
@@ -395,7 +457,7 @@ check_for_acceleration( void )
 
   /* If we're not accelerating, check if this is a loader */
   if( !acceleration_mode ) {
-    acceleration_mode = acceleration_detector( z80.pc.w - 6 );
+    acceleration_mode = acceleration_detector_at_in( z80.pc.w );
     acceleration_pc = z80.pc.w;
   }
 
