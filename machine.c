@@ -395,6 +395,90 @@ machine_load_rom_bank( memory_page* bank_map, int page_num,
   return retval;
 }
 
+static int
+rom_length_allowed( size_t length, const size_t *allowed_lengths,
+                    size_t allowed_length_count )
+{
+  size_t i;
+
+  for( i = 0; i < allowed_length_count; i++ )
+    if( length == allowed_lengths[i] ) return 1;
+
+  return 0;
+}
+
+int
+machine_load_rom_bank_with_sizes( memory_page *bank_map, int page_num,
+  const char *filename, const char *fallback, const size_t *allowed_lengths,
+  size_t allowed_length_count, size_t *loaded_length )
+{
+  snapshot_rom_bank *snapshot_bank;
+  utils_file rom;
+  const char *name = filename;
+  int custom, error;
+
+  snapshot_bank = snapshot_rom_bank_find( bank_map, page_num );
+  if( snapshot_bank ) {
+    if( !rom_length_allowed( snapshot_bank->bank.length, allowed_lengths,
+                            allowed_length_count ) )
+      return 1;
+
+    memory_rom_bank_map( &snapshot_bank->bank, bank_map, page_num );
+    *loaded_length = snapshot_bank->bank.length;
+    return 0;
+  }
+
+  custom = fallback && strcmp( filename, fallback );
+
+  error = utils_read_auxiliary_file( name, &rom, UTILS_AUXILIARY_ROM );
+  if( error && fallback && custom ) {
+    name = fallback;
+    custom = 0;
+    error = utils_read_auxiliary_file( name, &rom, UTILS_AUXILIARY_ROM );
+  }
+  if( error == -1 ) {
+    ui_error( UI_ERROR_ERROR, "couldn't find ROM '%s'", name );
+    return 1;
+  }
+  if( error ) return error;
+
+  if( !rom_length_allowed( rom.length, allowed_lengths,
+                           allowed_length_count ) ) {
+    size_t bad_length = rom.length;
+    utils_close_file( &rom );
+
+    if( !fallback || !custom ) {
+      ui_error( UI_ERROR_ERROR, "ROM '%s' is %ld bytes long; unsupported size",
+                name, (unsigned long)bad_length );
+      return 1;
+    }
+
+    name = fallback;
+    custom = 0;
+    error = utils_read_auxiliary_file( name, &rom, UTILS_AUXILIARY_ROM );
+    if( error == -1 ) {
+      ui_error( UI_ERROR_ERROR, "couldn't find ROM '%s'", name );
+      return 1;
+    }
+    if( error ) return error;
+
+    if( !rom_length_allowed( rom.length, allowed_lengths,
+                             allowed_length_count ) ) {
+      ui_error( UI_ERROR_ERROR, "ROM '%s' is %ld bytes long; unsupported size",
+                name, (unsigned long)rom.length );
+      utils_close_file( &rom );
+      return 1;
+    }
+  }
+
+  error = machine_load_rom_bank_from_buffer( bank_map, page_num, rom.buffer,
+                                             rom.length, custom );
+  if( !error ) *loaded_length = rom.length;
+  utils_close_file( &rom );
+
+  return error;
+}
+
 int
 machine_load_rom( int page_num, const char *filename, const char *fallback,
   size_t expected_length )

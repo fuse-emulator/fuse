@@ -2238,6 +2238,83 @@ utils_file_read_failure_test( void )
 }
 
 static int
+create_rom_fixture( char *filename, size_t length, libspectrum_byte value )
+{
+  libspectrum_byte buffer[0x4000];
+  int fd;
+
+  memset( buffer, value, length );
+  fd = mkstemp( filename );
+  if( fd < 0 ) return 1;
+  if( write( fd, buffer, length ) != length ) {
+    close( fd );
+    unlink( filename );
+    return 1;
+  }
+
+  return close( fd );
+}
+
+static int
+machine_load_rom_bank_with_sizes_test( void )
+{
+  static const size_t allowed_lengths[] = { 0x2000, 0x4000 };
+  char rom8[] = "/tmp/fuse-rom-8k-XXXXXX";
+  char rom16[] = "/tmp/fuse-rom-16k-XXXXXX";
+  char rom_bad[] = "/tmp/fuse-rom-bad-XXXXXX";
+  memory_page map[MEMORY_PAGES_IN_16K];
+  libspectrum_byte snapshot_rom[0x4000];
+  size_t loaded_length = 0;
+  int r = 0;
+
+  memset( map, 0, sizeof( map ) );
+  if( create_rom_fixture( rom8, 0x2000, 0x08 ) ||
+      create_rom_fixture( rom16, 0x4000, 0x16 ) ||
+      create_rom_fixture( rom_bad, 0x3000, 0x30 ) ) {
+    printf( "machine_load_rom_bank_with_sizes_test: failed to create fixtures\n" );
+    r++;
+    goto cleanup;
+  }
+
+  if( machine_load_rom_bank_with_sizes(
+        map, 0, rom16, rom8, allowed_lengths,
+        ARRAY_SIZE( allowed_lengths ), &loaded_length ) ||
+      loaded_length != 0x4000 || map[7].page[0] != 0x16 ||
+      !map[0].save_to_snapshot )
+    r++;
+
+  /* An unsupported custom ROM should fall back to the default 8K image. */
+  if( machine_load_rom_bank_with_sizes(
+        map, 0, rom_bad, rom8, allowed_lengths,
+        ARRAY_SIZE( allowed_lengths ), &loaded_length ) ||
+      loaded_length != 0x2000 || map[0].page[0] != 0x08 ||
+      map[0].save_to_snapshot )
+    r++;
+
+  if( !machine_load_rom_bank_with_sizes(
+         map, 0, rom_bad, NULL, allowed_lengths,
+         ARRAY_SIZE( allowed_lengths ), &loaded_length ) )
+    r++;
+
+  memset( snapshot_rom, 0x5a, sizeof( snapshot_rom ) );
+  if( machine_load_rom_bank_from_snapshot( map, 0, snapshot_rom,
+                                           sizeof( snapshot_rom ), 1 ) ||
+      machine_load_rom_bank_with_sizes(
+        map, 0, rom8, NULL, allowed_lengths,
+        ARRAY_SIZE( allowed_lengths ), &loaded_length ) ||
+      loaded_length != sizeof( snapshot_rom ) || map[7].page[0] != 0x5a )
+    r++;
+  machine_clear_snapshot_rom_bank( map, 0 );
+
+cleanup:
+  unlink( rom8 );
+  unlink( rom16 );
+  unlink( rom_bad );
+  if( r ) printf( "machine_load_rom_bank_with_sizes_test failed\n" );
+  return r;
+}
+
+static int
 utils_file_lifecycle_test( void )
 {
   char filename[] = "/tmp/fuse-utils-file-XXXXXX";
@@ -2631,6 +2708,7 @@ unittests_run( void )
   r += rectangle_realloc_test();
   r += scaler_for_size_test();
   r += compat_file_vtable_test();
+  r += machine_load_rom_bank_with_sizes_test();
   r += utils_file_lifecycle_test();
   r += utils_file_read_failure_test();
   r += utils_file_harddisk_identify_test();
