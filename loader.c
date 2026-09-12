@@ -45,6 +45,8 @@ typedef enum acceleration_mode_t {
   ACCELERATION_MODE_INCREASING,
   ACCELERATION_MODE_DECREASING,
   ACCELERATION_MODE_SOFTWARE_PROJECTS,
+  ACCELERATION_MODE_GREMLIN_RISING,
+  ACCELERATION_MODE_GREMLIN_FALLING,
 } acceleration_mode_t;
 
 static acceleration_mode_t acceleration_mode;
@@ -52,6 +54,11 @@ static size_t acceleration_pc;
 
 #define SOFTWARE_PROJECTS_SHORT_PULSE_ITERATIONS 10
 #define SOFTWARE_PROJECTS_LONG_PULSE_ITERATIONS 20
+
+/* Gremlin counts both halves of a double pulse in L. Each sampling loop takes
+   29 T-states, giving approximately 24 or 48 iterations per tape pulse. */
+#define GREMLIN_SHORT_PULSE_ITERATIONS 24
+#define GREMLIN_LONG_PULSE_ITERATIONS 48
 
 void
 loader_frame( libspectrum_dword frame_length )
@@ -88,6 +95,23 @@ software_projects_accelerate( int long_pulse )
 }
 
 static void
+gremlin_accelerate( int long_pulse )
+{
+  /* INC L has already executed once before loader_detect_loader(). */
+  z80.hl.b.l += ( long_pulse ? GREMLIN_LONG_PULSE_ITERATIONS :
+                                GREMLIN_SHORT_PULSE_ITERATIONS ) - 1;
+
+  if( acceleration_mode == ACCELERATION_MODE_GREMLIN_RISING ) {
+    /* Continue with the OUT and falling-edge loop. */
+    z80.pc.w = acceleration_pc + 4;
+  } else {
+    /* The routine returns the combined rising/falling count in A. */
+    z80.af.b.h = z80.hl.b.l;
+    z80.pc.w = acceleration_pc + 4;
+  }
+}
+
+static void
 do_acceleration( void )
 {
   if( length_known1 ) {
@@ -95,6 +119,9 @@ do_acceleration( void )
       /* The loader converts the number of loop iterations to a pulse length
          by subtracting B from A' and multiplying the result by four. */
       software_projects_accelerate( length_long1 );
+    } else if( acceleration_mode == ACCELERATION_MODE_GREMLIN_RISING ||
+               acceleration_mode == ACCELERATION_MODE_GREMLIN_FALLING ) {
+      gremlin_accelerate( length_long1 );
     } else {
       /* B is used to indicate the length of the pulses */
       int set_b_high = length_long1;
@@ -508,9 +535,45 @@ acceleration_detector( libspectrum_word pc )
 }      
 
 static acceleration_mode_t
+gremlin_acceleration_detector( libspectrum_word pc )
+{
+  /* Rising edge: LD L,0; INC L; IN A,(FE); AND H; JP Z,<INC L>. */
+  if( readbyte_internal( pc - 5 ) == 0x2e &&
+      readbyte_internal( pc - 4 ) == 0x00 &&
+      readbyte_internal( pc - 3 ) == 0x2c &&
+      readbyte_internal( pc - 2 ) == 0xdb &&
+      readbyte_internal( pc - 1 ) == 0xfe &&
+      readbyte_internal( pc ) == 0xa4 &&
+      readbyte_internal( pc + 1 ) == 0xca &&
+      readbyte_internal( pc + 2 ) == ( pc - 3 ) % 0x100 &&
+      readbyte_internal( pc + 3 ) == ( pc - 3 ) / 0x100 )
+    return ACCELERATION_MODE_GREMLIN_RISING;
+
+  /* Falling edge: LD A,8; OUT (FE),A; INC L; IN A,(FE); AND H;
+     JP NZ,<INC L>. */
+  if( readbyte_internal( pc - 7 ) == 0x3e &&
+      readbyte_internal( pc - 6 ) == 0x08 &&
+      readbyte_internal( pc - 5 ) == 0xd3 &&
+      readbyte_internal( pc - 4 ) == 0xfe &&
+      readbyte_internal( pc - 3 ) == 0x2c &&
+      readbyte_internal( pc - 2 ) == 0xdb &&
+      readbyte_internal( pc - 1 ) == 0xfe &&
+      readbyte_internal( pc ) == 0xa4 &&
+      readbyte_internal( pc + 1 ) == 0xc2 &&
+      readbyte_internal( pc + 2 ) == ( pc - 3 ) % 0x100 &&
+      readbyte_internal( pc + 3 ) == ( pc - 3 ) / 0x100 )
+    return ACCELERATION_MODE_GREMLIN_FALLING;
+
+  return ACCELERATION_MODE_NONE;
+}
+
+static acceleration_mode_t
 acceleration_detector_at_in( libspectrum_word pc )
 {
   acceleration_mode_t mode;
+
+  mode = gremlin_acceleration_detector( pc );
+  if( mode ) return mode;
 
   mode = acceleration_detector( pc - 6 );
   /* Microprose inserts another LD A,0x7f before the IN instruction */
@@ -530,11 +593,17 @@ loader_unittest( void )
     0x47, 0x08, 0x3e, 0x7f, 0xdb, 0xfe, 0xa9,
     0xe6, 0x40, 0x20, 0x04, 0x05, 0x20, 0xf4
   };
+  static const libspectrum_byte gremlin_loader[] = {
+    0x2e, 0x00, 0x2c, 0xdb, 0xfe, 0xa4, 0xca, 0x02, 0x80,
+    0x3e, 0x08, 0xd3, 0xfe, 0x2c, 0xdb, 0xfe, 0xa4, 0xc2, 0x0d, 0x80,
+    0x7d, 0xc9
+  };
   const libspectrum_word base = 0x8000;
-  libspectrum_byte saved[ sizeof( microprose_loader ) ];
+  libspectrum_byte saved[ sizeof( gremlin_loader ) ];
   libspectrum_byte saved_b = z80.bc.b.h, saved_a_ = z80.af_.b.h;
   libspectrum_word saved_pc = z80.pc.w;
   size_t saved_acceleration_pc = acceleration_pc;
+  acceleration_mode_t saved_acceleration_mode = acceleration_mode;
   size_t i;
   int error = 0;
 
@@ -577,8 +646,40 @@ loader_unittest( void )
 
   for( i = 0; i < sizeof( software_projects_loader ); i++ )
     writebyte_internal( base + i, saved[ i ] );
+
+  for( i = 0; i < sizeof( gremlin_loader ); i++ ) {
+    saved[ i ] = readbyte_internal( base + i );
+    writebyte_internal( base + i, gremlin_loader[ i ] );
+  }
+
+  if( acceleration_detector_at_in( base + 5 ) !=
+      ACCELERATION_MODE_GREMLIN_RISING ) error++;
+  if( acceleration_detector_at_in( base + 16 ) !=
+      ACCELERATION_MODE_GREMLIN_FALLING ) error++;
+
+  /* Do not accept a falling-edge branch to a different loop. */
+  writebyte_internal( base + 18, 0x0c );
+  if( acceleration_detector_at_in( base + 16 ) != ACCELERATION_MODE_NONE )
+    error++;
+  writebyte_internal( base + 18, gremlin_loader[ 18 ] );
+
+  z80.hl.b.l = 1;             /* First INC L has executed. */
+  acceleration_mode = ACCELERATION_MODE_GREMLIN_RISING;
+  acceleration_pc = base + 5;
+  gremlin_accelerate( 0 );
+  if( z80.hl.b.l != 24 || z80.pc.w != base + 9 ) error++;
+  z80.hl.b.l++;                /* INC L in the falling-edge loop. */
+  acceleration_mode = ACCELERATION_MODE_GREMLIN_FALLING;
+  acceleration_pc = base + 16;
+  gremlin_accelerate( 0 );
+  if( z80.hl.b.l != 48 || z80.af.b.h != 48 || z80.pc.w != base + 20 )
+    error++;
+
+  for( i = 0; i < sizeof( gremlin_loader ); i++ )
+    writebyte_internal( base + i, saved[ i ] );
   z80.bc.b.h = saved_b; z80.af_.b.h = saved_a_; z80.pc.w = saved_pc;
   acceleration_pc = saved_acceleration_pc;
+  acceleration_mode = saved_acceleration_mode;
 
   if( error ) printf( "loader_unittest failed\n" );
   return error;
