@@ -2714,6 +2714,7 @@ unittests_run( void )
   r += rzx_retrigger_autosave_test();
   r += floating_bus_test();
   r += loader_unittest();
+  r += tape_unittest();
   r += blip_synth_level_test();
   r += dc_filter_test();
   r += speaker_filter_test();
