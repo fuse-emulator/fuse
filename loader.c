@@ -572,10 +572,39 @@ gremlin_acceleration_detector( libspectrum_word pc )
   return ACCELERATION_MODE_NONE;
 }
 
+static int
+modified_rom_loader_detector( libspectrum_word pc )
+{
+  libspectrum_word callback;
+
+  /* Technician Ted replaces the ROM EDGE1 delay with useful work, entered
+     with EXX and left immediately before the copied EDGE2 sampling loop. The
+     work and the real sampling delay form one timing unit, so short-circuiting
+     only EDGE2 corrupts the load. Keep the loop as strong autoplay evidence,
+     but do not accelerate it. */
+  callback = readbyte_internal( pc - 30 ) |
+             readbyte_internal( pc - 29 ) << 8;
+
+  return readbyte_internal( pc - 40 ) == 0xd9 && /* EXX */
+         readbyte_internal( pc - 39 ) == 0x11 && /* LD DE,nn */
+         readbyte_internal( pc - 36 ) == 0x21 && /* LD HL,nn */
+         readbyte_internal( pc - 33 ) == 0x06 && /* LD B,5 */
+         readbyte_internal( pc - 32 ) == 0x05 &&
+         readbyte_internal( pc - 31 ) == 0xcd && /* CALL callback */
+         callback == ( pc - 24 ) % 0x10000 &&
+         readbyte_internal( pc - 28 ) == 0xd0 && /* RET NC */
+         readbyte_internal( pc - 27 ) == 0xd9 && /* EXX */
+         readbyte_internal( pc - 8 ) == 0xd9 &&  /* EXX */
+         readbyte_internal( pc - 7 ) == 0xa7 &&  /* AND A */
+         acceleration_detector( pc - 6 ) == ACCELERATION_MODE_INCREASING;
+}
+
 static acceleration_mode_t
 acceleration_detector_at_in( libspectrum_word pc )
 {
   acceleration_mode_t mode;
+
+  if( modified_rom_loader_detector( pc ) ) return ACCELERATION_MODE_NONE;
 
   mode = gremlin_acceleration_detector( pc );
   if( mode ) return mode;
@@ -627,7 +656,8 @@ sign_flag_loader_detector( libspectrum_word pc )
 static int
 loader_loop_detector( libspectrum_word pc )
 {
-  return acceleration_detector_at_in( pc ) != ACCELERATION_MODE_NONE ||
+  return modified_rom_loader_detector( pc ) ||
+         acceleration_detector_at_in( pc ) != ACCELERATION_MODE_NONE ||
          sign_flag_loader_detector( pc );
 }
 
@@ -675,8 +705,17 @@ loader_unittest( void )
   static const libspectrum_byte sign_flag_loader[] = {
     0x04, 0xc8, 0xdb, 0xfe, 0x87, 0xfa, 0x00, 0x80
   };
+  static const libspectrum_byte modified_rom_loader[] = {
+    0xd9, 0x11, 0x6b, 0x80, 0x21, 0x29, 0x80, 0x06,
+    0x05, 0xcd, 0x10, 0x80, 0xd0, 0xd9, 0x06, 0x06,
+    0x7e, 0x91, 0x77, 0x7d, 0x38, 0x03, 0x00, 0x18,
+    0x02, 0x12, 0x1c, 0xc6, 0x06, 0x6f, 0x10, 0xf0,
+    0xd9, 0xa7, 0x04, 0xc8, 0x3e, 0x7f, 0xdb, 0xfe,
+    0x1f, 0xd0, 0xa9, 0xe6, 0x20, 0x28, 0xf3, 0x79,
+    0x2f, 0x4f, 0x37, 0xc9
+  };
   const libspectrum_word base = 0x8000;
-  libspectrum_byte saved[ sizeof( gremlin_loader ) ];
+  libspectrum_byte saved[ sizeof( modified_rom_loader ) ];
   libspectrum_byte saved_b = z80.bc.b.h, saved_a_ = z80.af_.b.h;
   libspectrum_word saved_pc = z80.pc.w;
   size_t saved_acceleration_pc = acceleration_pc;
@@ -794,6 +833,26 @@ loader_unittest( void )
 
   for( i = 0; i < sizeof( sign_flag_loader ); i++ )
     writebyte_internal( base + i, saved[ i ] );
+
+  for( i = 0; i < sizeof( modified_rom_loader ); i++ ) {
+    saved[ i ] = readbyte_internal( base + i );
+    writebyte_internal( base + i, modified_rom_loader[ i ] );
+  }
+
+  if( !modified_rom_loader_detector( base + 40 ) ) error++;
+  if( acceleration_detector_at_in( base + 40 ) != ACCELERATION_MODE_NONE )
+    error++;
+  if( !loader_loop_detector( base + 40 ) ) error++;
+
+  /* A call elsewhere is not the custom EDGE1 timing context. */
+  writebyte_internal( base + 10, 0x11 );
+  if( modified_rom_loader_detector( base + 40 ) ) error++;
+  if( acceleration_detector_at_in( base + 40 ) !=
+      ACCELERATION_MODE_INCREASING ) error++;
+
+  for( i = 0; i < sizeof( modified_rom_loader ); i++ )
+    writebyte_internal( base + i, saved[ i ] );
+
   z80.bc.b.h = saved_b; z80.af_.b.h = saved_a_; z80.pc.w = saved_pc;
   acceleration_pc = saved_acceleration_pc;
   acceleration_mode = saved_acceleration_mode;
