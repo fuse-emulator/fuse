@@ -9,6 +9,7 @@ Contents:
 1.1.2. Interrupt boundaries
 1.1.3. SPIN 0.5 tape-save input
 1.1.4. SPIN 0.5 frame-boundary input
+1.1.5. Spectaculator +D snapshot interrupt entry
 2. The display code
 2.1. Building an image of the Spectrum's screen
 
@@ -208,6 +209,24 @@ loop with interrupts disabled, and subsequent frames continue to record
 inputs which Fuse does not execute. Carrying or discarding that byte only
 moves the later mismatch; it does not repair playback. Treat it as an
 execution divergence, not as evidence for broadening this workaround.
+
+1.1.5. Spectaculator +D snapshot interrupt entry
+.................................................
+
+Some Spectaculator RZX files begin with a Z80 snapshot at PC 0x0038 with
+interrupts disabled and an attached, but unpaged, +D. Fuse normally pages
+the +D ROM when execution reaches 0x003a. These recordings instead continue
+through the Spectrum ROM interrupt handler and record its keyboard reads.
+Paging the +D ROM therefore makes frame zero finish with all its recorded
+inputs unread.
+
+During playback of such a snapshot, Fuse suppresses only the automatic +D
+page at 0x003a. The compatibility mode requires a Spectaculator creator, an
+initial snapshot at PC 0x0038, and snapshot state saying that +D is attached
+but not paged. The +D entry points at 0x0008 and 0x0066 retain their normal
+behaviour. This repairs Crystal Frog, Star Crash and Thief Night. It also
+allows five other recordings with the same frame-zero mismatch to proceed
+to later, unrelated execution divergences.
 
 2. The display code
 ===================

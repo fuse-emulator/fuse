@@ -44,6 +44,9 @@ extern int rzx_recording;
 /* Are we currently playing back a .rzx file? */
 extern int rzx_playback;
 
+/* Suppress +D automatic paging omitted by affected Spectaculator RZXes. */
+extern int rzx_spectaculator_plusd_compat;
+
 /* Is the .rzx file being recorded in competition mode? */
 extern int rzx_competition_mode;
 

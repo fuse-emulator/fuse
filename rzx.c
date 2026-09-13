@@ -59,6 +59,7 @@ int rzx_instructions_offset;
 
 /* Are we currently playing back a .rzx file? */
 int rzx_playback;
+int rzx_spectaculator_plusd_compat;
 
 int sentinel_warning;
 
@@ -124,6 +125,7 @@ rzx_init( void *context )
   rzx_spin_input_carry = 0;
   rzx_spin_input_carry_warned = 0;
   rzx_spectaculator_selectable_cpu = 0;
+  rzx_spectaculator_plusd_compat = 0;
 
   sentinel_warning = 0;
   sentinel_event = event_register( rzx_sentinel, "RZX sentinel" );
@@ -333,6 +335,11 @@ start_playback( libspectrum_rzx *from_rzx )
   }
 
   creator = libspectrum_rzx_creator( from_rzx );
+  rzx_spectaculator_plusd_compat =
+    creator_is_spectaculator( creator ) && snap &&
+    libspectrum_snap_pc( snap ) == 0x0038 &&
+    libspectrum_snap_plusd_active( snap ) &&
+    !libspectrum_snap_plusd_paged( snap );
   rzx_spin_tape_save_compat = creator_is_spin_05( creator );
   rzx_spin_tape_save_compat_active = 0;
   rzx_spin_tape_save_compat_warned = 0;
@@ -392,6 +399,7 @@ int rzx_stop_playback( int add_interrupt )
   rzx_spin_input_carry = 0;
   rzx_spin_input_carry_warned = 0;
   rzx_spectaculator_selectable_cpu = 0;
+  rzx_spectaculator_plusd_compat = 0;
   if( settings_current.movie_stop_after_rzx ) movie_stop();
 
   ui_menu_activate( UI_MENU_ITEM_RECORDING, 0 );
