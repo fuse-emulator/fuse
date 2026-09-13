@@ -402,6 +402,7 @@ scld scld_last_dec;
 
 size_t rzx_instruction_count;
 int rzx_playback;
+int rzx_spectaculator_plusd_compat;
 int rzx_instructions_offset;
 
 enum debugger_mode_t debugger_mode;
