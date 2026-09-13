@@ -69,6 +69,9 @@ static int rzx_cmos_forced;
 static int rzx_spin_tape_save_compat;
 static int rzx_spin_tape_save_compat_active;
 static int rzx_spin_tape_save_compat_warned;
+static int rzx_spin_input_carry;
+static int rzx_spin_input_carry_warned;
+static libspectrum_byte rzx_spin_carried_input;
 
 /* Did the recording emulator offer selectable CPU behaviour? */
 static int rzx_spectaculator_selectable_cpu;
@@ -98,6 +101,17 @@ static void rzx_sentinel( libspectrum_dword ts, int type,
 
 static int sentinel_event;
 
+libspectrum_error
+rzx_playback_byte( libspectrum_byte *value )
+{
+  if( rzx_spin_input_carry ) {
+    *value = rzx_spin_carried_input;
+    rzx_spin_input_carry = 0;
+    return LIBSPECTRUM_ERROR_NONE;
+  }
+  return libspectrum_rzx_playback( rzx, value );
+}
+
 static int
 rzx_init( void *context )
 {
@@ -107,6 +121,8 @@ rzx_init( void *context )
   rzx_spin_tape_save_compat = 0;
   rzx_spin_tape_save_compat_active = 0;
   rzx_spin_tape_save_compat_warned = 0;
+  rzx_spin_input_carry = 0;
+  rzx_spin_input_carry_warned = 0;
   rzx_spectaculator_selectable_cpu = 0;
 
   sentinel_warning = 0;
@@ -320,6 +336,8 @@ start_playback( libspectrum_rzx *from_rzx )
   rzx_spin_tape_save_compat = creator_is_spin_05( creator );
   rzx_spin_tape_save_compat_active = 0;
   rzx_spin_tape_save_compat_warned = 0;
+  rzx_spin_input_carry = 0;
+  rzx_spin_input_carry_warned = 0;
 
   is_spectaculator = creator_is_spectaculator( creator );
   rzx_spectaculator_selectable_cpu =
@@ -371,6 +389,8 @@ int rzx_stop_playback( int add_interrupt )
   rzx_spin_tape_save_compat = 0;
   rzx_spin_tape_save_compat_active = 0;
   rzx_spin_tape_save_compat_warned = 0;
+  rzx_spin_input_carry = 0;
+  rzx_spin_input_carry_warned = 0;
   rzx_spectaculator_selectable_cpu = 0;
   if( settings_current.movie_stop_after_rzx ) movie_stop();
 
@@ -442,6 +462,20 @@ static int playback_frame( void )
 
   if( rzx_spin_tape_save_compat_active && !spin_tape_save_pc() )
     rzx_spin_tape_save_compat_active = 0;
+
+  /* Some SPIN 0.5 files put an input executed after a fetch boundary at
+     the end of the preceding frame. */
+  if( rzx_spin_tape_save_compat && remaining == 1 && IFF1 &&
+      !rzx_spin_tape_save_compat_active ) {
+    error = libspectrum_rzx_playback( rzx, &rzx_spin_carried_input );
+    if( error ) return error;
+    rzx_spin_input_carry = 1;
+    if( !rzx_spin_input_carry_warned ) {
+      ui_error( UI_ERROR_WARNING,
+                "Applying SPIN 0.5 RZX input-boundary compatibility" );
+      rzx_spin_input_carry_warned = 1;
+    }
+  }
 
   error = libspectrum_rzx_playback_frame( rzx, &finished, &snap );
   if( error ) {

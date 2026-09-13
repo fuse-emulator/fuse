@@ -8,6 +8,7 @@ Contents:
 1.1.1. Spectaculator CPU models
 1.1.2. Interrupt boundaries
 1.1.3. SPIN 0.5 tape-save input
+1.1.4. SPIN 0.5 frame-boundary input
 2. The display code
 2.1. Building an image of the Spectrum's screen
 
@@ -176,6 +177,37 @@ a general `ignore wrong number of INs' path: such an error normally
 identifies a real CPU or peripheral divergence. Testing all 1160 SPIN
 0.5 files in the RZX corpus activated this workaround for exactly the
 five known tape-save recordings and no others.
+
+1.1.4. SPIN 0.5 frame-boundary input
+....................................
+
+SPIN 0.5 can also assign one input byte to the frame before the CPU
+executes the corresponding port-read instruction. In affected frames the
+recorded fetch count is exhausted with one unread input byte, while the
+next frame begins at or shortly before the instruction which consumes it.
+Discarding the byte is incorrect: it must be returned by the first port
+read in the next frame without advancing that frame's input cursor.
+
+Fuse applies this compatibility only to SPIN 0.5 recordings when exactly
+one input remains at a frame boundary, maskable interrupts are enabled,
+and the ROM tape-save workaround is not active. rzx_playback_byte()
+returns the carried byte before asking libspectrum for input from the new
+frame. The state is reset when playback starts or stops, and Fuse reports
+one warning per playback when it is used.
+
+This repairs Cauldron 2 and Revenge of the C5. In Cauldron 2 frame 65951
+ends at PC 0xcde9 immediately before ED 78 (IN A,(C)); a later occurrence
+ends at 0xcde6 shortly before the same input loop. In Revenge of the C5
+frame 12944 ends at PC 0x1f54 before LD A,0x7f; IN A,(0xfe). Carrying the
+byte allows both recordings to finish, and the full 3189-file regression
+corpus has no regressions.
+
+Continental Circus is a different failure despite also leaving one input
+at its first bad boundary. Frame 42370 ends at PC 0x11dc in a memory-write
+loop with interrupts disabled, and subsequent frames continue to record
+inputs which Fuse does not execute. Carrying or discarding that byte only
+moves the later mismatch; it does not repair playback. Treat it as an
+execution divergence, not as evidence for broadening this workaround.
 
 2. The display code
 ===================

@@ -70,6 +70,9 @@ rzx_start_playback_from_buffer_with_snapshot_check(
 int rzx_stop_playback( int add_interrupt );
 void rzx_spectaculator_cpu_hint( void );
 
+/* Read the next playback input, including creator-specific compatibility. */
+libspectrum_error rzx_playback_byte( libspectrum_byte *value );
+
 int rzx_frame( void );
 int rzx_frame_interrupt_complete( void );
 

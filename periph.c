@@ -324,7 +324,7 @@ readport_internal( libspectrum_word port )
     libspectrum_error error;
     libspectrum_byte value;
 
-    error = libspectrum_rzx_playback( rzx, &value );
+    error = rzx_playback_byte( &value );
     if( error ) {
       rzx_spectaculator_cpu_hint();
       rzx_stop_playback( 1 );
