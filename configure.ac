@@ -76,6 +76,17 @@ fi
 
 dnl Checks for programs.
 AC_PROG_CC
+AC_MSG_CHECKING([whether $CC supports C11])
+AC_COMPILE_IFELSE(
+  [AC_LANG_SOURCE([[
+#if !defined __STDC_VERSION__ || __STDC_VERSION__ < 201112L
+#error "C11 support is required"
+#endif
+int main(void) { return 0; }
+  ]])],
+  [AC_MSG_RESULT([yes])],
+  [AC_MSG_FAILURE([a compiler with support for C11 is required])]
+)
 AC_PATH_PROG(PERL, perl)
 AC_SUBST(PERL)
 AC_PROG_LEX([noyywrap])
