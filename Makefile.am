@@ -27,6 +27,8 @@ bin_PROGRAMS = fuse
 noinst_PROGRAMS =
 
 fuse_SOURCES = display.c \
+	display_border.c \
+	display_internal.h \
 	event.c \
 	fuse.c \
 	input.c \

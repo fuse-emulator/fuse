@@ -30,6 +30,7 @@
 #include <string.h>
 
 #include "display.h"
+#include "display_internal.h"
 #include "fuse.h"
 #include "infrastructure/startup_manager.h"
 #include "machine.h"
@@ -44,11 +45,6 @@
 
 /* Set once we have initialised the UI */
 int display_ui_initialised = 0;
-
-/* The current border colour */
-libspectrum_byte display_lores_border;
-libspectrum_byte display_hires_border;
-libspectrum_byte display_last_border;
 
 /* Stores the pixel, attribute and SCLD screen mode information used to
    draw each 8x1 group of pixels (including border) last frame */
@@ -93,51 +89,11 @@ static int critical_region_x = 0, critical_region_y = 0;
 static libspectrum_dword display_cached_beam_tstates = (libspectrum_dword)-1;
 static int display_cached_screen_x, display_cached_screen_y;
 
-/* The border colour changes which have occurred in this frame */
-struct border_change_t {
-  int x, y;
-  int colour;
-};
-
 display_dirty_fn display_dirty;
 display_write_if_dirty_fn display_write_if_dirty;
 
-static struct border_change_t border_change_end_sentinel =
-  { DISPLAY_SCREEN_WIDTH_COLS, DISPLAY_SCREEN_HEIGHT - 1, 0 };
-
-/* The current border colour */
-int current_border[ DISPLAY_SCREEN_HEIGHT ][ DISPLAY_SCREEN_WIDTH_COLS ];
-
 static void display_dirty8( libspectrum_word address );
 static void display_dirty64( libspectrum_word address );
-
-static int border_changes_last = 0;
-static struct border_change_t *border_changes = NULL;
-
-static struct border_change_t *
-alloc_change(void)
-{
-  static int border_changes_size = 0;
-
-  if( border_changes_size == border_changes_last ) {
-    border_changes_size += 10;
-    border_changes = libspectrum_renew( struct border_change_t,
-                                        border_changes, border_changes_size );
-  }
-  return border_changes + border_changes_last++; 
-}
-
-static int
-add_border_sentinel( void )
-{
-  struct border_change_t *sentinel = alloc_change();
-
-  sentinel->x = sentinel->y = 0;
-  sentinel->colour = scld_last_dec.name.hires ?
-                            display_hires_border : display_lores_border;
-
-  return 0;
-}
 
 int
 display_init( int *argc, char ***argv )
@@ -165,14 +121,7 @@ display_init( int *argc, char ***argv )
 
   display_refresh_all();
 
-  border_changes_last = 0;
-  if( border_changes ) {
-    libspectrum_free( border_changes );
-  }
-  border_changes = NULL;
-  error = add_border_sentinel(); if( error ) return error;
-  display_last_border = scld_last_dec.name.hires ?
-                            display_hires_border : display_lores_border;
+  error = display_border_init(); if( error ) return error;
 
   return 0;
 }
@@ -293,6 +242,12 @@ display_get_attr_byte( int x, int y )
   }
 
   return attr;
+}
+
+void
+display_mark_screen_dirty( int x, int y )
+{
+  display_is_dirty[y] |= ( (libspectrum_qword)1 << x );
 }
 
 static void
@@ -737,173 +692,6 @@ display_parse_attr( libspectrum_byte attr,
   }
 }
 
-static void
-push_border_change( int colour )
-{
-  int beam_x, beam_y;
-  struct border_change_t *change;
-
-  get_beam_position( &beam_x, &beam_y );
-
-  if( beam_y >= DISPLAY_SCREEN_HEIGHT ) return;
-
-  if( beam_x < 0 ) beam_x = 0;
-  if( beam_x > DISPLAY_SCREEN_WIDTH_COLS ) beam_x = DISPLAY_SCREEN_WIDTH_COLS;
-  if( beam_y < 0 ) beam_y = 0;
-
-  change = alloc_change();
-
-  change->x = beam_x;
-  change->y = beam_y;
-  change->colour = colour;
-}
-
-/* Change border colour if the colour in use changes */
-static void
-check_border_change( void )
-{
-  if( scld_last_dec.name.hires &&
-      display_hires_border != display_last_border ) {
-    push_border_change( display_hires_border );
-    display_last_border = display_hires_border;
-  } else if( !scld_last_dec.name.hires &&
-             display_lores_border != display_last_border ) {
-    push_border_change( display_lores_border );
-    display_last_border = display_lores_border;
-  }
-}
-
-void
-display_set_lores_border( int colour )
-{
-  if( display_lores_border != colour ) {
-    display_lores_border = colour;
-  }
-  check_border_change();
-}
-
-void
-display_set_hires_border( int colour )
-{
-  if( display_hires_border != colour ) {
-    display_hires_border = colour;
-  }
-  check_border_change();
-}
-
-static void
-set_border( int y, int start, int end, int colour )
-{
-  libspectrum_dword chunk_detail = colour << 11;
-  int index = start + y * DISPLAY_SCREEN_WIDTH_COLS;
-
-  for( ; start < end; start++ ) {
-    /* Draw it if it is different to what was there last time - we know that
-    data and mode will have been the same */
-    if( display_last_screen[ index ] != chunk_detail ) {
-      uidisplay_plot8( start, y, 0x00, 0, colour );
-
-      /* Update last display record */
-      display_last_screen[ index ] = chunk_detail;
-
-      /* And now mark it dirty */
-      display_is_dirty[y] |= ( (libspectrum_qword)1 << start );
-    }
-    index++;
-  }
-}
-
-static void
-border_change_write( int y, int start, int end, int colour )
-{
-  if(   y <  DISPLAY_BORDER_HEIGHT                    ||
-      ( y >= DISPLAY_BORDER_HEIGHT + DISPLAY_HEIGHT )    ) {
-
-    /* Top and bottom borders */
-    set_border( y, start, end, colour );
-
-    return;
-  }
-
-  /* Left border */
-  if( start < DISPLAY_BORDER_WIDTH_COLS ) {
-
-    int left_end =
-      end > DISPLAY_BORDER_WIDTH_COLS ? DISPLAY_BORDER_WIDTH_COLS : end;
-
-    set_border( y, start, left_end, colour );
-  }
-
-  /* Right border */
-  if( end > DISPLAY_BORDER_WIDTH_COLS + DISPLAY_WIDTH_COLS ) {
-
-    if( start < DISPLAY_BORDER_WIDTH_COLS + DISPLAY_WIDTH_COLS )
-      start = DISPLAY_BORDER_WIDTH_COLS + DISPLAY_WIDTH_COLS;
-
-    set_border( y, start, end, colour );
-  }
-}
-
-static void
-border_change_line_part( int y, int start, int end, int colour )
-{
-  border_change_write( y, start, end, colour );
-}
-
-static void
-border_change_line( int y, int colour )
-{
-  border_change_write( y, 0, DISPLAY_SCREEN_WIDTH_COLS, colour );
-}
-
-static void
-do_border_change( struct border_change_t *first,
-		  struct border_change_t *second )
-{
-  if( first->x ) {
-    if( first->x != DISPLAY_SCREEN_WIDTH_COLS )
-      border_change_line_part( first->y, first->x, DISPLAY_SCREEN_WIDTH_COLS,
-			       first->colour );
-    /* Don't extend region past the end of the screen */
-    if( first->y < DISPLAY_SCREEN_HEIGHT - 1 ) first->y++;
-  }
-
-  for( ; first->y < second->y; first->y++ ) {
-    border_change_line( first->y, first->colour );
-  }
-
-  if( second->x ) {
-    if( second->x == DISPLAY_SCREEN_WIDTH_COLS ) {
-      border_change_line( first->y, first->colour );
-    } else {
-      border_change_line_part( first->y, 0, second->x, first->colour );
-    }
-  }
-}
-
-/* Take account of all the border colour changes which happened in this
-   frame */
-static void
-update_border( void )
-{
-  int pos;
-  int error;
-
-  /* Put the final sentinel onto the list */
-  struct border_change_t *end_sentinel = alloc_change();
-
-  memcpy( end_sentinel, &border_change_end_sentinel,
-          sizeof( struct border_change_t ) );
-
-  for( pos = 0; pos < border_changes_last-1; pos++ ) {
-    do_border_change( border_changes+pos, border_changes+pos+1 );
-  }
-
-  border_changes_last = 0;
-
-  error = add_border_sentinel(); if( error ) return;
-}
-
 /* Send the updated screen to the UI-specific code */
 static void
 update_ui_screen( void )
@@ -957,7 +745,7 @@ display_frame( void )
   copy_critical_region( DISPLAY_WIDTH_COLS, DISPLAY_HEIGHT - 1 );
   critical_region_x = critical_region_y = 0;
 
-  update_border();
+  display_border_frame();
   update_dirty_rects();
   update_ui_screen();
 

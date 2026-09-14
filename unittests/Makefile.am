@@ -34,7 +34,11 @@ noinst_PROGRAMS += unittests/sdl2mousetest
 noinst_PROGRAMS += unittests/palcompositetest
 noinst_PROGRAMS += unittests/scalerexpandtest
 
-unittests_displaytest_SOURCES = unittests/displaytest.c display.c
+unittests_displaytest_SOURCES = \
+        unittests/displaytest.c \
+        display.c \
+        display_border.c \
+        display_internal.h
 unittests_displaytest_LDADD = $(LIBSPECTRUM_LIBS) $(GLIB_LIBS)
 unittests_displaytest_CPPFLAGS = $(AM_CPPFLAGS) -DDISPLAYTEST
 
