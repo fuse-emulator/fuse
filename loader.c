@@ -65,24 +65,47 @@ static size_t acceleration_pc;
 #define MOVIELOAD_DETECTION_READS 128
 #define LOADER_STOP_NON_EAR_READS 10
 
-/* A zero mask ignores a byte; other masks allow closely related opcodes to
-   share a pattern without adding control flow to the detector. */
+#define LOADER_PATTERN_MAX_ALTERNATIVES 4
+
 typedef struct loader_pattern_byte_t {
-  libspectrum_byte value;
-  libspectrum_byte mask;
+  libspectrum_byte values[ LOADER_PATTERN_MAX_ALTERNATIVES ];
+  libspectrum_byte masks[ LOADER_PATTERN_MAX_ALTERNATIVES ];
+  size_t alternatives;
 } loader_pattern_byte_t;
 
-#define LOADER_PATTERN_BYTE( value ) { value, 0xff }
-#define LOADER_PATTERN_MASKED( value, mask ) { value, mask }
-#define LOADER_PATTERN_ANY { 0x00, 0x00 }
+#define LOADER_PATTERN_BYTE( value ) \
+  { .values = { value }, .masks = { 0xff }, .alternatives = 1 }
+#define LOADER_PATTERN_MASKED( value, mask ) \
+  { .values = { value }, .masks = { mask }, .alternatives = 1 }
+#define LOADER_PATTERN_ANY { .alternatives = 0 }
+#define LOADER_PATTERN_ONE_OF_2( a, b ) \
+  { .values = { a, b }, .masks = { 0xff, 0xff }, .alternatives = 2 }
+#define LOADER_PATTERN_ONE_OF_3( a, b, c ) \
+  { .values = { a, b, c }, .masks = { 0xff, 0xff, 0xff }, \
+    .alternatives = 3 }
+#define LOADER_PATTERN_ONE_OF_4( a, b, c, d ) \
+  { .values = { a, b, c, d }, .masks = { 0xff, 0xff, 0xff, 0xff }, \
+    .alternatives = 4 }
+
+static int
+loader_pattern_byte_matches( libspectrum_byte byte,
+                             const loader_pattern_byte_t *pattern )
+{
+  if( !pattern->alternatives ) return 1;
+
+  for( size_t i = 0; i < pattern->alternatives; i++ )
+    if( ( byte & pattern->masks[ i ] ) == pattern->values[ i ] ) return 1;
+
+  return 0;
+}
 
 static int
 loader_pattern_matches( libspectrum_word address,
                         const loader_pattern_byte_t *pattern, size_t length )
 {
   for( size_t i = 0; i < length; i++ )
-    if( ( readbyte_internal( address + i ) & pattern[ i ].mask ) !=
-        pattern[ i ].value ) return 0;
+    if( !loader_pattern_byte_matches( readbyte_internal( address + i ),
+                                      &pattern[ i ] ) ) return 0;
 
   return 1;
 }
@@ -187,386 +210,147 @@ do_acceleration( void )
   length_long1 = length_long2;
 }
 
+#define LOADER_PATTERN_LENGTH( pattern ) \
+  ( sizeof( pattern ) / sizeof( pattern[ 0 ] ) )
+
+#define ROM_LOADER_PREFIX \
+  LOADER_PATTERN_BYTE( 0x04 ), LOADER_PATTERN_BYTE( 0xc8 ), \
+  LOADER_PATTERN_BYTE( 0x3e ), \
+  LOADER_PATTERN_ONE_OF_3( 0x00, 0x7f, 0xff )
+#define ROM_LOADER_INPUT \
+  LOADER_PATTERN_BYTE( 0xdb ), LOADER_PATTERN_BYTE( 0xfe )
+#define ROM_LOADER_EDGE_TEST \
+  LOADER_PATTERN_BYTE( 0x1f )
+#define ROM_LOADER_LEVEL_TEST \
+  LOADER_PATTERN_BYTE( 0xa9 ), LOADER_PATTERN_BYTE( 0xe6 ), \
+  LOADER_PATTERN_BYTE( 0x20 ), LOADER_PATTERN_BYTE( 0x28 )
+#define ROM_LOADER_EDGE_ACTION \
+  LOADER_PATTERN_ONE_OF_4( 0x00, 0xa7, 0xc8, 0xd0 )
+
+static const loader_pattern_byte_t rom_loader[] = {
+  ROM_LOADER_PREFIX, ROM_LOADER_INPUT, ROM_LOADER_EDGE_TEST,
+  ROM_LOADER_LEVEL_TEST, LOADER_PATTERN_BYTE( 0xf4 ),
+};
+
+static const loader_pattern_byte_t rom_loader_with_edge_action[] = {
+  ROM_LOADER_PREFIX, ROM_LOADER_INPUT, ROM_LOADER_EDGE_TEST,
+  ROM_LOADER_EDGE_ACTION, ROM_LOADER_LEVEL_TEST, LOADER_PATTERN_BYTE( 0xf3 ),
+};
+
+#define MICROPROSE_PREFIX \
+  ROM_LOADER_PREFIX, LOADER_PATTERN_BYTE( 0x3e ), \
+  LOADER_PATTERN_BYTE( 0x7f ), ROM_LOADER_INPUT, ROM_LOADER_EDGE_TEST
+
+static const loader_pattern_byte_t microprose_loader[] = {
+  MICROPROSE_PREFIX, ROM_LOADER_LEVEL_TEST, LOADER_PATTERN_BYTE( 0xf2 ),
+};
+
+static const loader_pattern_byte_t microprose_loader_with_edge_action[] = {
+  MICROPROSE_PREFIX, ROM_LOADER_EDGE_ACTION, ROM_LOADER_LEVEL_TEST,
+  LOADER_PATTERN_BYTE( 0xf1 ),
+};
+
+static const loader_pattern_byte_t search_loader[] = {
+  ROM_LOADER_PREFIX, ROM_LOADER_INPUT, LOADER_PATTERN_BYTE( 0xa9 ),
+  LOADER_PATTERN_BYTE( 0xe6 ), LOADER_PATTERN_BYTE( 0x40 ),
+  LOADER_PATTERN_BYTE( 0x28 ), LOADER_PATTERN_BYTE( 0xf5 ),
+};
+
+static const loader_pattern_byte_t search_loader_with_ret[] = {
+  ROM_LOADER_PREFIX, ROM_LOADER_INPUT, LOADER_PATTERN_BYTE( 0xa9 ),
+  LOADER_PATTERN_BYTE( 0xe6 ), LOADER_PATTERN_BYTE( 0x40 ),
+  LOADER_PATTERN_BYTE( 0xd8 ), LOADER_PATTERN_BYTE( 0x00 ),
+  LOADER_PATTERN_BYTE( 0x28 ), LOADER_PATTERN_BYTE( 0xf3 ),
+};
+
+#define ALKATRAZ_SUFFIX \
+  ROM_LOADER_INPUT, ROM_LOADER_EDGE_TEST, LOADER_PATTERN_BYTE( 0xc8 ), \
+  ROM_LOADER_LEVEL_TEST, LOADER_PATTERN_ONE_OF_2( 0xf1, 0xf3 )
+
+static const loader_pattern_byte_t alkatraz_loader[] = {
+  LOADER_PATTERN_BYTE( 0x03 ), LOADER_PATTERN_BYTE( 0xc3 ),
+  LOADER_PATTERN_ANY, LOADER_PATTERN_ANY, ALKATRAZ_SUFFIX,
+};
+
+static const loader_pattern_byte_t alkatraz_variant_loader[] = {
+  LOADER_PATTERN_BYTE( 0x04 ), LOADER_PATTERN_BYTE( 0x20 ),
+  LOADER_PATTERN_BYTE( 0x01 ), LOADER_PATTERN_BYTE( 0xc9 ),
+  ALKATRAZ_SUFFIX,
+};
+
+static const loader_pattern_byte_t software_projects_loader[] = {
+  LOADER_PATTERN_BYTE( 0x47 ), LOADER_PATTERN_BYTE( 0x08 ),
+  LOADER_PATTERN_BYTE( 0x3e ), LOADER_PATTERN_BYTE( 0x7f ),
+  ROM_LOADER_INPUT, LOADER_PATTERN_BYTE( 0xa9 ),
+  LOADER_PATTERN_BYTE( 0xe6 ), LOADER_PATTERN_BYTE( 0x40 ),
+  LOADER_PATTERN_BYTE( 0x20 ), LOADER_PATTERN_BYTE( 0x04 ),
+  LOADER_PATTERN_BYTE( 0x05 ), LOADER_PATTERN_BYTE( 0x20 ),
+  LOADER_PATTERN_BYTE( 0xf4 ),
+};
+
+static const loader_pattern_byte_t digital_integration_loader[] = {
+  LOADER_PATTERN_ANY, LOADER_PATTERN_ANY, LOADER_PATTERN_BYTE( 0x05 ),
+  LOADER_PATTERN_BYTE( 0xc8 ), ROM_LOADER_INPUT,
+  LOADER_PATTERN_BYTE( 0xa9 ), LOADER_PATTERN_BYTE( 0xe6 ),
+  LOADER_PATTERN_BYTE( 0x40 ), LOADER_PATTERN_BYTE( 0xca ),
+  LOADER_PATTERN_ANY, LOADER_PATTERN_ANY,
+};
+
+typedef struct acceleration_pattern_t {
+  const loader_pattern_byte_t *bytes;
+  size_t length;
+  acceleration_mode_t mode;
+} acceleration_pattern_t;
+
+#define ACCELERATION_PATTERN( pattern, acceleration_mode ) \
+  { pattern, LOADER_PATTERN_LENGTH( pattern ), acceleration_mode }
+
+static const acceleration_pattern_t acceleration_patterns[] = {
+  ACCELERATION_PATTERN( rom_loader, ACCELERATION_MODE_INCREASING ),
+  ACCELERATION_PATTERN( rom_loader_with_edge_action,
+                        ACCELERATION_MODE_INCREASING ),
+  ACCELERATION_PATTERN( microprose_loader, ACCELERATION_MODE_INCREASING ),
+  ACCELERATION_PATTERN( microprose_loader_with_edge_action,
+                        ACCELERATION_MODE_INCREASING ),
+  ACCELERATION_PATTERN( search_loader, ACCELERATION_MODE_INCREASING ),
+  ACCELERATION_PATTERN( search_loader_with_ret,
+                        ACCELERATION_MODE_INCREASING ),
+  ACCELERATION_PATTERN( alkatraz_loader, ACCELERATION_MODE_INCREASING ),
+  ACCELERATION_PATTERN( alkatraz_variant_loader,
+                        ACCELERATION_MODE_INCREASING ),
+  ACCELERATION_PATTERN( software_projects_loader,
+                        ACCELERATION_MODE_SOFTWARE_PROJECTS ),
+};
+
+static int
+digital_integration_loader_matches( libspectrum_word pc )
+{
+  libspectrum_byte first = readbyte_internal( pc );
+
+  /* These bytes select other state-machine branches in the original
+     detector, so they cannot begin a Digital Integration signature. */
+  if( first == 0x03 || first == 0x04 || first == 0x47 ) return 0;
+
+  if( !loader_pattern_matches( pc, digital_integration_loader,
+                               LOADER_PATTERN_LENGTH(
+                                 digital_integration_loader ) ) ) return 0;
+
+  return loader_word_matches( pc + 10, z80.pc.w - 4 );
+}
+
 static acceleration_mode_t
 acceleration_detector( libspectrum_word pc )
 {
-  int state = 0, count = 0;
-  while( 1 ) {
-    libspectrum_byte b = readbyte_internal( pc ); pc++; count++;
-    switch( state ) {
-    case 0:
-      switch( b ) {
-      case 0x03: state = 28; break;     /* Data byte of JR NZ, ... - Alkatraz */
-      case 0x04: state = 1; break;	/* INC B - Many loaders */
-      case 0x47: state = 44; break;      /* LD B,A - Software Projects */
-      default: state = 13; break;	/* Possible Digital Integration */
-      }
-      break;
-    case 1:
-      switch( b ) {
-      case 0x20: state = 40; break;     /* JR NZ - variant Alkatraz */
-      case 0xc8: state = 2; break;	/* RET Z */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 2:
-      switch( b ) {
-      case 0x3e: state = 3; break;	/* LD A,nn */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 3:
-      switch( b ) {
-      case 0x00:			/* Search Loader */
-      case 0x7f:			/* ROM loader and variants */
-      case 0xff:                        /* Dinaload */
-	state = 4; break;		/* Data byte */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 4:
-      switch( b ) {
-      case 0x3e: state = 42; break;      /* Second LD A,nn - Microprose */
-      case 0xdb: state = 5; break;	/* IN A,(nn) */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 5:
-      switch( b ) {
-      case 0xfe: state = 6; break;	/* Data byte */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 6:
-      switch( b ) {
-      case 0x1f: state = 7; break;	/* RRA */
-      case 0xa9: state = 24; break;	/* XOR C - Search Loader */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 7:
-      switch( b ) {
-      case 0x00:			/* NOP - Bleepload */
-      case 0xa7:			/* AND A - Microsphere */
-      case 0xc8:			/* RET Z - Paul Owens */
-      case 0xd0:			/* RET NC - ROM loader */
-	state = 8; break;
-      case 0xa9: state = 9; break;	/* XOR C - Speedlock */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 8:
-      switch( b ) {
-      case 0xa9: state = 9; break;	/* XOR C */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 9:
-      switch( b ) {
-      case 0xe6: state = 10; break;	/* AND nn */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 10:
-      switch( b ) {
-      case 0x20: state = 11; break;	/* Data byte */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 11:
-      switch( b ) {
-      case 0x28: state = 12; break;	/* JR nn */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 12:
-      if( b == 0x100 - count ) {
-	return ACCELERATION_MODE_INCREASING;
-      } else {
-	return ACCELERATION_MODE_NONE;
-      }
-      break;
+  if( digital_integration_loader_matches( pc ) )
+    return ACCELERATION_MODE_DECREASING;
 
-      /* Digital Integration loader */
+  for( size_t i = 0; i < LOADER_PATTERN_LENGTH( acceleration_patterns ); i++ )
+    if( loader_pattern_matches( pc, acceleration_patterns[ i ].bytes,
+                                acceleration_patterns[ i ].length ) )
+      return acceleration_patterns[ i ].mode;
 
-    case 13:
-      state = 14; break;		/* Possible Digital Integration */
-    case 14:
-      switch( b ) {
-      case 0x05: state = 15; break;	/* DEC B - Digital Integration */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 15:
-      switch( b ) {
-      case 0xc8: state = 16; break;	/* RET Z */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 16:
-      switch( b ) {
-      case 0xdb: state = 17; break;	/* IN A,(nn) */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 17:
-      switch( b ) {
-      case 0xfe: state = 18; break;	/* Data byte */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 18:
-      switch( b ) {
-      case 0xa9: state = 19; break;	/* XOR C */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 19:
-      switch( b ) {
-      case 0xe6: state = 20; break;	/* AND nn */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 20:
-      switch( b ) {
-      case 0x40: state = 21; break;	/* Data byte */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 21:
-      switch( b ) {
-      case 0xca: state = 22; break;	/* JP Z,nnnn */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 22:				/* LSB of jump target */
-      if( b == ( z80.pc.w - 4 ) % 0x100 ) {
-	state = 23;
-      } else {
-	return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 23:				/* MSB of jump target */
-      if( b == ( z80.pc.w - 4 ) / 0x100 ) {
-	return ACCELERATION_MODE_DECREASING;
-      } else {
-	return ACCELERATION_MODE_NONE;
-      }
-
-      /* Search loader */
-
-    case 24:
-      switch( b ) {
-      case 0xe6: state = 25; break;	/* AND nn */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 25:
-      switch( b ) {
-      case 0x40: state = 26; break;	/* Data byte */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 26:
-      switch( b ) {
-      case 0x28: state = 12; break;     /* JR Z - Space Crusade */
-      case 0xd8: state = 27; break;	/* RET C */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 27:
-      switch( b ) {
-      case 0x00: state = 11; break;	/* NOP */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-
-    /* Alkatraz */
-
-    case 28:
-      switch( b ) {
-      case 0xc3: state = 29; break;     /* JP nnnn */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 29:
-      state = 30; break;                /* First data byte of JP */
-    case 30:
-      state = 31; break;                /* Second data byte of JP */
-    case 31:
-      switch( b ) {
-      case 0xdb: state = 32; break;	/* IN A,(nn) */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 32:
-      switch( b ) {
-      case 0xfe: state = 33; break;	/* Data byte */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 33:
-      switch( b ) {
-      case 0x1f: state = 34; break;	/* RRA */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 34:
-      switch( b ) {
-      case 0xc8: state = 35; break;	/* RET Z */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 35:
-      switch( b ) {
-      case 0xa9: state = 36; break;	/* XOR C */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 36:
-      switch( b ) {
-      case 0xe6: state = 37; break;	/* AND nn */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 37:
-      switch( b ) {
-      case 0x20: state = 38; break;	/* Data byte */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 38:
-      switch( b ) {
-      case 0x28: state = 39; break;	/* JR Z,nn */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 39:
-      switch( b ) {
-      case 0xf1:                        /* Normal data byte */
-      case 0xf3:                        /* Variant data byte */
-        return ACCELERATION_MODE_INCREASING;
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-
-    /* "Variant" Alkatraz */
-
-    case 40:
-      switch( b ) {
-      case 0x01: state = 41; break;     /* Data byte of JR NZ */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 41:
-      switch( b ) {
-      case 0xc9: state = 31; break;     /* RET */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-
-    /* Microprose */
-
-    case 42:
-      switch( b ) {
-      case 0x7f: state = 43; break;     /* Data byte */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 43:
-      switch( b ) {
-      case 0xdb: state = 5; break;      /* IN A,(nn) */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-
-    /* Software Projects */
-
-    case 44:
-      switch( b ) {
-      case 0x08: state = 45; break;      /* EX AF,AF' */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 45:
-      switch( b ) {
-      case 0x3e: state = 46; break;      /* LD A,nn */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 46:
-      switch( b ) {
-      case 0x7f: state = 47; break;      /* Data byte */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 47:
-      switch( b ) {
-      case 0xdb: state = 48; break;      /* IN A,(nn) */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 48:
-      switch( b ) {
-      case 0xfe: state = 49; break;      /* Data byte */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 49:
-      switch( b ) {
-      case 0xa9: state = 50; break;      /* XOR C */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 50:
-      switch( b ) {
-      case 0xe6: state = 51; break;      /* AND nn */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 51:
-      switch( b ) {
-      case 0x40: state = 52; break;      /* Data byte */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 52:
-      switch( b ) {
-      case 0x20: state = 53; break;      /* JR NZ,nn */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 53:
-      switch( b ) {
-      case 0x04: state = 54; break;      /* Data byte */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 54:
-      switch( b ) {
-      case 0x05: state = 55; break;      /* DEC B */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 55:
-      switch( b ) {
-      case 0x20: state = 56; break;      /* JR NZ,nn */
-      default: return ACCELERATION_MODE_NONE;
-      }
-      break;
-    case 56:
-      switch( b ) {
-      case 0xf4: return ACCELERATION_MODE_SOFTWARE_PROJECTS;
-      default: return ACCELERATION_MODE_NONE;
-      }
-
-    default:
-      /* Can't happen */
-      break;
-    }
-  }
-
-}      
+  return ACCELERATION_MODE_NONE;
+}
 
 static acceleration_mode_t
 gremlin_acceleration_detector( libspectrum_word pc )
@@ -777,6 +561,96 @@ loader_test_pattern_matcher( void )
   if( !loader_word_matches( LOADER_TEST_BASE, 0x9234 ) ) error++;
   if( loader_word_matches( LOADER_TEST_BASE, 0x9235 ) ) error++;
 
+  loader_test_restore_memory( &memory );
+  return error;
+}
+
+typedef struct loader_detector_test_case_t {
+  libspectrum_byte bytes[ 15 ];
+  size_t length;
+  size_t reject_offset;
+  acceleration_mode_t mode;
+} loader_detector_test_case_t;
+
+static int
+loader_test_acceleration_patterns( void )
+{
+  static const loader_detector_test_case_t tests[] = {
+    { { 0x04, 0xc8, 0x3e, 0x00, 0xdb, 0xfe, 0x1f, 0xa9, 0xe6, 0x20,
+        0x28, 0xf4 }, 12, 9, ACCELERATION_MODE_INCREASING },
+    { { 0x04, 0xc8, 0x3e, 0x7f, 0xdb, 0xfe, 0x1f, 0x00, 0xa9, 0xe6,
+        0x20, 0x28, 0xf3 }, 13, 7, ACCELERATION_MODE_INCREASING },
+    { { 0x04, 0xc8, 0x3e, 0xff, 0xdb, 0xfe, 0x1f, 0xa7, 0xa9, 0xe6,
+        0x20, 0x28, 0xf3 }, 13, 7, ACCELERATION_MODE_INCREASING },
+    { { 0x04, 0xc8, 0x3e, 0x7f, 0xdb, 0xfe, 0x1f, 0xc8, 0xa9, 0xe6,
+        0x20, 0x28, 0xf3 }, 13, 7, ACCELERATION_MODE_INCREASING },
+    { { 0x04, 0xc8, 0x3e, 0x7f, 0xdb, 0xfe, 0x1f, 0xd0, 0xa9, 0xe6,
+        0x20, 0x28, 0xf3 }, 13, 7, ACCELERATION_MODE_INCREASING },
+    { { 0x04, 0xc8, 0x3e, 0x00, 0x3e, 0x7f, 0xdb, 0xfe, 0x1f, 0xa9,
+        0xe6, 0x20, 0x28, 0xf2 }, 14, 5, ACCELERATION_MODE_INCREASING },
+    { { 0x04, 0xc8, 0x3e, 0xff, 0x3e, 0x7f, 0xdb, 0xfe, 0x1f, 0x00,
+        0xa9, 0xe6, 0x20, 0x28, 0xf1 }, 15, 9,
+      ACCELERATION_MODE_INCREASING },
+    { { 0x04, 0xc8, 0x3e, 0x00, 0xdb, 0xfe, 0xa9, 0xe6, 0x40, 0x28,
+        0xf5 }, 11, 8, ACCELERATION_MODE_INCREASING },
+    { { 0x04, 0xc8, 0x3e, 0x7f, 0xdb, 0xfe, 0xa9, 0xe6, 0x40, 0xd8,
+        0x00, 0x28, 0xf3 }, 13, 10, ACCELERATION_MODE_INCREASING },
+    { { 0x03, 0xc3, 0x34, 0x12, 0xdb, 0xfe, 0x1f, 0xc8, 0xa9, 0xe6,
+        0x20, 0x28, 0xf1 }, 13, 7, ACCELERATION_MODE_INCREASING },
+    { { 0x03, 0xc3, 0x78, 0x56, 0xdb, 0xfe, 0x1f, 0xc8, 0xa9, 0xe6,
+        0x20, 0x28, 0xf3 }, 13, 7, ACCELERATION_MODE_INCREASING },
+    { { 0x04, 0x20, 0x01, 0xc9, 0xdb, 0xfe, 0x1f, 0xc8, 0xa9, 0xe6,
+        0x20, 0x28, 0xf1 }, 13, 2, ACCELERATION_MODE_INCREASING },
+    { { 0x04, 0x20, 0x01, 0xc9, 0xdb, 0xfe, 0x1f, 0xc8, 0xa9, 0xe6,
+        0x20, 0x28, 0xf3 }, 13, 2, ACCELERATION_MODE_INCREASING },
+    { { 0x47, 0x08, 0x3e, 0x7f, 0xdb, 0xfe, 0xa9, 0xe6, 0x40, 0x20,
+        0x04, 0x05, 0x20, 0xf4 }, 14, 10,
+      ACCELERATION_MODE_SOFTWARE_PROJECTS },
+  };
+  int error = 0;
+
+  for( size_t i = 0; i < sizeof( tests ) / sizeof( tests[ 0 ] ); i++ ) {
+    loader_test_memory_t memory;
+    loader_test_install( &memory, tests[ i ].bytes, tests[ i ].length );
+    if( acceleration_detector( LOADER_TEST_BASE ) != tests[ i ].mode ) error++;
+    writebyte_internal( LOADER_TEST_BASE + tests[ i ].reject_offset,
+                        tests[ i ].bytes[ tests[ i ].reject_offset ] ^ 0x01 );
+    if( acceleration_detector( LOADER_TEST_BASE ) != ACCELERATION_MODE_NONE )
+      error++;
+    loader_test_restore_memory( &memory );
+  }
+
+  return error;
+}
+
+static int
+loader_test_digital_integration( void )
+{
+  static const libspectrum_byte loader[] = {
+    0x00, 0x3f, 0x05, 0xc8, 0xdb, 0xfe, 0xa9, 0xe6, 0x40, 0xca,
+    0xfc, 0x7f
+  };
+  loader_test_memory_t memory;
+  libspectrum_word saved_pc = z80.pc.w;
+  int error = 0;
+
+  loader_test_install( &memory, loader, sizeof( loader ) );
+  z80.pc.w = LOADER_TEST_BASE;
+  if( acceleration_detector( LOADER_TEST_BASE ) !=
+      ACCELERATION_MODE_DECREASING ) error++;
+
+  /* The absolute branch must target the active sampling loop. */
+  writebyte_internal( LOADER_TEST_BASE + 10, 0xfb );
+  if( acceleration_detector( LOADER_TEST_BASE ) != ACCELERATION_MODE_NONE )
+    error++;
+  writebyte_internal( LOADER_TEST_BASE + 10, 0xfc );
+
+  /* Opcodes which selected another original state-machine branch are invalid. */
+  writebyte_internal( LOADER_TEST_BASE, 0x04 );
+  if( acceleration_detector( LOADER_TEST_BASE ) != ACCELERATION_MODE_NONE )
+    error++;
+
+  z80.pc.w = saved_pc;
   loader_test_restore_memory( &memory );
   return error;
 }
@@ -997,6 +871,8 @@ loader_unittest( void )
   int error = 0;
 
   error += loader_test_pattern_matcher();
+  error += loader_test_acceleration_patterns();
+  error += loader_test_digital_integration();
   error += loader_test_microprose();
   error += loader_test_software_projects();
   error += loader_test_gremlin();
