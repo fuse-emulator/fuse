@@ -62,6 +62,8 @@ fuse_SOURCES = display.c \
 	svg.c \
 	tape.c \
 	tape_block.c \
+	tape_internals.h \
+	tape_record.c \
 	ui.c \
 	uidisplay.c \
 	uimedia.c \
@@ -145,6 +147,7 @@ noinst_HEADERS = bitmap.h \
 	spectrum.h \
 	svg.h \
 	tape.h \
+	tape_internals.h \
 	utils.h \
 	options.h \
 	profile.h
