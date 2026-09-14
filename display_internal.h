@@ -12,6 +12,11 @@
 
 #include "libspectrum.h"
 
+void display_dirty_init( void );
+void display_dirty_frame_begin( void );
+void display_dirty_frame_end( void );
+void display_dirty_refresh_all( void );
+void display_get_beam_position( int *x, int *y );
 void display_mark_screen_dirty( int x, int y );
 void display_dirty8( libspectrum_word address );
 void display_dirty64( libspectrum_word address );

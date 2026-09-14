@@ -28,6 +28,7 @@ noinst_PROGRAMS =
 
 fuse_SOURCES = display.c \
 	display_border.c \
+	display_dirty.c \
 	display_internal.h \
 	display_render.c \
 	event.c \

@@ -20,7 +20,6 @@
 #include "display.h"
 #include "display_internal.h"
 #include "fuse.h"
-#include "machine.h"
 #include "peripherals/scld.h"
 #include "ui/uidisplay.h"
 
@@ -87,29 +86,13 @@ display_border_init( void )
   return 0;
 }
 
-static inline void
-get_beam_position( int *x, int *y )
-{
-  if( tstates < machine_current->line_times[ 0 ] ) {
-    *x = *y = -1;
-    return;
-  }
-
-  *y = ( tstates - machine_current->line_times[ 0 ] ) /
-    machine_current->timings.tstates_per_line;
-
-  if( *y >= 0 && *y <= DISPLAY_SCREEN_HEIGHT )
-    *x = ( tstates - machine_current->line_times[ *y ] ) / 4;
-  else *x = 0;
-}
-
 static void
 push_border_change( int colour )
 {
   int beam_x, beam_y;
   struct border_change_t *change;
 
-  get_beam_position( &beam_x, &beam_y );
+  display_get_beam_position( &beam_x, &beam_y );
 
   if( beam_y >= DISPLAY_SCREEN_HEIGHT ) return;
 
