@@ -453,84 +453,91 @@ tape_present( void )
   return libspectrum_tape_present( tape );
 }
 
+static int
+tape_edge_requests_stop( const libspectrum_tape_edge *edge )
+{
+  int is_48k =
+    !( libspectrum_machine_capabilities( machine_current->machine ) &
+       LIBSPECTRUM_MACHINE_CAPABILITY_128_MEMORY );
+
+  return ( edge->flags & LIBSPECTRUM_TAPE_FLAGS_STOP ) ||
+         ( ( edge->flags & LIBSPECTRUM_TAPE_FLAGS_STOP48 ) && is_48k );
+}
+
+static void
+tape_handle_stop_request( const libspectrum_tape_edge *edge )
+{
+  if( !tape_edge_requests_stop( edge ) ) return;
+
+  /* Defer stopping so this final edge, such as an embedded pause at the end
+     of the tape, is still played. */
+  tape_stop_pending = 1;
+
+  /* At end-of-tape, STOP and BLOCK are returned together. Do not let loader
+     detection immediately start the automatically rewound tape; inserting,
+     selecting or manually playing a tape makes autoplay eligible again.
+     Explicit stop blocks remain eligible because multiload tapes use them
+     between levels. */
+  if( ( edge->flags & LIBSPECTRUM_TAPE_FLAGS_STOP ) &&
+      ( edge->flags & LIBSPECTRUM_TAPE_FLAGS_BLOCK ) )
+    tape_autoplay_blocked = 1;
+}
+
+static int
+tape_handle_block_end( const libspectrum_tape_edge *edge )
+{
+  libspectrum_tape_block *block;
+
+  /* At end-of-tape both STOP and BLOCK are set. Skip the trap check because
+     it could undo the deferred stop and drop the final edge. */
+  if( !( edge->flags & LIBSPECTRUM_TAPE_FLAGS_BLOCK ) || tape_stop_pending )
+    return 0;
+
+  trap_resume_pending = 0;
+  ui_tape_browser_update( UI_TAPE_BROWSER_SELECT_BLOCK, NULL );
+
+  /* Automatically played tapes stop before a new ROM block so the tape trap
+     can load it without scheduling another edge. */
+  block = libspectrum_tape_current_block( tape );
+  if( tape_autoplay && settings_current.tape_traps && !rzx_recording &&
+      libspectrum_tape_block_type( block ) == LIBSPECTRUM_TAPE_BLOCK_ROM ) {
+    tape_stop();
+    return 1;
+  }
+  return 0;
+}
+
+static void
+tape_schedule_edge( libspectrum_dword last_tstates,
+                    const libspectrum_tape_edge *edge,
+                    int from_acceleration )
+{
+  /* Schedule relative to the last edge rather than the current time, since
+     events are only processed between instructions. */
+  event_add( last_tstates + edge->tstates, tape_edge_event );
+  loader_set_acceleration_flags( edge->flags, from_acceleration );
+}
+
 void
 tape_next_edge( libspectrum_dword last_tstates, int from_acceleration )
 {
-  libspectrum_error libspec_error;
-  libspectrum_tape_block *block;
-
   libspectrum_tape_edge edge;
+  libspectrum_error error;
 
-  /* If a stop was deferred, carry it out now */
   if( tape_stop_pending ) {
     tape_stop();
     return;
   }
+  if( !tape_playing ) return;
 
-  /* If the tape's not playing, just return */
-  if( ! tape_playing ) return;
+  error = libspectrum_tape_get_next_edge( &edge, tape );
+  if( error != LIBSPECTRUM_ERROR_NONE ) return;
 
-  /* Get the time until the next edge */
-  libspec_error = libspectrum_tape_get_next_edge( &edge, tape );
-  if( libspec_error != LIBSPECTRUM_ERROR_NONE ) return;
-
-  /* Invert or explicitly set the microphone state. */
   tape_update_microphone( &edge );
-
   sound_tape( last_tstates );
-
-  /* If we've been requested to stop the tape, do it on the next tape
-     event so that this final edge (e.g. the embedded pause at the end
-     of the tape) is still played */
-  if( ( edge.flags & LIBSPECTRUM_TAPE_FLAGS_STOP ) ||
-      ( ( edge.flags & LIBSPECTRUM_TAPE_FLAGS_STOP48 ) &&
-	( !( libspectrum_machine_capabilities( machine_current->machine ) &
-	     LIBSPECTRUM_MACHINE_CAPABILITY_128_MEMORY
-	   )
-	)
-      )
-    )
-  {
-    tape_stop_pending = 1;
-    /* At end-of-tape, STOP and BLOCK are returned together. Do not let loader
-       detection immediately start the automatically rewound tape; inserting,
-       selecting or manually playing a tape makes autoplay eligible again.
-       Explicit stop blocks remain eligible because multiload tapes use them
-       between levels. */
-    if( ( edge.flags & LIBSPECTRUM_TAPE_FLAGS_STOP ) &&
-        ( edge.flags & LIBSPECTRUM_TAPE_FLAGS_BLOCK ) )
-      tape_autoplay_blocked = 1;
-  }
-
-  /* If that was the end of a block, update the browser. This is skipped
-     if tape_stop_pending was set above: at the end of the tape both
-     STOP and BLOCK are set. The trap check below could undo the deferred
-     stop and drop the final edge. */
-  if( ( edge.flags & LIBSPECTRUM_TAPE_FLAGS_BLOCK ) && !tape_stop_pending ) {
-
-    trap_resume_pending = 0;
-    ui_tape_browser_update( UI_TAPE_BROWSER_SELECT_BLOCK, NULL );
-
-    /* If the tape was started automatically, tape traps are active
-       and the new block is a ROM loader, stop the tape and return
-       without putting another event into the queue */
-    block = libspectrum_tape_current_block( tape );
-    if( tape_autoplay && settings_current.tape_traps && !rzx_recording &&
-        libspectrum_tape_block_type( block ) == LIBSPECTRUM_TAPE_BLOCK_ROM
-      ) {
-      tape_stop();
-      return;
-    }
-  }
-
-  /* Otherwise, put this into the event queue; remember that this edge
-     should occur 'edge.tstates' after the last edge, not after the
-     current time (these will be slightly different as we only process
-     events between instructions). */
-  event_add( last_tstates + edge.tstates, tape_edge_event );
-
-  /* Store length flags for acceleration purposes */
-  loader_set_acceleration_flags( edge.flags, from_acceleration );
+  tape_handle_stop_request( &edge );
+  if( tape_handle_block_end( &edge ) ) return;
+  tape_schedule_edge( last_tstates, &edge, from_acceleration );
 }
 
 static void
