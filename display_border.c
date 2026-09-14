@@ -19,7 +19,6 @@
 
 #include "display.h"
 #include "display_internal.h"
-#include "fuse.h"
 #include "peripherals/scld.h"
 #include "ui/uidisplay.h"
 
