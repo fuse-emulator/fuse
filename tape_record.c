@@ -51,7 +51,7 @@ typedef struct
 
 int tape_recording = 0;
 
-static libspectrum_tape *tape;
+static libspectrum_tape *recording_tape;
 static int record_event;
 static tape_rec_state rec_state;
 
@@ -62,7 +62,7 @@ tape_event_record_sample( libspectrum_dword last_tstates, int type,
 void
 tape_record_init( libspectrum_tape *current_tape )
 {
-  tape = current_tape;
+  recording_tape = current_tape;
   record_event = event_register( tape_event_record_sample,
                                  "Tape sample record" );
 }
@@ -162,7 +162,7 @@ tape_record_stop( void )
   libspectrum_tape_block_set_data_length( block, rec_state.tape_buffer_used );
   libspectrum_tape_block_set_data( block, rec_state.tape_buffer );
 
-  error = libspectrum_tape_append_block( tape, block );
+  error = libspectrum_tape_append_block( recording_tape, block );
   if( error ) libspectrum_tape_block_free( block );
 
   rec_state.tape_buffer = NULL;

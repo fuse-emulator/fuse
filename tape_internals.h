@@ -12,6 +12,14 @@
 
 #include "libspectrum.h"
 
+extern libspectrum_tape *tape;
+extern int trap_resume_pending;
+
+int tape_autoload( libspectrum_machine hardware );
+int tape_play( int autoplay );
+libspectrum_error tape_trap_finish_rom_block( void );
+void tape_update_microphone( const libspectrum_tape_edge *edge );
+
 void tape_record_init( libspectrum_tape *current_tape );
 
 #endif
