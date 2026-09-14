@@ -65,6 +65,35 @@ static size_t acceleration_pc;
 #define MOVIELOAD_DETECTION_READS 128
 #define LOADER_STOP_NON_EAR_READS 10
 
+/* A zero mask ignores a byte; other masks allow closely related opcodes to
+   share a pattern without adding control flow to the detector. */
+typedef struct loader_pattern_byte_t {
+  libspectrum_byte value;
+  libspectrum_byte mask;
+} loader_pattern_byte_t;
+
+#define LOADER_PATTERN_BYTE( value ) { value, 0xff }
+#define LOADER_PATTERN_MASKED( value, mask ) { value, mask }
+#define LOADER_PATTERN_ANY { 0x00, 0x00 }
+
+static int
+loader_pattern_matches( libspectrum_word address,
+                        const loader_pattern_byte_t *pattern, size_t length )
+{
+  for( size_t i = 0; i < length; i++ )
+    if( ( readbyte_internal( address + i ) & pattern[ i ].mask ) !=
+        pattern[ i ].value ) return 0;
+
+  return 1;
+}
+
+static int
+loader_word_matches( libspectrum_word address, libspectrum_word value )
+{
+  return readbyte_internal( address ) == value % 0x100 &&
+         readbyte_internal( address + 1 ) == value / 0x100;
+}
+
 void
 loader_frame( libspectrum_dword frame_length )
 {
@@ -720,6 +749,39 @@ loader_test_restore_memory( const loader_test_memory_t *memory )
 }
 
 static int
+loader_test_pattern_matcher( void )
+{
+  static const libspectrum_byte bytes[] = { 0xaa, 0x31, 0xfa, 0xcc };
+  static const loader_pattern_byte_t pattern[] = {
+    LOADER_PATTERN_BYTE( 0xaa ),
+    LOADER_PATTERN_ANY,
+    /* JP P (f2) and JP M (fa) differ only in bit 3. */
+    LOADER_PATTERN_MASKED( 0xf2, 0xf7 ),
+    LOADER_PATTERN_BYTE( 0xcc ),
+  };
+  loader_test_memory_t memory;
+  int error = 0;
+
+  loader_test_install( &memory, bytes, sizeof( bytes ) );
+  if( !loader_pattern_matches( LOADER_TEST_BASE, pattern,
+                               sizeof( pattern ) / sizeof( pattern[ 0 ] ) ) )
+    error++;
+
+  writebyte_internal( LOADER_TEST_BASE, 0xab );
+  if( loader_pattern_matches( LOADER_TEST_BASE, pattern,
+                              sizeof( pattern ) / sizeof( pattern[ 0 ] ) ) )
+    error++;
+
+  writebyte_internal( LOADER_TEST_BASE, 0x34 );
+  writebyte_internal( LOADER_TEST_BASE + 1, 0x92 );
+  if( !loader_word_matches( LOADER_TEST_BASE, 0x9234 ) ) error++;
+  if( loader_word_matches( LOADER_TEST_BASE, 0x9235 ) ) error++;
+
+  loader_test_restore_memory( &memory );
+  return error;
+}
+
+static int
 loader_test_microprose( void )
 {
   static const libspectrum_byte loader[] = {
@@ -934,6 +996,7 @@ loader_unittest( void )
   loader_test_state_t state = loader_test_save_state();
   int error = 0;
 
+  error += loader_test_pattern_matcher();
   error += loader_test_microprose();
   error += loader_test_software_projects();
   error += loader_test_gremlin();
