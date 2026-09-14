@@ -49,7 +49,7 @@ int display_ui_initialised = 0;
 /* Stores the pixel, attribute and SCLD screen mode information used to
    draw each 8x1 group of pixels (including border) last frame */
 libspectrum_dword
-display_last_screen[ DISPLAY_SCREEN_WIDTH_COLS * DISPLAY_SCREEN_HEIGHT ];
+  display_last_screen[ DISPLAY_SCREEN_WIDTH_COLS * DISPLAY_SCREEN_HEIGHT ];
 
 /* Offsets as to where the data and the attributes for each pixel
    line start */
@@ -65,19 +65,20 @@ display_init( int *argc, char ***argv )
   int i, j, k, y;
   int error;
 
-  if(ui_init(argc, argv))
+  if( ui_init( argc, argv ) )
     return 1;
 
   display_dirty_init();
 
-  for(i=0;i<3;i++)
-    for(j=0;j<8;j++)
-      for(k=0;k<8;k++)
-	display_line_start[ (64*i) + (8*j) + k ] =
-	  32 * ( (64*i) + j + (k*8) );
+  for(i = 0; i < 3; i++)
+    for(j = 0; j < 8; j++)
+      for(k = 0; k < 8; k++)
+        display_line_start[ ( 64 * i ) + ( 8 * j ) + k ] =
+          32 * ( ( 64 * i ) + j + ( k * 8 ) );
 
-  for(y=0;y<DISPLAY_HEIGHT;y++) {
-    display_attr_start[y]=DISPLAY_PIXEL_BYTES + (DISPLAY_WIDTH_COLS*(y/8));
+  for(y = 0; y < DISPLAY_HEIGHT; y++) {
+    display_attr_start[y] = DISPLAY_PIXEL_BYTES +
+                            ( DISPLAY_WIDTH_COLS * ( y / 8 ) );
   }
 
   display_render_init();
@@ -93,7 +94,7 @@ static int
 display_init_wrapper( void *context )
 {
   display_startup_context *typed_context =
-    (display_startup_context*) context;
+    (display_startup_context *)context;
 
   return display_init( typed_context->argc, typed_context->argv );
 }
@@ -137,10 +138,10 @@ update_ui_screen( void )
       for( i = 0, ptr = rectangle_inactive;
            i < rectangle_inactive_count;
            i++, ptr++ ) {
-            if( movie_recording ) {
-              movie_add_area( ptr->x, ptr->y, ptr->w, ptr->h );
-            }
-              uidisplay_area( 8 * scale * ptr->x, scale * ptr->y,
+        if( movie_recording ) {
+          movie_add_area( ptr->x, ptr->y, ptr->w, ptr->h );
+        }
+        uidisplay_area( 8 * scale * ptr->x, scale * ptr->y,
                         8 * scale * ptr->w, scale * ptr->h );
       }
     }
@@ -164,7 +165,8 @@ display_frame( void )
   return 0;
 }
 
-void display_refresh_all(void)
+void
+display_refresh_all( void )
 {
   display_redraw_all = 1;
 
@@ -172,8 +174,8 @@ void display_refresh_all(void)
   display_dirty_refresh_all();
 
   memset( display_last_screen, 0xff,
-          DISPLAY_SCREEN_WIDTH_COLS * DISPLAY_SCREEN_HEIGHT 
-          * sizeof(libspectrum_dword) );
+          DISPLAY_SCREEN_WIDTH_COLS * DISPLAY_SCREEN_HEIGHT
+          * sizeof( libspectrum_dword ) );
 }
 
 /* Fetch pixel (x, y). On a Timex this will be a point on a 640x480 canvas,
@@ -184,7 +186,7 @@ display_getpixel( int x, int y )
 {
   libspectrum_byte ink, paper;
   libspectrum_byte data, data2;
-  int mask = 1 << (7 - (x % 8));
+  int mask = 1 << ( 7 - ( x % 8 ) );
   int index;
 
   if( machine_current->timex ) {
@@ -195,15 +197,15 @@ display_getpixel( int x, int y )
     index = column + y * DISPLAY_SCREEN_WIDTH_COLS;
 
     data = display_last_screen[ index ] & 0xff;
-    data2 = (display_last_screen[ index ] & 0xff00)>>8;
-    mode_data.byte = (display_last_screen[ index ] & 0xff0000)>>16;
+    data2 = ( display_last_screen[ index ] & 0xff00 ) >> 8;
+    mode_data.byte = ( display_last_screen[ index ] & 0xff0000 ) >> 16;
 
     if( mode_data.name.hires ) {
       if( x % 16 > 7 ) data = data2;
       display_parse_attr( hires_convert_dec( mode_data.byte ), &ink, &paper );
     } else {
       /* divide x by two to get the same value for adjacent pixels */
-      mask = 1 << (7 - ((x>>1) % 8));
+      mask = 1 << ( 7 - ( ( x >> 1 ) % 8 ) );
       display_parse_attr( data2, &ink, &paper );
     }
   } else {
@@ -212,7 +214,7 @@ display_getpixel( int x, int y )
     index = column + y * DISPLAY_SCREEN_WIDTH_COLS;
 
     data = display_last_screen[ index ] & 0xff;
-    data2 = (display_last_screen[ index ] & 0xff00)>>8;
+    data2 = ( display_last_screen[ index ] & 0xff00 ) >> 8;
 
     display_parse_attr( data2, &ink, &paper );
   }

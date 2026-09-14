@@ -35,7 +35,7 @@ display_get_attr_byte( int x, int y )
 {
   libspectrum_byte attr;
 
-  if ( scld_last_dec.name.hires ) {
+  if( scld_last_dec.name.hires ) {
     attr = hires_get_attr();
   } else {
 
@@ -101,8 +101,8 @@ display_write_if_dirty_timex( int x, int y )
     data2 = display_get_attr_byte( x, y );
   }
 
-  last_chunk_detail = (display_flash_reversed << 24) | (mode_data << 16) |
-                      (data2 << 8) | data;
+  last_chunk_detail = ( display_flash_reversed << 24 ) | ( mode_data << 16 ) |
+                      ( data2 << 8 ) | data;
   /* And draw it if it is different to what was there last time */
   index = beam_x + beam_y * DISPLAY_SCREEN_WIDTH_COLS;
   if( display_last_screen[ index ] != last_chunk_detail ) {
@@ -110,7 +110,7 @@ display_write_if_dirty_timex( int x, int y )
     if( scld_last_dec.name.hires ) {
       /* In hires mode the attr byte is not in data2, so we must look it up. */
       display_parse_attr( display_get_attr_byte( x, y ), &ink, &paper );
-      libspectrum_word hires_data = (data << 8) + data2;
+      libspectrum_word hires_data = ( data << 8 ) + data2;
       uidisplay_plot16( beam_x, beam_y, hires_data, ink, paper );
     } else {
       /* In lores mode data2 already holds the attr byte (set above), so
@@ -131,8 +131,8 @@ static inline void
 pentagon_16c_get_colour( libspectrum_byte data, libspectrum_byte *colour1,
                          libspectrum_byte *colour2 )
 {
-  *colour1 = (data & 0x07) + ( (data & 0x40) >> 3 );
-  *colour2 = ( (data & 0x38) >> 3 ) + ( (data & 0x80) >> 4 );
+  *colour1 = ( data & 0x07 ) + ( ( data & 0x40 ) >> 3 );
+  *colour2 = ( ( data & 0x38 ) >> 3 ) + ( ( data & 0x80 ) >> 4 );
 }
 
 /* In this mode we need to gather the pixel information for the 8 pixels to
@@ -176,7 +176,8 @@ display_write_if_dirty_pentagon_16_col( int x, int y )
      mixing 16 colour mode with other modes so will assume that as long as
      we are in 16 colour mode the screen we draw is in that mode as it seems
      a shame to chuck more memory at supporting just this obscure mode */
-  last_chunk_detail = (data4 << 24) | (data3 << 16) | (data2 << 8) | data1;
+  last_chunk_detail = ( data4 << 24 ) | ( data3 << 16 ) | ( data2 <<
+  8 ) | data1;
 
   /* And draw it if it is different to what was there last time */
   index = beam_x + beam_y * DISPLAY_SCREEN_WIDTH_COLS;
@@ -198,7 +199,7 @@ display_write_if_dirty_pentagon_16_col( int x, int y )
     uidisplay_putpixel( draw_x++, beam_y, colour2 );
     pentagon_16c_get_colour( data4, &colour1, &colour2 );
     uidisplay_putpixel( draw_x++, beam_y, colour1 );
-    uidisplay_putpixel( draw_x  , beam_y, colour2 );
+    uidisplay_putpixel( draw_x, beam_y, colour2 );
 
     /* Update last display record */
     display_last_screen[ index ] = last_chunk_detail;
@@ -227,7 +228,7 @@ display_write_if_dirty_sinclair( int x, int y )
   data = screen[ offset ];
   data2 = display_get_attr_byte( x, y );
 
-  last_chunk_detail = (display_flash_reversed << 24) | (data2 << 8) | data;
+  last_chunk_detail = ( display_flash_reversed << 24 ) | ( data2 << 8 ) | data;
   /* And draw it if it is different to what was there last time */
   index = beam_x + beam_y * DISPLAY_SCREEN_WIDTH_COLS;
   if( display_last_screen[ index ] != last_chunk_detail ) {
@@ -245,21 +246,21 @@ display_write_if_dirty_sinclair( int x, int y )
 
 void
 display_parse_attr( libspectrum_byte attr,
-		    libspectrum_byte *ink, libspectrum_byte *paper )
+                    libspectrum_byte *ink, libspectrum_byte *paper )
 {
-  if( (attr & 0x80) && display_flash_reversed ) {
-    *ink  = (attr & ( 0x0f << 3 ) ) >> 3;
-    *paper= (attr & 0x07) + ( (attr & 0x40) >> 3 );
+  if( ( attr & 0x80 ) && display_flash_reversed ) {
+    *ink  = ( attr & ( 0x0f << 3 ) ) >> 3;
+    *paper = ( attr & 0x07 ) + ( ( attr & 0x40 ) >> 3 );
   } else {
-    *ink= (attr & 0x07) + ( (attr & 0x40) >> 3 );
-    *paper= (attr & ( 0x0f << 3 ) ) >> 3;
+    *ink = ( attr & 0x07 ) + ( ( attr & 0x40 ) >> 3 );
+    *paper = ( attr & ( 0x0f << 3 ) ) >> 3;
   }
 }
 
 display_dirty_flashing_fn display_dirty_flashing;
 
 void
-display_dirty_flashing_timex(void)
+display_dirty_flashing_timex( void )
 {
   libspectrum_word offset;
   libspectrum_byte *screen, attr;
@@ -278,7 +279,7 @@ display_dirty_flashing_timex(void)
 
     } else if( scld_last_dec.name.altdfile ) {
 
-      for( offset= ALTDFILE_OFFSET + DISPLAY_PIXEL_BYTES;
+      for( offset = ALTDFILE_OFFSET + DISPLAY_PIXEL_BYTES;
            offset < ALTDFILE_OFFSET + DISPLAY_FILE_SIZE;
            offset++ ) {
         attr = screen[ offset ];
@@ -294,13 +295,13 @@ display_dirty_flashing_timex(void)
 }
 
 void
-display_dirty_flashing_pentagon_16_col(void)
+display_dirty_flashing_pentagon_16_col( void )
 {
   /* No flash attribute in 16 colour mode */
 }
 
 void
-display_dirty_flashing_sinclair(void)
+display_dirty_flashing_sinclair( void )
 {
   libspectrum_word offset;
   libspectrum_byte *screen, attr;

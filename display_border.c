@@ -38,7 +38,7 @@ struct border_change_t {
 };
 
 static struct border_change_t border_change_end_sentinel =
-  { DISPLAY_SCREEN_WIDTH_COLS, DISPLAY_SCREEN_HEIGHT - 1, 0 };
+{ DISPLAY_SCREEN_WIDTH_COLS, DISPLAY_SCREEN_HEIGHT - 1, 0 };
 
 static int border_changes_last;
 static struct border_change_t *border_changes;
@@ -63,7 +63,7 @@ add_border_sentinel( void )
 
   sentinel->x = sentinel->y = 0;
   sentinel->colour = scld_last_dec.name.hires ?
-                            display_hires_border : display_lores_border;
+                     display_hires_border : display_lores_border;
 
   return 0;
 }
@@ -81,7 +81,7 @@ display_border_init( void )
   if( error ) return error;
 
   display_last_border = scld_last_dec.name.hires ?
-                            display_hires_border : display_lores_border;
+                        display_hires_border : display_lores_border;
 
   return 0;
 }

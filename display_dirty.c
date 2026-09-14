@@ -44,7 +44,8 @@ static int critical_region_x = 0, critical_region_y = 0;
    writes trigger eight consecutive calls all at the same tstates value.
    Caching the fully adjusted/clamped screen coordinates avoids the border
    subtraction and clamping branches on each cache hit (~7/8 of calls). */
-static libspectrum_dword display_cached_beam_tstates = (libspectrum_dword)-1;
+static libspectrum_dword display_cached_beam_tstates = ( libspectrum_dword ) -
+                                                       1;
 static int display_cached_screen_x, display_cached_screen_y;
 
 /* Mark as 'dirty' the pixels which have been changed by a write to
@@ -52,46 +53,46 @@ static int display_cached_screen_x, display_cached_screen_y;
 void
 display_dirty_timex( libspectrum_word offset )
 {
-  switch ( scld_last_dec.mask.scrnmode ) {
+  switch( scld_last_dec.mask.scrnmode ) {
 
-    case STANDARD: /* standard Speccy screen */
-    case HIRESATTR: /* strange mode */
-      if( offset >= DISPLAY_FILE_SIZE ) break;
-      if( offset <  DISPLAY_PIXEL_BYTES ) {
-        display_dirty8( offset );
-      } else {
-        display_dirty64( offset );
-      }
-      break;
-
-    case ALTDFILE: /* second screen */
-    case HIRESATTRALTD: /* strange mode using second screen */
-      if( offset < ALTDFILE_OFFSET ||
-          offset >= ALTDFILE_OFFSET + DISPLAY_FILE_SIZE ) break;
-      if( offset < ALTDFILE_OFFSET + DISPLAY_PIXEL_BYTES ) {
-        display_dirty8( offset - ALTDFILE_OFFSET );
-      } else {
-        display_dirty64( offset - ALTDFILE_OFFSET );
-      }
-      break;
-
-    case EXTCOLOUR: /* extended colours */
-    case HIRES: /* hires mode */
-      if( offset >= ALTDFILE_OFFSET + DISPLAY_PIXEL_BYTES ) break;
-      if( offset >= DISPLAY_PIXEL_BYTES && offset < ALTDFILE_OFFSET ) break;
-      if( offset >= ALTDFILE_OFFSET ) offset -= ALTDFILE_OFFSET;
+  case STANDARD:   /* standard Speccy screen */
+  case HIRESATTR:   /* strange mode */
+    if( offset >= DISPLAY_FILE_SIZE ) break;
+    if( offset <  DISPLAY_PIXEL_BYTES ) {
       display_dirty8( offset );
-      break;
+    } else {
+      display_dirty64( offset );
+    }
+    break;
 
-    default:
+  case ALTDFILE:   /* second screen */
+  case HIRESATTRALTD:   /* strange mode using second screen */
+    if( offset < ALTDFILE_OFFSET ||
+        offset >= ALTDFILE_OFFSET + DISPLAY_FILE_SIZE ) break;
+    if( offset < ALTDFILE_OFFSET + DISPLAY_PIXEL_BYTES ) {
+      display_dirty8( offset - ALTDFILE_OFFSET );
+    } else {
+      display_dirty64( offset - ALTDFILE_OFFSET );
+    }
+    break;
+
+  case EXTCOLOUR:   /* extended colours */
+  case HIRES:   /* hires mode */
+    if( offset >= ALTDFILE_OFFSET + DISPLAY_PIXEL_BYTES ) break;
+    if( offset >= DISPLAY_PIXEL_BYTES && offset < ALTDFILE_OFFSET ) break;
+    if( offset >= ALTDFILE_OFFSET ) offset -= ALTDFILE_OFFSET;
+    display_dirty8( offset );
+    break;
+
+  default:
     /* case EXTCOLALTD: extended colours, but attributes and data
        taken from second screen */
     /* case HIRESDOUBLECOL: hires mode, but data taken only from
        second screen */
-      if( offset >= ALTDFILE_OFFSET &&
-          offset < ALTDFILE_OFFSET + DISPLAY_PIXEL_BYTES )
-	display_dirty8( offset - ALTDFILE_OFFSET );
-      break;
+    if( offset >= ALTDFILE_OFFSET &&
+        offset < ALTDFILE_OFFSET + DISPLAY_PIXEL_BYTES )
+      display_dirty8( offset - ALTDFILE_OFFSET );
+    break;
   }
 }
 
@@ -129,7 +130,7 @@ update_dirty_rects( void )
 {
   int start, y;
 
-  for( y=0; y<DISPLAY_SCREEN_HEIGHT; y++ ) {
+  for( y = 0; y < DISPLAY_SCREEN_HEIGHT; y++ ) {
     int x = 0;
     while( display_is_dirty[y] ) {
 
@@ -251,11 +252,11 @@ copy_critical_region( int beam_x, int beam_y )
   } else {
 
     copy_critical_region_line( critical_region_y++, critical_region_x,
-			       DISPLAY_WIDTH_COLS );
+                               DISPLAY_WIDTH_COLS );
 
     for( ; critical_region_y < beam_y; critical_region_y++ )
       copy_critical_region_line( critical_region_y, 0,
-				 DISPLAY_WIDTH_COLS );
+                                 DISPLAY_WIDTH_COLS );
 
     copy_critical_region_line( critical_region_y, 0, beam_x );
   }
@@ -272,7 +273,7 @@ display_get_beam_position( int *x, int *y )
   }
 
   *y = ( tstates - machine_current->line_times[ 0 ] ) /
-    machine_current->timings.tstates_per_line;
+       machine_current->timings.tstates_per_line;
 
   if( *y >= 0 && *y <= DISPLAY_SCREEN_HEIGHT )
     *x = ( tstates - machine_current->line_times[ *y ] ) / 4;
@@ -309,7 +310,7 @@ display_update_critical( int x, int y )
   }
 
   if(   y <  display_cached_screen_y                              ||
-      ( y == display_cached_screen_y && x < display_cached_screen_x ) )
+        ( y == display_cached_screen_y && x < display_cached_screen_x ) )
     copy_critical_region( display_cached_screen_x, display_cached_screen_y );
 }
 
@@ -321,7 +322,7 @@ display_dirty_chunk( int x, int y )
   /* If the write is between the start of the critical region and the
      current beam position, then we must copy the critical region now */
   if(   y >  critical_region_y                             ||
-      ( y == critical_region_y && x >= critical_region_x )    ) {
+        ( y == critical_region_y && x >= critical_region_x )    ) {
 
     display_update_critical( x, y );
   }
@@ -343,8 +344,8 @@ display_dirty8( libspectrum_word offset )
      GCC reduces the multiplications to shifts. */
   x = offset & ( DISPLAY_WIDTH_COLS - 1 );
   y = 64 * ( ( offset >> 11 ) & 3 )
-    +  8 * ( ( offset >>  5 ) & 7 )
-    +      ( ( offset >>  8 ) & 7 );
+      +  8 * ( ( offset >>  5 ) & 7 )
+      +      ( ( offset >>  8 ) & 7 );
 
   display_dirty_chunk( x, y );
 }
@@ -365,7 +366,8 @@ display_dirty64( libspectrum_word offset )
   for( i = 0; i < 8; i++ ) display_dirty_chunk( x, y + i );
 }
 
-void display_refresh_main_screen(void)
+void
+display_refresh_main_screen( void )
 {
   size_t i;
 
@@ -386,7 +388,7 @@ void
 display_dirty_frame_begin( void )
 {
   /* Machine timing may have changed on reset. */
-  display_cached_beam_tstates = (libspectrum_dword)-1;
+  display_cached_beam_tstates = ( libspectrum_dword ) - 1;
   copy_critical_region( DISPLAY_WIDTH_COLS, DISPLAY_HEIGHT - 1 );
   critical_region_x = critical_region_y = 0;
 }
