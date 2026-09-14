@@ -352,63 +352,75 @@ acceleration_detector( libspectrum_word pc )
   return ACCELERATION_MODE_NONE;
 }
 
+static const loader_pattern_byte_t gremlin_rising_loader[] = {
+  LOADER_PATTERN_BYTE( 0x2e ), LOADER_PATTERN_BYTE( 0x00 ),
+  LOADER_PATTERN_BYTE( 0x2c ), ROM_LOADER_INPUT,
+  LOADER_PATTERN_BYTE( 0xa4 ), LOADER_PATTERN_BYTE( 0xca ),
+  LOADER_PATTERN_ANY, LOADER_PATTERN_ANY,
+};
+
+static const loader_pattern_byte_t gremlin_falling_loader[] = {
+  LOADER_PATTERN_BYTE( 0x3e ), LOADER_PATTERN_BYTE( 0x08 ),
+  LOADER_PATTERN_BYTE( 0xd3 ), LOADER_PATTERN_BYTE( 0xfe ),
+  LOADER_PATTERN_BYTE( 0x2c ), ROM_LOADER_INPUT,
+  LOADER_PATTERN_BYTE( 0xa4 ), LOADER_PATTERN_BYTE( 0xc2 ),
+  LOADER_PATTERN_ANY, LOADER_PATTERN_ANY,
+};
+
 static acceleration_mode_t
 gremlin_acceleration_detector( libspectrum_word pc )
 {
   /* Rising edge: LD L,0; INC L; IN A,(FE); AND H; JP Z,<INC L>. */
-  if( readbyte_internal( pc - 5 ) == 0x2e &&
-      readbyte_internal( pc - 4 ) == 0x00 &&
-      readbyte_internal( pc - 3 ) == 0x2c &&
-      readbyte_internal( pc - 2 ) == 0xdb &&
-      readbyte_internal( pc - 1 ) == 0xfe &&
-      readbyte_internal( pc ) == 0xa4 &&
-      readbyte_internal( pc + 1 ) == 0xca &&
-      readbyte_internal( pc + 2 ) == ( pc - 3 ) % 0x100 &&
-      readbyte_internal( pc + 3 ) == ( pc - 3 ) / 0x100 )
+  if( loader_pattern_matches( pc - 5, gremlin_rising_loader,
+                              LOADER_PATTERN_LENGTH(
+                                gremlin_rising_loader ) ) &&
+      loader_word_matches( pc + 2, pc - 3 ) )
     return ACCELERATION_MODE_GREMLIN_RISING;
 
   /* Falling edge: LD A,8; OUT (FE),A; INC L; IN A,(FE); AND H;
      JP NZ,<INC L>. */
-  if( readbyte_internal( pc - 7 ) == 0x3e &&
-      readbyte_internal( pc - 6 ) == 0x08 &&
-      readbyte_internal( pc - 5 ) == 0xd3 &&
-      readbyte_internal( pc - 4 ) == 0xfe &&
-      readbyte_internal( pc - 3 ) == 0x2c &&
-      readbyte_internal( pc - 2 ) == 0xdb &&
-      readbyte_internal( pc - 1 ) == 0xfe &&
-      readbyte_internal( pc ) == 0xa4 &&
-      readbyte_internal( pc + 1 ) == 0xc2 &&
-      readbyte_internal( pc + 2 ) == ( pc - 3 ) % 0x100 &&
-      readbyte_internal( pc + 3 ) == ( pc - 3 ) / 0x100 )
+  if( loader_pattern_matches( pc - 7, gremlin_falling_loader,
+                              LOADER_PATTERN_LENGTH(
+                                gremlin_falling_loader ) ) &&
+      loader_word_matches( pc + 2, pc - 3 ) )
     return ACCELERATION_MODE_GREMLIN_FALLING;
 
   return ACCELERATION_MODE_NONE;
 }
 
+static const loader_pattern_byte_t modified_rom_prefix[] = {
+  LOADER_PATTERN_BYTE( 0xd9 ),             /* EXX */
+  LOADER_PATTERN_BYTE( 0x11 ),             /* LD DE,nn */
+  LOADER_PATTERN_ANY, LOADER_PATTERN_ANY,
+  LOADER_PATTERN_BYTE( 0x21 ),             /* LD HL,nn */
+  LOADER_PATTERN_ANY, LOADER_PATTERN_ANY,
+  LOADER_PATTERN_BYTE( 0x06 ), LOADER_PATTERN_BYTE( 0x05 ), /* LD B,5 */
+  LOADER_PATTERN_BYTE( 0xcd ),             /* CALL callback */
+  LOADER_PATTERN_ANY, LOADER_PATTERN_ANY,
+  LOADER_PATTERN_BYTE( 0xd0 ),             /* RET NC */
+  LOADER_PATTERN_BYTE( 0xd9 ),             /* EXX */
+};
+
+static const loader_pattern_byte_t modified_rom_edge2_prefix[] = {
+  LOADER_PATTERN_BYTE( 0xd9 ),             /* EXX */
+  LOADER_PATTERN_BYTE( 0xa7 ),             /* AND A */
+};
+
 static int
 modified_rom_loader_detector( libspectrum_word pc )
 {
-  libspectrum_word callback;
-
   /* Technician Ted replaces the ROM EDGE1 delay with useful work, entered
      with EXX and left immediately before the copied EDGE2 sampling loop. The
      work and the real sampling delay form one timing unit, so short-circuiting
      only EDGE2 corrupts the load. Keep the loop as strong autoplay evidence,
      but do not accelerate it. */
-  callback = readbyte_internal( pc - 30 ) |
-             readbyte_internal( pc - 29 ) << 8;
-
-  return readbyte_internal( pc - 40 ) == 0xd9 && /* EXX */
-         readbyte_internal( pc - 39 ) == 0x11 && /* LD DE,nn */
-         readbyte_internal( pc - 36 ) == 0x21 && /* LD HL,nn */
-         readbyte_internal( pc - 33 ) == 0x06 && /* LD B,5 */
-         readbyte_internal( pc - 32 ) == 0x05 &&
-         readbyte_internal( pc - 31 ) == 0xcd && /* CALL callback */
-         callback == ( pc - 24 ) % 0x10000 &&
-         readbyte_internal( pc - 28 ) == 0xd0 && /* RET NC */
-         readbyte_internal( pc - 27 ) == 0xd9 && /* EXX */
-         readbyte_internal( pc - 8 ) == 0xd9 &&  /* EXX */
-         readbyte_internal( pc - 7 ) == 0xa7 &&  /* AND A */
+  return loader_pattern_matches( pc - 40, modified_rom_prefix,
+                                 LOADER_PATTERN_LENGTH(
+                                   modified_rom_prefix ) ) &&
+         loader_word_matches( pc - 30, pc - 24 ) &&
+         loader_pattern_matches( pc - 8, modified_rom_edge2_prefix,
+                                 LOADER_PATTERN_LENGTH(
+                                   modified_rom_edge2_prefix ) ) &&
          acceleration_detector( pc - 6 ) == ACCELERATION_MODE_INCREASING;
 }
 
@@ -429,41 +441,40 @@ acceleration_detector_at_in( libspectrum_word pc )
   return mode;
 }
 
+static const loader_pattern_byte_t movieload_loader[] = {
+  LOADER_PATTERN_BYTE( 0x14 ), LOADER_PATTERN_BYTE( 0xc8 ),
+  LOADER_PATTERN_BYTE( 0x3e ), LOADER_PATTERN_BYTE( 0x7f ),
+  ROM_LOADER_INPUT, LOADER_PATTERN_BYTE( 0x1f ),
+  LOADER_PATTERN_BYTE( 0x00 ), LOADER_PATTERN_BYTE( 0xab ),
+  LOADER_PATTERN_BYTE( 0xe6 ), LOADER_PATTERN_BYTE( 0x20 ),
+  LOADER_PATTERN_BYTE( 0x28 ), LOADER_PATTERN_BYTE( 0xf3 ),
+};
+
 static int
 movieload_loader_detector( libspectrum_word pc )
 {
   /* INC D; RET Z; LD A,7f; IN A,(fe); RRA; NOP; XOR E;
      AND 20; JR Z,<INC D>. Movieload uses D rather than B as its counter. */
-  return readbyte_internal( pc - 6 ) == 0x14 &&
-         readbyte_internal( pc - 5 ) == 0xc8 &&
-         readbyte_internal( pc - 4 ) == 0x3e &&
-         readbyte_internal( pc - 3 ) == 0x7f &&
-         readbyte_internal( pc - 2 ) == 0xdb &&
-         readbyte_internal( pc - 1 ) == 0xfe &&
-         readbyte_internal( pc ) == 0x1f &&
-         readbyte_internal( pc + 1 ) == 0x00 &&
-         readbyte_internal( pc + 2 ) == 0xab &&
-         readbyte_internal( pc + 3 ) == 0xe6 &&
-         readbyte_internal( pc + 4 ) == 0x20 &&
-         readbyte_internal( pc + 5 ) == 0x28 &&
-         readbyte_internal( pc + 6 ) == 0xf3;
+  return loader_pattern_matches( pc - 6, movieload_loader,
+                                 LOADER_PATTERN_LENGTH( movieload_loader ) );
 }
+
+static const loader_pattern_byte_t sign_flag_loader[] = {
+  LOADER_PATTERN_BYTE( 0x04 ), LOADER_PATTERN_BYTE( 0xc8 ),
+  ROM_LOADER_INPUT, LOADER_PATTERN_BYTE( 0x87 ),
+  /* JP P (f2) and JP M (fa) differ only in bit 3. */
+  LOADER_PATTERN_MASKED( 0xf2, 0xf7 ),
+  LOADER_PATTERN_ANY, LOADER_PATTERN_ANY,
+};
 
 static int
 sign_flag_loader_detector( libspectrum_word pc )
 {
-  libspectrum_byte jump = readbyte_internal( pc + 1 );
-
   /* INC B; RET Z; IN A,(fe); ADD A,A; JP P/M,<INC B>. The loader tests
      EAR by moving bit 6 into the sign flag. */
-  return readbyte_internal( pc - 4 ) == 0x04 &&
-         readbyte_internal( pc - 3 ) == 0xc8 &&
-         readbyte_internal( pc - 2 ) == 0xdb &&
-         readbyte_internal( pc - 1 ) == 0xfe &&
-         readbyte_internal( pc ) == 0x87 &&
-         ( jump == 0xf2 || jump == 0xfa ) &&
-         readbyte_internal( pc + 2 ) == ( pc - 4 ) % 0x100 &&
-         readbyte_internal( pc + 3 ) == ( pc - 4 ) / 0x100;
+  return loader_pattern_matches( pc - 4, sign_flag_loader,
+                                 LOADER_PATTERN_LENGTH( sign_flag_loader ) ) &&
+         loader_word_matches( pc + 2, pc - 4 );
 }
 
 static int
@@ -726,6 +737,11 @@ loader_test_gremlin( void )
   if( acceleration_detector_at_in( LOADER_TEST_BASE + 16 ) !=
       ACCELERATION_MODE_GREMLIN_FALLING ) error++;
 
+  writebyte_internal( LOADER_TEST_BASE + 12, 0xff );
+  if( acceleration_detector_at_in( LOADER_TEST_BASE + 16 ) !=
+      ACCELERATION_MODE_NONE ) error++;
+  writebyte_internal( LOADER_TEST_BASE + 12, loader[ 12 ] );
+
   /* Do not accept a falling-edge branch to a different loop. */
   writebyte_internal( LOADER_TEST_BASE + 18, 0x0c );
   if( acceleration_detector_at_in( LOADER_TEST_BASE + 16 ) !=
@@ -799,6 +815,12 @@ loader_test_sign_flag( void )
 
   loader_test_install( &memory, loader, sizeof( loader ) );
   if( !sign_flag_loader_detector( LOADER_TEST_BASE + 4 ) ) error++;
+  writebyte_internal( LOADER_TEST_BASE + 5, 0xf2 );
+  if( !sign_flag_loader_detector( LOADER_TEST_BASE + 4 ) ) error++;
+  writebyte_internal( LOADER_TEST_BASE + 5, loader[ 5 ] );
+  writebyte_internal( LOADER_TEST_BASE + 4, 0x86 );
+  if( sign_flag_loader_detector( LOADER_TEST_BASE + 4 ) ) error++;
+  writebyte_internal( LOADER_TEST_BASE + 4, loader[ 4 ] );
   writebyte_internal( LOADER_TEST_BASE + 6, 0x01 );
   if( sign_flag_loader_detector( LOADER_TEST_BASE + 4 ) ) error++;
 
@@ -826,6 +848,10 @@ loader_test_modified_rom( void )
   if( acceleration_detector_at_in( LOADER_TEST_BASE + 40 ) !=
       ACCELERATION_MODE_NONE ) error++;
   if( !loader_loop_detector( LOADER_TEST_BASE + 40 ) ) error++;
+
+  writebyte_internal( LOADER_TEST_BASE, 0xd8 );
+  if( modified_rom_loader_detector( LOADER_TEST_BASE + 40 ) ) error++;
+  writebyte_internal( LOADER_TEST_BASE, loader[ 0 ] );
 
   /* A call elsewhere is not the custom EDGE1 timing context. */
   writebyte_internal( LOADER_TEST_BASE + 10, 0x11 );
