@@ -169,40 +169,53 @@ gremlin_accelerate( int long_pulse )
 }
 
 static void
+rom_loader_accelerate( int long_pulse )
+{
+  /* B is used to indicate the length of the pulses. */
+  int set_b_high = long_pulse ^
+                   ( acceleration_mode == ACCELERATION_MODE_DECREASING );
+  z80.bc.b.h = set_b_high ? 0xfe : 0x00;
+
+  /* Bit 5 of C is used to indicate the current microphone level. */
+  z80.bc.b.l = ( z80.bc.b.l & ~0x20 ) |
+               ( tape_microphone ? 0x00 : 0x20 );
+
+  z80.af.b.l |= 0x01;
+
+  /* Simulate the RET at the end of the edge-finding loop. */
+  z80.pc.b.l = readbyte_internal( z80.sp.w ); z80.sp.w++;
+  z80.pc.b.h = readbyte_internal( z80.sp.w ); z80.sp.w++;
+}
+
+static void
+accelerate_loader( int long_pulse )
+{
+  switch( acceleration_mode ) {
+  case ACCELERATION_MODE_SOFTWARE_PROJECTS:
+    /* The loader converts the number of loop iterations to a pulse length
+       by subtracting B from A' and multiplying the result by four. */
+    software_projects_accelerate( long_pulse );
+    break;
+  case ACCELERATION_MODE_GREMLIN_RISING:
+  case ACCELERATION_MODE_GREMLIN_FALLING:
+    gremlin_accelerate( long_pulse );
+    break;
+  case ACCELERATION_MODE_INCREASING:
+  case ACCELERATION_MODE_DECREASING:
+    rom_loader_accelerate( long_pulse );
+    break;
+  case ACCELERATION_MODE_NONE:
+    break;
+  }
+}
+
+static void
 do_acceleration( void )
 {
   if( length_known1 ) {
-    if( acceleration_mode == ACCELERATION_MODE_SOFTWARE_PROJECTS ) {
-      /* The loader converts the number of loop iterations to a pulse length
-         by subtracting B from A' and multiplying the result by four. */
-      software_projects_accelerate( length_long1 );
-    } else if( acceleration_mode == ACCELERATION_MODE_GREMLIN_RISING ||
-               acceleration_mode == ACCELERATION_MODE_GREMLIN_FALLING ) {
-      gremlin_accelerate( length_long1 );
-    } else {
-      /* B is used to indicate the length of the pulses */
-      int set_b_high = length_long1;
-      set_b_high ^= ( acceleration_mode == ACCELERATION_MODE_DECREASING );
-      if( set_b_high ) {
-        z80.bc.b.h = 0xfe;
-      } else {
-        z80.bc.b.h = 0x00;
-      }
-
-      /* Bit 5 of C is used to indicate the current microphone level */
-      z80.bc.b.l = (z80.bc.b.l & ~0x20) |
-                   (tape_microphone ? 0x00 : 0x20);
-
-      z80.af.b.l |= 0x01;
-
-      /* Simulate the RET at the end of the edge-finding loop */
-      z80.pc.b.l = readbyte_internal( z80.sp.w ); z80.sp.w++;
-      z80.pc.b.h = readbyte_internal( z80.sp.w ); z80.sp.w++;
-    }
-
+    accelerate_loader( length_long1 );
     event_remove_type( tape_edge_event );
     tape_next_edge( tstates, 1 );
-
     successive_reads = 0;
   }
 
@@ -515,8 +528,8 @@ typedef struct loader_test_memory_t {
 } loader_test_memory_t;
 
 typedef struct loader_test_state_t {
-  libspectrum_byte b, a_, a, l;
-  libspectrum_word pc;
+  libspectrum_byte b, c, a_, a, f, l;
+  libspectrum_word pc, sp;
   size_t acceleration_pc;
   acceleration_mode_t acceleration_mode;
 } loader_test_state_t;
@@ -690,6 +703,35 @@ loader_test_microprose( void )
 }
 
 static int
+loader_test_rom_acceleration( void )
+{
+  loader_test_memory_t memory;
+  int error = 0;
+
+  loader_test_install( &memory, NULL, 2 );
+  writebyte_internal( LOADER_TEST_BASE, 0x34 );
+  writebyte_internal( LOADER_TEST_BASE + 1, 0x12 );
+  z80.bc.b.l = 0xff;
+  z80.af.b.l = 0x00;
+  z80.sp.w = LOADER_TEST_BASE;
+  acceleration_mode = ACCELERATION_MODE_INCREASING;
+  accelerate_loader( 1 );
+  if( z80.bc.b.h != 0xfe || z80.pc.w != 0x1234 ||
+      z80.sp.w != LOADER_TEST_BASE + 2 ) error++;
+  if( z80.bc.b.l != ( tape_microphone ? 0xdf : 0xff ) ||
+      !( z80.af.b.l & 0x01 ) ) error++;
+
+  z80.sp.w = LOADER_TEST_BASE;
+  acceleration_mode = ACCELERATION_MODE_DECREASING;
+  accelerate_loader( 1 );
+  if( z80.bc.b.h != 0x00 || z80.pc.w != 0x1234 ||
+      z80.sp.w != LOADER_TEST_BASE + 2 ) error++;
+
+  loader_test_restore_memory( &memory );
+  return error;
+}
+
+static int
 loader_test_software_projects( void )
 {
   static const libspectrum_byte loader[] = {
@@ -710,10 +752,11 @@ loader_test_software_projects( void )
   writebyte_internal( LOADER_TEST_BASE + 13, loader[ 13 ] );
 
   acceleration_pc = LOADER_TEST_BASE + 6;
+  acceleration_mode = ACCELERATION_MODE_SOFTWARE_PROJECTS;
   z80.af_.b.h = 0x24;
-  software_projects_accelerate( 0 );
+  accelerate_loader( 0 );
   if( z80.bc.b.h != 0x1a || z80.pc.w != LOADER_TEST_BASE + 15 ) error++;
-  software_projects_accelerate( 1 );
+  accelerate_loader( 1 );
   if( z80.bc.b.h != 0x10 || z80.pc.w != LOADER_TEST_BASE + 15 ) error++;
 
   loader_test_restore_memory( &memory );
@@ -751,12 +794,12 @@ loader_test_gremlin( void )
   z80.hl.b.l = 1;             /* First INC L has executed. */
   acceleration_mode = ACCELERATION_MODE_GREMLIN_RISING;
   acceleration_pc = LOADER_TEST_BASE + 5;
-  gremlin_accelerate( 0 );
+  accelerate_loader( 0 );
   if( z80.hl.b.l != 24 || z80.pc.w != LOADER_TEST_BASE + 9 ) error++;
   z80.hl.b.l++;                /* INC L in the falling-edge loop. */
   acceleration_mode = ACCELERATION_MODE_GREMLIN_FALLING;
   acceleration_pc = LOADER_TEST_BASE + 16;
-  gremlin_accelerate( 0 );
+  accelerate_loader( 0 );
   if( z80.hl.b.l != 48 || z80.af.b.h != 48 ||
       z80.pc.w != LOADER_TEST_BASE + 20 ) error++;
 
@@ -869,10 +912,13 @@ loader_test_save_state( void )
   loader_test_state_t state;
 
   state.b = z80.bc.b.h;
+  state.c = z80.bc.b.l;
   state.a_ = z80.af_.b.h;
   state.a = z80.af.b.h;
+  state.f = z80.af.b.l;
   state.l = z80.hl.b.l;
   state.pc = z80.pc.w;
+  state.sp = z80.sp.w;
   state.acceleration_pc = acceleration_pc;
   state.acceleration_mode = acceleration_mode;
   return state;
@@ -882,10 +928,13 @@ static void
 loader_test_restore_state( const loader_test_state_t *state )
 {
   z80.bc.b.h = state->b;
+  z80.bc.b.l = state->c;
   z80.af_.b.h = state->a_;
   z80.af.b.h = state->a;
+  z80.af.b.l = state->f;
   z80.hl.b.l = state->l;
   z80.pc.w = state->pc;
+  z80.sp.w = state->sp;
   acceleration_pc = state->acceleration_pc;
   acceleration_mode = state->acceleration_mode;
 }
@@ -900,6 +949,7 @@ loader_unittest( void )
   error += loader_test_acceleration_patterns();
   error += loader_test_digital_integration();
   error += loader_test_microprose();
+  error += loader_test_rom_acceleration();
   error += loader_test_software_projects();
   error += loader_test_gremlin();
   error += loader_test_ear_use();
