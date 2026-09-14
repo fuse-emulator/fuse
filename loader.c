@@ -682,30 +682,198 @@ ula_read_uses_ear( libspectrum_word pc )
   return 0;
 }
 
-int
-loader_unittest( void )
+#define LOADER_TEST_BASE 0x8000
+#define LOADER_TEST_MAX_LENGTH 50
+
+typedef struct loader_test_memory_t {
+  libspectrum_byte saved[ LOADER_TEST_MAX_LENGTH ];
+  size_t length;
+} loader_test_memory_t;
+
+typedef struct loader_test_state_t {
+  libspectrum_byte b, a_, a, l;
+  libspectrum_word pc;
+  size_t acceleration_pc;
+  acceleration_mode_t acceleration_mode;
+} loader_test_state_t;
+
+static void
+loader_test_install( loader_test_memory_t *memory,
+                     const libspectrum_byte *bytes, size_t length )
 {
-  static const libspectrum_byte microprose_loader[] = {
+  size_t i;
+
+  memory->length = length;
+  for( i = 0; i < length; i++ ) {
+    memory->saved[ i ] = readbyte_internal( LOADER_TEST_BASE + i );
+    writebyte_internal( LOADER_TEST_BASE + i, bytes ? bytes[ i ] : 0x00 );
+  }
+}
+
+static void
+loader_test_restore_memory( const loader_test_memory_t *memory )
+{
+  size_t i;
+
+  for( i = 0; i < memory->length; i++ )
+    writebyte_internal( LOADER_TEST_BASE + i, memory->saved[ i ] );
+}
+
+static int
+loader_test_microprose( void )
+{
+  static const libspectrum_byte loader[] = {
     0x04, 0xc8, 0x3e, 0x7f, 0x3e, 0x7f, 0xdb, 0xfe,
     0x1f, 0x00, 0xa9, 0xe6, 0x20, 0x28, 0xf1
   };
-  static const libspectrum_byte software_projects_loader[] = {
+  loader_test_memory_t memory;
+  int error = 0;
+
+  loader_test_install( &memory, loader, sizeof( loader ) );
+  if( acceleration_detector_at_in( LOADER_TEST_BASE + 8 ) !=
+      ACCELERATION_MODE_INCREASING ) error++;
+
+  /* Do not accept an arbitrary second immediate value. */
+  writebyte_internal( LOADER_TEST_BASE + 5, 0x00 );
+  if( acceleration_detector_at_in( LOADER_TEST_BASE + 8 ) !=
+      ACCELERATION_MODE_NONE ) error++;
+
+  loader_test_restore_memory( &memory );
+  return error;
+}
+
+static int
+loader_test_software_projects( void )
+{
+  static const libspectrum_byte loader[] = {
     0x47, 0x08, 0x3e, 0x7f, 0xdb, 0xfe, 0xa9,
     0xe6, 0x40, 0x20, 0x04, 0x05, 0x20, 0xf4
   };
-  static const libspectrum_byte gremlin_loader[] = {
+  loader_test_memory_t memory;
+  int error = 0;
+
+  loader_test_install( &memory, loader, sizeof( loader ) );
+  if( acceleration_detector_at_in( LOADER_TEST_BASE + 6 ) !=
+      ACCELERATION_MODE_SOFTWARE_PROJECTS ) error++;
+
+  /* The branch must return to the start of this specific sampling loop. */
+  writebyte_internal( LOADER_TEST_BASE + 13, 0xf5 );
+  if( acceleration_detector_at_in( LOADER_TEST_BASE + 6 ) !=
+      ACCELERATION_MODE_NONE ) error++;
+  writebyte_internal( LOADER_TEST_BASE + 13, loader[ 13 ] );
+
+  acceleration_pc = LOADER_TEST_BASE + 6;
+  z80.af_.b.h = 0x24;
+  software_projects_accelerate( 0 );
+  if( z80.bc.b.h != 0x1a || z80.pc.w != LOADER_TEST_BASE + 15 ) error++;
+  software_projects_accelerate( 1 );
+  if( z80.bc.b.h != 0x10 || z80.pc.w != LOADER_TEST_BASE + 15 ) error++;
+
+  loader_test_restore_memory( &memory );
+  return error;
+}
+
+static int
+loader_test_gremlin( void )
+{
+  static const libspectrum_byte loader[] = {
     0x2e, 0x00, 0x2c, 0xdb, 0xfe, 0xa4, 0xca, 0x02, 0x80,
     0x3e, 0x08, 0xd3, 0xfe, 0x2c, 0xdb, 0xfe, 0xa4, 0xc2, 0x0d, 0x80,
     0x7d, 0xc9
   };
-  static const libspectrum_byte movieload_loader[] = {
+  loader_test_memory_t memory;
+  int error = 0;
+
+  loader_test_install( &memory, loader, sizeof( loader ) );
+  if( acceleration_detector_at_in( LOADER_TEST_BASE + 5 ) !=
+      ACCELERATION_MODE_GREMLIN_RISING ) error++;
+  if( acceleration_detector_at_in( LOADER_TEST_BASE + 16 ) !=
+      ACCELERATION_MODE_GREMLIN_FALLING ) error++;
+
+  /* Do not accept a falling-edge branch to a different loop. */
+  writebyte_internal( LOADER_TEST_BASE + 18, 0x0c );
+  if( acceleration_detector_at_in( LOADER_TEST_BASE + 16 ) !=
+      ACCELERATION_MODE_NONE ) error++;
+  writebyte_internal( LOADER_TEST_BASE + 18, loader[ 18 ] );
+
+  z80.hl.b.l = 1;             /* First INC L has executed. */
+  acceleration_mode = ACCELERATION_MODE_GREMLIN_RISING;
+  acceleration_pc = LOADER_TEST_BASE + 5;
+  gremlin_accelerate( 0 );
+  if( z80.hl.b.l != 24 || z80.pc.w != LOADER_TEST_BASE + 9 ) error++;
+  z80.hl.b.l++;                /* INC L in the falling-edge loop. */
+  acceleration_mode = ACCELERATION_MODE_GREMLIN_FALLING;
+  acceleration_pc = LOADER_TEST_BASE + 16;
+  gremlin_accelerate( 0 );
+  if( z80.hl.b.l != 48 || z80.af.b.h != 48 ||
+      z80.pc.w != LOADER_TEST_BASE + 20 ) error++;
+
+  loader_test_restore_memory( &memory );
+  return error;
+}
+
+static int
+loader_test_ear_use( void )
+{
+  loader_test_memory_t memory;
+  int error = 0;
+
+  loader_test_install( &memory, NULL, 22 );
+  /* A keyboard scan's AND 1f does not consume the EAR input. */
+  writebyte_internal( LOADER_TEST_BASE + 5, 0xdb );
+  writebyte_internal( LOADER_TEST_BASE + 6, 0xfe );
+  writebyte_internal( LOADER_TEST_BASE + 7, 0x2f );
+  writebyte_internal( LOADER_TEST_BASE + 8, 0xe6 );
+  writebyte_internal( LOADER_TEST_BASE + 9, 0x1f );
+  if( ula_read_uses_ear( LOADER_TEST_BASE + 7 ) ) error++;
+
+  loader_test_restore_memory( &memory );
+  return error;
+}
+
+static int
+loader_test_movieload( void )
+{
+  static const libspectrum_byte loader[] = {
     0x14, 0xc8, 0x3e, 0x7f, 0xdb, 0xfe, 0x1f,
     0x00, 0xab, 0xe6, 0x20, 0x28, 0xf3
   };
-  static const libspectrum_byte sign_flag_loader[] = {
+  loader_test_memory_t memory;
+  int error = 0;
+
+  loader_test_install( &memory, loader, sizeof( loader ) );
+  if( !movieload_loader_detector( LOADER_TEST_BASE + 6 ) ) error++;
+
+  /* The branch must return to this sampling loop. */
+  writebyte_internal( LOADER_TEST_BASE + 12, 0xf2 );
+  if( movieload_loader_detector( LOADER_TEST_BASE + 6 ) ) error++;
+
+  loader_test_restore_memory( &memory );
+  return error;
+}
+
+static int
+loader_test_sign_flag( void )
+{
+  static const libspectrum_byte loader[] = {
     0x04, 0xc8, 0xdb, 0xfe, 0x87, 0xfa, 0x00, 0x80
   };
-  static const libspectrum_byte modified_rom_loader[] = {
+  loader_test_memory_t memory;
+  int error = 0;
+
+  loader_test_install( &memory, loader, sizeof( loader ) );
+  if( !sign_flag_loader_detector( LOADER_TEST_BASE + 4 ) ) error++;
+  writebyte_internal( LOADER_TEST_BASE + 6, 0x01 );
+  if( sign_flag_loader_detector( LOADER_TEST_BASE + 4 ) ) error++;
+
+  loader_test_restore_memory( &memory );
+  return error;
+}
+
+static int
+loader_test_modified_rom( void )
+{
+  static const libspectrum_byte loader[] = {
     0xd9, 0x11, 0x6b, 0x80, 0x21, 0x29, 0x80, 0x06,
     0x05, 0xcd, 0x10, 0x80, 0xd0, 0xd9, 0x06, 0x06,
     0x7e, 0x91, 0x77, 0x7d, 0x38, 0x03, 0x00, 0x18,
@@ -714,149 +882,67 @@ loader_unittest( void )
     0x1f, 0xd0, 0xa9, 0xe6, 0x20, 0x28, 0xf3, 0x79,
     0x2f, 0x4f, 0x37, 0xc9
   };
-  const libspectrum_word base = 0x8000;
-  libspectrum_byte saved[ sizeof( modified_rom_loader ) ];
-  libspectrum_byte saved_b = z80.bc.b.h, saved_a_ = z80.af_.b.h;
-  libspectrum_word saved_pc = z80.pc.w;
-  size_t saved_acceleration_pc = acceleration_pc;
-  acceleration_mode_t saved_acceleration_mode = acceleration_mode;
-  size_t i;
+  loader_test_memory_t memory;
   int error = 0;
 
-  for( i = 0; i < sizeof( microprose_loader ); i++ ) {
-    saved[ i ] = readbyte_internal( base + i );
-    writebyte_internal( base + i, microprose_loader[ i ] );
-  }
-
-  if( acceleration_detector_at_in( base + 8 ) !=
-      ACCELERATION_MODE_INCREASING ) error++;
-
-  /* Do not accept an arbitrary second immediate value. */
-  writebyte_internal( base + 5, 0x00 );
-  if( acceleration_detector_at_in( base + 8 ) != ACCELERATION_MODE_NONE )
-    error++;
-
-  for( i = 0; i < sizeof( microprose_loader ); i++ )
-    writebyte_internal( base + i, saved[ i ] );
-
-  for( i = 0; i < sizeof( software_projects_loader ); i++ ) {
-    saved[ i ] = readbyte_internal( base + i );
-    writebyte_internal( base + i, software_projects_loader[ i ] );
-  }
-
-  if( acceleration_detector_at_in( base + 6 ) !=
-      ACCELERATION_MODE_SOFTWARE_PROJECTS ) error++;
-
-  /* The branch must return to the start of this specific sampling loop. */
-  writebyte_internal( base + 13, 0xf5 );
-  if( acceleration_detector_at_in( base + 6 ) != ACCELERATION_MODE_NONE )
-    error++;
-  writebyte_internal( base + 13, software_projects_loader[ 13 ] );
-
-  acceleration_pc = base + 6;
-  z80.af_.b.h = 0x24;
-  software_projects_accelerate( 0 );
-  if( z80.bc.b.h != 0x1a || z80.pc.w != base + 15 ) error++;
-  software_projects_accelerate( 1 );
-  if( z80.bc.b.h != 0x10 || z80.pc.w != base + 15 ) error++;
-
-  for( i = 0; i < sizeof( software_projects_loader ); i++ )
-    writebyte_internal( base + i, saved[ i ] );
-
-  for( i = 0; i < sizeof( gremlin_loader ); i++ ) {
-    saved[ i ] = readbyte_internal( base + i );
-    writebyte_internal( base + i, gremlin_loader[ i ] );
-  }
-
-  if( acceleration_detector_at_in( base + 5 ) !=
-      ACCELERATION_MODE_GREMLIN_RISING ) error++;
-  if( acceleration_detector_at_in( base + 16 ) !=
-      ACCELERATION_MODE_GREMLIN_FALLING ) error++;
-
-  /* Do not accept a falling-edge branch to a different loop. */
-  writebyte_internal( base + 18, 0x0c );
-  if( acceleration_detector_at_in( base + 16 ) != ACCELERATION_MODE_NONE )
-    error++;
-  writebyte_internal( base + 18, gremlin_loader[ 18 ] );
-
-  z80.hl.b.l = 1;             /* First INC L has executed. */
-  acceleration_mode = ACCELERATION_MODE_GREMLIN_RISING;
-  acceleration_pc = base + 5;
-  gremlin_accelerate( 0 );
-  if( z80.hl.b.l != 24 || z80.pc.w != base + 9 ) error++;
-  z80.hl.b.l++;                /* INC L in the falling-edge loop. */
-  acceleration_mode = ACCELERATION_MODE_GREMLIN_FALLING;
-  acceleration_pc = base + 16;
-  gremlin_accelerate( 0 );
-  if( z80.hl.b.l != 48 || z80.af.b.h != 48 || z80.pc.w != base + 20 )
-    error++;
-
-  for( i = 0; i < sizeof( gremlin_loader ); i++ )
-    writebyte_internal( base + i, saved[ i ] );
-
-  for( i = 0; i < sizeof( gremlin_loader ); i++ )
-    writebyte_internal( base + i, 0x00 );
-
-  /* A keyboard scan's AND 1f does not consume the EAR input. */
-  writebyte_internal( base + 5, 0xdb );       /* IN A,(fe) */
-  writebyte_internal( base + 6, 0xfe );
-  writebyte_internal( base + 7, 0x2f );       /* CPL */
-  writebyte_internal( base + 8, 0xe6 );       /* AND 1f */
-  writebyte_internal( base + 9, 0x1f );
-  if( ula_read_uses_ear( base + 7 ) ) error++;
-
-  for( i = 0; i < sizeof( gremlin_loader ); i++ )
-    writebyte_internal( base + i, saved[ i ] );
-
-  for( i = 0; i < sizeof( movieload_loader ); i++ ) {
-    saved[ i ] = readbyte_internal( base + i );
-    writebyte_internal( base + i, movieload_loader[ i ] );
-  }
-
-  if( !movieload_loader_detector( base + 6 ) ) error++;
-
-  /* The branch must return to this sampling loop. */
-  writebyte_internal( base + 12, 0xf2 );
-  if( movieload_loader_detector( base + 6 ) ) error++;
-
-  for( i = 0; i < sizeof( movieload_loader ); i++ )
-    writebyte_internal( base + i, saved[ i ] );
-
-  for( i = 0; i < sizeof( sign_flag_loader ); i++ ) {
-    saved[ i ] = readbyte_internal( base + i );
-    writebyte_internal( base + i, sign_flag_loader[ i ] );
-  }
-
-  if( !sign_flag_loader_detector( base + 4 ) ) error++;
-  writebyte_internal( base + 6, 0x01 );
-  if( sign_flag_loader_detector( base + 4 ) ) error++;
-
-  for( i = 0; i < sizeof( sign_flag_loader ); i++ )
-    writebyte_internal( base + i, saved[ i ] );
-
-  for( i = 0; i < sizeof( modified_rom_loader ); i++ ) {
-    saved[ i ] = readbyte_internal( base + i );
-    writebyte_internal( base + i, modified_rom_loader[ i ] );
-  }
-
-  if( !modified_rom_loader_detector( base + 40 ) ) error++;
-  if( acceleration_detector_at_in( base + 40 ) != ACCELERATION_MODE_NONE )
-    error++;
-  if( !loader_loop_detector( base + 40 ) ) error++;
+  loader_test_install( &memory, loader, sizeof( loader ) );
+  if( !modified_rom_loader_detector( LOADER_TEST_BASE + 40 ) ) error++;
+  if( acceleration_detector_at_in( LOADER_TEST_BASE + 40 ) !=
+      ACCELERATION_MODE_NONE ) error++;
+  if( !loader_loop_detector( LOADER_TEST_BASE + 40 ) ) error++;
 
   /* A call elsewhere is not the custom EDGE1 timing context. */
-  writebyte_internal( base + 10, 0x11 );
-  if( modified_rom_loader_detector( base + 40 ) ) error++;
-  if( acceleration_detector_at_in( base + 40 ) !=
+  writebyte_internal( LOADER_TEST_BASE + 10, 0x11 );
+  if( modified_rom_loader_detector( LOADER_TEST_BASE + 40 ) ) error++;
+  if( acceleration_detector_at_in( LOADER_TEST_BASE + 40 ) !=
       ACCELERATION_MODE_INCREASING ) error++;
 
-  for( i = 0; i < sizeof( modified_rom_loader ); i++ )
-    writebyte_internal( base + i, saved[ i ] );
+  loader_test_restore_memory( &memory );
+  return error;
+}
 
-  z80.bc.b.h = saved_b; z80.af_.b.h = saved_a_; z80.pc.w = saved_pc;
-  acceleration_pc = saved_acceleration_pc;
-  acceleration_mode = saved_acceleration_mode;
+static loader_test_state_t
+loader_test_save_state( void )
+{
+  loader_test_state_t state;
 
+  state.b = z80.bc.b.h;
+  state.a_ = z80.af_.b.h;
+  state.a = z80.af.b.h;
+  state.l = z80.hl.b.l;
+  state.pc = z80.pc.w;
+  state.acceleration_pc = acceleration_pc;
+  state.acceleration_mode = acceleration_mode;
+  return state;
+}
+
+static void
+loader_test_restore_state( const loader_test_state_t *state )
+{
+  z80.bc.b.h = state->b;
+  z80.af_.b.h = state->a_;
+  z80.af.b.h = state->a;
+  z80.hl.b.l = state->l;
+  z80.pc.w = state->pc;
+  acceleration_pc = state->acceleration_pc;
+  acceleration_mode = state->acceleration_mode;
+}
+
+int
+loader_unittest( void )
+{
+  loader_test_state_t state = loader_test_save_state();
+  int error = 0;
+
+  error += loader_test_microprose();
+  error += loader_test_software_projects();
+  error += loader_test_gremlin();
+  error += loader_test_ear_use();
+  error += loader_test_movieload();
+  error += loader_test_sign_flag();
+  error += loader_test_modified_rom();
+
+  loader_test_restore_state( &state );
   if( error ) printf( "loader_unittest failed\n" );
   return error;
 }
