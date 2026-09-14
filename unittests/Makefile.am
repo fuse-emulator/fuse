@@ -38,7 +38,8 @@ unittests_displaytest_SOURCES = \
         unittests/displaytest.c \
         display.c \
         display_border.c \
-        display_internal.h
+        display_internal.h \
+        display_render.c
 unittests_displaytest_LDADD = $(LIBSPECTRUM_LIBS) $(GLIB_LIBS)
 unittests_displaytest_CPPFLAGS = $(AM_CPPFLAGS) -DDISPLAYTEST
 

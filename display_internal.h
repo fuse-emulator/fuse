@@ -10,7 +10,14 @@
 #ifndef FUSE_DISPLAY_INTERNAL_H
 #define FUSE_DISPLAY_INTERNAL_H
 
+#include "libspectrum.h"
+
 void display_mark_screen_dirty( int x, int y );
+void display_dirty8( libspectrum_word address );
+void display_dirty64( libspectrum_word address );
+
+void display_render_init( void );
+void display_render_frame( void );
 
 int display_border_init( void );
 void display_border_frame( void );
