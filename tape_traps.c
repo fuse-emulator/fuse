@@ -78,7 +78,7 @@ does_tape_load_with_code( void )
   return needs_code;
 }
 
-/* Load a snap to start the current tape autoloading */
+/* Type the right command to start the current tape autoloading */
 int
 tape_autoload( libspectrum_machine hardware )
 {
@@ -281,12 +281,84 @@ done:
   return error;
 }
 
+typedef struct trap_load_state {
+  libspectrum_byte *data;
+  libspectrum_byte parity;
+  int length;
+  int read;
+  int processed;
+  int verify;
+  size_t *bytes_consumed;
+} trap_load_state;
+
+static void
+trap_load_finish( trap_load_state *state )
+{
+  /* At this point, AF, AF', B and L are already modified */
+  C = 1;
+  H = state->parity;
+  DE -= state->processed;
+  IX += state->processed;
+}
+
+static void
+trap_load_fail( trap_load_state *state )
+{
+  F &= ~FLAG_C;
+  trap_load_finish( state );
+}
+
+static int
+trap_verify_bytes( trap_load_state *state )
+{
+  for( state->processed = 0; state->processed < state->read;
+       state->processed++ ) {
+    state->parity ^= state->data[ state->processed ];
+    if( state->data[ state->processed ] !=
+        readbyte_internal( IX + state->processed ) ) {
+      L = state->data[ state->processed ];
+      *state->bytes_consumed = state->processed + 2;
+      return 1;
+    }
+  }
+  return 0;
+}
+
+static void
+trap_copy_bytes( trap_load_state *state )
+{
+  for( state->processed = 0; state->processed < state->read;
+       state->processed++ ) {
+    state->parity ^= state->data[ state->processed ];
+    writebyte_internal( IX + state->processed,
+                        state->data[ state->processed ] );
+  }
+}
+
+static void
+trap_check_parity( trap_load_state *state )
+{
+  /* If |DE| bytes have been read and there's more data, check parity. */
+  if( DE == state->processed && state->read + 1 < state->length ) {
+    state->parity ^= state->data[ state->read ];
+    *state->bytes_consumed = state->read + 2;
+    A = state->parity;
+    CP( 1 ); /* Parity is successful if A == 0. */
+    B = 0xB0;
+    trap_load_finish( state );
+    return;
+  }
+
+  /* Failure to read first bit of the next byte (ref. 48K ROM, 0x5EC) */
+  B = 255;
+  L = 1;
+  INC( B );
+  trap_load_fail( state );
+}
+
 static int
 trap_load_block( libspectrum_tape_block *block, size_t *bytes_consumed )
 {
-  libspectrum_byte parity, *data;
-  int i = 0, length, read, verify;
-
   /* On exit:
    *  A = calculated parity byte if parity checked, else 0 (CHECKME)
    *  F : if parity checked, all flags are modified
@@ -302,99 +374,68 @@ trap_load_block( libspectrum_tape_block *block, size_t *bytes_consumed )
    *  R = no point in altering it :-)
    * Other registers unchanged.
    */
+  trap_load_state state;
+  int requested_flag;
 
-  data = libspectrum_tape_block_data( block );
-  length = libspectrum_tape_block_data_length( block );
+  state.data = libspectrum_tape_block_data( block );
+  state.length = libspectrum_tape_block_data_length( block );
+
+  /* Number of bytes to load or verify. */
+  state.read = state.length - 1;
+  if( state.read > DE ) state.read = DE;
+  state.processed = 0;
+  state.bytes_consumed = bytes_consumed;
   *bytes_consumed = 0;
 
-  /* Number of bytes to load or verify */
-  read = length - 1;
-  if( read > DE )
-    read = DE;
-
-  /* If there's no data in the block (!), set L then error exit.
-   * We don't need to alter H, IX or DE here */
-  if( !length ) {
+  /* If there's no data in the block, L and F' are the only registers set. */
+  if( !state.length ) {
     L = F_ = 1;
     F &= ~FLAG_C;
     return 0;
   }
 
-  verify =  !(F_ & FLAG_C);
-  i = A_; /* i = A' (flag byte) */
+  /* Loading or verifying is determined by the carry flag of F'. */
+  state.verify = !( F_ & FLAG_C );
+  requested_flag = A_;
   A = 0;
 
-  /* Initialise the parity check and L to the block ID byte */
-  L = parity = *data++;
+  /* Initialise the parity check and L to the block ID byte. */
+  L = state.parity = *state.data++;
   *bytes_consumed = 1;
 
-  /* emulate zero length block rom bug */
-  if (!DE) {
-    i = 0; /* one byte was read, but it is not treated as data byte */
-    B = 0xB0; /* B is set to 0xB0 at the end of LD-8-BITS/0x05CA loop */
-    A = parity; /* rom 0x05DF */
-    CP( 1 ); /* parity check is successful if A==0 */
-    goto common_ret;
+  /* Emulate the zero-length block ROM bug. */
+  if( !DE ) {
+    /* One byte was read, but it is not treated as a data byte. */
+    B = 0xB0; /* Value at the end of the LD-8-BITS/0x05CA loop. */
+    A = state.parity; /* ROM address 0x05DF. */
+    CP( 1 ); /* Parity is successful if A == 0. */
+    trap_load_finish( &state );
+    return 0;
   }
 
   AF_ = 0x0145;
 
   /* The ROM compares the block ID with the requested flag using XOR,
-     leaving the difference in A on a mismatch */
-  A = i;
-  XOR( parity );
+     leaving the difference in A on a mismatch. */
+  A = requested_flag;
+  XOR( state.parity );
   if( A ) {
     /* The flag byte is not included in the IX/DE data count. */
-    i = 0;
-    goto error_ret;
+    trap_load_fail( &state );
+    return 0;
   }
 
-  /* Now set L to the *last* byte in the block */
-  L = data[read - 1];
-
-  /* Loading or verifying determined by the carry flag of F' */
-  if( verify ) {		/* verifying */
-    for( i = 0; i < read; i++ ) {
-      parity ^= data[i];
-      if( data[i] != readbyte_internal(IX+i) ) {
-        /* Verification failure */
-        L = data[i];
-        *bytes_consumed = i + 2;
-	goto error_ret;
-      }
-    }
-  } else {
-    for( i = 0; i < read; i++ ) {
-      parity ^= data[i];
-      writebyte_internal( IX+i, data[i] );
-    }
+  /* Now set L to the last byte in the block. */
+  L = state.data[ state.read - 1 ];
+  if( state.verify && trap_verify_bytes( &state ) ) {
+    trap_load_fail( &state );
+    return 0;
   }
+  if( !state.verify ) trap_copy_bytes( &state );
 
-  /* At this point, i == number of bytes actually read or verified */
-  *bytes_consumed = i + 1;
-
-  /* If |DE| bytes have been read and there's more data, do the parity check */
-  if( DE == i && read + 1 < length ) {
-    parity ^= data[read];
-    *bytes_consumed = read + 2;
-    A = parity;
-    CP( 1 ); /* parity check is successful if A==0 */
-    B = 0xB0;
-  } else {
-    /* Failure to read first bit of the next byte (ref. 48K ROM, 0x5EC) */
-    B = 255;
-    L = 1;
-    INC( B );
-error_ret:
-    F &= ~FLAG_C;
-  }
-
-common_ret:
-  /* At this point, AF, AF', B and L are already modified */
-  C = 1;
-  H = parity;
-  DE -= i;
-  IX += i;
+  /* Both paths leave processed at the number of bytes handled. */
+  *bytes_consumed = state.processed + 1;
+  trap_check_parity( &state );
   return 0;
 }
 
