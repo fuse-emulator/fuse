@@ -70,7 +70,7 @@ jobs:
           echo "Done."
 
       - name: (3) Check out repository code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: (4) Download libspectrum artefact
         uses: actions/download-artifact@v8
