@@ -32,6 +32,9 @@ fuse_SOURCES = display.c \
 	input.c \
 	keyboard.c \
 	loader.c \
+	loader_detector.c \
+	loader_internals.h \
+	unittests/loader.c \
 	machine.c \
 	memory_pages.c \
 	mempool.c \
