@@ -62,6 +62,7 @@ static size_t acceleration_pc;
 
 /* Movieload needs time to settle after the previous block before playback is
    restarted. Starting on the first recognised read corrupts the load. */
+#define LOADER_DETECTION_READS 10
 #define MOVIELOAD_DETECTION_READS 128
 #define LOADER_STOP_NON_EAR_READS 10
 
@@ -979,6 +980,64 @@ check_for_acceleration( void )
   if( acceleration_mode ) do_acceleration();
 }
 
+static int
+loader_read_detected( libspectrum_word pc )
+{
+  return loader_loop_detector( pc ) ||
+         movieload_loader_detector( pc ) || ula_read_uses_ear( pc );
+}
+
+static int
+loader_counter_read_is_plausible( libspectrum_dword tstates_diff,
+                                  libspectrum_byte b_diff )
+{
+  return tstates_diff <= 1000 &&
+         ( b_diff == 1 || b_diff == 0 || b_diff == 0xff );
+}
+
+static void
+loader_detect_while_playing( libspectrum_dword tstates_diff,
+                             libspectrum_byte b_diff )
+{
+  if( loader_read_detected( z80.pc.w ) ||
+      loader_counter_read_is_plausible( tstates_diff, b_diff ) ) {
+    successive_reads = 0;
+    return;
+  }
+
+  /* A loader may be interrupted by an eight-read keyboard scan. Do not stop
+     the tape unless non-EAR reads persist beyond that interrupt. */
+  successive_reads++;
+  if( successive_reads >= LOADER_STOP_NON_EAR_READS ) tape_stop();
+}
+
+static void
+loader_start_after_reads( int reads )
+{
+  successive_reads++;
+  if( successive_reads >= reads ) tape_do_play( 1 );
+}
+
+static void
+loader_detect_while_stopped( libspectrum_dword tstates_diff,
+                             libspectrum_byte b_diff )
+{
+  if( movieload_loader_detector( z80.pc.w ) && tstates_diff <= 500 ) {
+    /* Unlike the other recognised loops, Movieload must sample the idle input
+       for a while before playback starts. */
+    loader_start_after_reads( MOVIELOAD_DETECTION_READS );
+  } else if( loader_loop_detector( z80.pc.w ) ) {
+    /* An instruction-level match also covers loaders which count outside B.
+       Wait so playback starts between samples, like the timing heuristic. */
+    loader_start_after_reads( LOADER_DETECTION_READS );
+  } else if( ula_read_uses_ear( z80.pc.w ) && tstates_diff <= 500 &&
+             ( b_diff == 1 || b_diff == 0xff ) ) {
+    loader_start_after_reads( LOADER_DETECTION_READS );
+  } else {
+    successive_reads = 0;
+  }
+}
+
 void
 loader_detect_loader( void )
 {
@@ -988,55 +1047,17 @@ loader_detect_loader( void )
   last_tstates_read = tstates;
   last_b_read = z80.bc.b.h;
 
-  if( settings_current.detect_loader ) {
-
-    if( tape_is_playing() ) {
-      if( loader_loop_detector( z80.pc.w ) ||
-          movieload_loader_detector( z80.pc.w ) ||
-          ula_read_uses_ear( z80.pc.w ) ) {
-        successive_reads = 0;
-      } else if( tstates_diff > 1000 ||
-                 ( b_diff != 1 && b_diff != 0 && b_diff != 0xff ) ) {
-	successive_reads++;
-	/* A loader may be interrupted by an eight-read keyboard scan. Do not
-           stop the tape unless non-EAR reads persist beyond that interrupt. */
-	if( successive_reads >= LOADER_STOP_NON_EAR_READS ) tape_stop();
-      } else {
-	successive_reads = 0;
-      }
-    } else {
-      if( movieload_loader_detector( z80.pc.w ) && tstates_diff <= 500 ) {
-        /* Unlike the other recognised loops, Movieload must sample the idle
-           input for a while before playback starts. */
-        successive_reads++;
-        if( successive_reads >= MOVIELOAD_DETECTION_READS ) tape_do_play( 1 );
-      } else if( loader_loop_detector( z80.pc.w ) ) {
-        /* An instruction-level match also covers loaders which count outside
-           B. Wait for repeated reads so playback starts between samples, as
-           it does with the timing heuristic. */
-        successive_reads++;
-        if( successive_reads >= 10 ) tape_do_play( 1 );
-      } else if( ula_read_uses_ear( z80.pc.w ) && tstates_diff <= 500 &&
-                 ( b_diff == 1 || b_diff == 0xff ) ) {
-	successive_reads++;
-	if( successive_reads >= 10 ) {
-	  tape_do_play( 1 );
-	}
-      } else {
-	successive_reads = 0;
-      }
-    }
-
-  } else {
-
+  if( !settings_current.detect_loader ) {
     successive_reads = 0;
-
+  } else if( tape_is_playing() ) {
+    loader_detect_while_playing( tstates_diff, b_diff );
+  } else {
+    loader_detect_while_stopped( tstates_diff, b_diff );
   }
 
   if( settings_current.accelerate_loader && tape_is_playing() &&
       !rzx_recording )
     check_for_acceleration();
-
 }
 
 void
