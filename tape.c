@@ -27,7 +27,6 @@
 #include "config.h"
 
 #include <errno.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -538,68 +537,6 @@ static void
 tape_stop_mic_off( libspectrum_dword last_tstates, int type, void *user_data )
 {
   tape_microphone = 0;
-}
-
-int
-tape_unittest( void )
-{
-  libspectrum_tape *saved_tape = tape;
-  libspectrum_tape *test_tape = libspectrum_tape_alloc();
-  libspectrum_tape_block *rom = NULL, *following = NULL;
-  libspectrum_tape_edge edge;
-  libspectrum_tape_signal_level level;
-  libspectrum_byte *data = NULL;
-  int saved_microphone = tape_microphone;
-  int position, error = 0;
-
-  if( !test_tape ) return 1;
-  rom = libspectrum_tape_block_alloc( LIBSPECTRUM_TAPE_BLOCK_ROM );
-  following = libspectrum_tape_block_alloc( LIBSPECTRUM_TAPE_BLOCK_PAUSE );
-  data = libspectrum_new( libspectrum_byte, 2 );
-  if( !rom || !following || !data ) { error = 1; goto done; }
-
-  data[0] = 0x80; data[1] = 0x80;
-  libspectrum_tape_block_set_data_length( rom, 2 );
-  libspectrum_tape_block_set_data( rom, data ); data = NULL;
-  libspectrum_tape_block_set_pause_tstates( rom, 3500000 );
-  libspectrum_tape_block_set_pause_tstates( following, 1 );
-  if( libspectrum_tape_append_block( test_tape, rom ) ) {
-    error = 1; goto done;
-  }
-  rom = NULL;
-  if( libspectrum_tape_append_block( test_tape, following ) ) {
-    error = 1; goto done;
-  }
-  following = NULL;
-
-  tape = test_tape;
-  tape_microphone = 0;
-  if( tape_trap_finish_rom_block() ||
-      libspectrum_tape_state( tape ) != LIBSPECTRUM_TAPE_STATE_PAUSE ||
-      libspectrum_tape_position( &position, tape ) || position != 0 ||
-      libspectrum_tape_signal_level_get( &level, tape ) ||
-      level != LIBSPECTRUM_TAPE_SIGNAL_LOW || tape_microphone != 1 ) {
-    error = 1;
-    goto done;
-  }
-
-  /* Previewing must not consume the pause: normal playback returns the same
-     high pause interval and only then selects the following block. */
-  if( libspectrum_tape_get_next_edge( &edge, tape ) ||
-      edge.tstates != 3500000 || edge.level != LIBSPECTRUM_TAPE_SIGNAL_HIGH ||
-      !( edge.flags & LIBSPECTRUM_TAPE_FLAGS_BLOCK ) ||
-      libspectrum_tape_position( &position, tape ) || position != 1 )
-    error = 1;
-
-done:
-  tape = saved_tape;
-  tape_microphone = saved_microphone;
-  if( data ) libspectrum_free( data );
-  if( rom ) libspectrum_tape_block_free( rom );
-  if( following ) libspectrum_tape_block_free( following );
-  libspectrum_tape_free( test_tape );
-  if( error ) printf( "tape_unittest failed\n" );
-  return error;
 }
 
 /* Call a user-supplied function for every block in the current tape */

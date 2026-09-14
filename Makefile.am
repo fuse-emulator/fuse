@@ -65,6 +65,7 @@ fuse_SOURCES = display.c \
 	tape_internals.h \
 	tape_record.c \
 	tape_traps.c \
+	unittests/tape.c \
 	ui.c \
 	uidisplay.c \
 	uimedia.c \
