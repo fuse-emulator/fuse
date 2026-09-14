@@ -61,6 +61,7 @@ fuse_SOURCES = display.c \
 	spectrum.c \
 	svg.c \
 	tape.c \
+	tape_block.c \
 	ui.c \
 	uidisplay.c \
 	uimedia.c \
