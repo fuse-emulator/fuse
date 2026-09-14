@@ -32,7 +32,7 @@
 #include "z80/z80.h"
 
 #define LOADER_TEST_BASE 0x8000
-#define LOADER_TEST_MAX_LENGTH 50
+#define LOADER_TEST_MAX_LENGTH 52
 
 typedef struct loader_test_memory_t {
   libspectrum_byte saved[ LOADER_TEST_MAX_LENGTH ];
