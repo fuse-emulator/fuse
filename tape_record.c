@@ -60,9 +60,26 @@ tape_event_record_sample( libspectrum_dword last_tstates, int type,
                           void *user_data );
 
 void
-tape_record_init( libspectrum_tape *current_tape )
+tape_record_ensure_capacity( libspectrum_byte **buffer,
+                             libspectrum_dword *size,
+                             libspectrum_dword used )
+{
+  if( used + 5 < *size ) return;
+
+  *size *= 2;
+  *buffer = libspectrum_renew( libspectrum_byte, *buffer, *size );
+}
+
+void
+tape_record_set_tape( libspectrum_tape *current_tape )
 {
   recording_tape = current_tape;
+}
+
+void
+tape_record_init( libspectrum_tape *current_tape )
+{
+  tape_record_set_tape( current_tape );
   record_event = event_register( tape_event_record_sample,
                                  "Tape sample record" );
 }
@@ -92,8 +109,8 @@ tape_record_start( void )
   ui_menu_activate( UI_MENU_ITEM_TAPE_RECORDING, 1 );
 }
 
-static int
-write_rec_buffer( libspectrum_byte *tape_buffer,
+int
+tape_record_encode( libspectrum_byte *tape_buffer,
                   libspectrum_dword tape_buffer_used,
                   int last_level_count )
 {
@@ -120,19 +137,16 @@ tape_event_record_sample( libspectrum_dword last_tstates, int type,
   if( rec_state.last_level != ula_tape_level() ) {
     /* put a sample into the recording buffer */
     rec_state.tape_buffer_used =
-      write_rec_buffer( rec_state.tape_buffer,
+      tape_record_encode( rec_state.tape_buffer,
                         rec_state.tape_buffer_used,
                         rec_state.last_level_count );
 
     rec_state.last_level_count = 0;
     rec_state.last_level = ula_tape_level();
-    /* make sure we can still fit a dword and a flag byte in the buffer */
-    if( rec_state.tape_buffer_used + 5 >= rec_state.tape_buffer_size ) {
-      rec_state.tape_buffer_size *= 2;
-      rec_state.tape_buffer =
-        libspectrum_renew( libspectrum_byte, rec_state.tape_buffer,
-                           rec_state.tape_buffer_size );
-    }
+    /* Make sure we can still fit a dword and a flag byte in the buffer. */
+    tape_record_ensure_capacity( &rec_state.tape_buffer,
+                                  &rec_state.tape_buffer_size,
+                                  rec_state.tape_buffer_used );
   }
 
   rec_state.last_level_count++;
@@ -149,7 +163,7 @@ tape_record_stop( void )
 
   /* put last sample into the recording buffer */
   rec_state.tape_buffer_used =
-    write_rec_buffer( rec_state.tape_buffer, rec_state.tape_buffer_used,
+    tape_record_encode( rec_state.tape_buffer, rec_state.tape_buffer_used,
                       rec_state.last_level_count );
 
   /* stop scheduling events and turn buffer into a block and

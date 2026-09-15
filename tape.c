@@ -62,16 +62,16 @@ int tape_modified;
 int tape_playing;
 
 /* Do we have to stop the tape on the next edge? */
-static int tape_stop_pending = 0;
+int tape_stop_pending = 0;
 
 /* Was the tape playing started automatically? */
-static int tape_autoplay;
+int tape_autoplay;
 
 /* Is playback positioned at a pause reached by a tape trap? */
 int trap_resume_pending;
 
 /* Has the tape reached a point which requires an explicit user action? */
-static int tape_autoplay_blocked;
+int tape_autoplay_blocked;
 
 /* Is there a high input to the EAR socket? */
 int tape_microphone;
@@ -453,7 +453,7 @@ tape_present( void )
   return libspectrum_tape_present( tape );
 }
 
-static int
+int
 tape_edge_requests_stop( const libspectrum_tape_edge *edge )
 {
   int is_48k =
@@ -464,7 +464,7 @@ tape_edge_requests_stop( const libspectrum_tape_edge *edge )
          ( ( edge->flags & LIBSPECTRUM_TAPE_FLAGS_STOP48 ) && is_48k );
 }
 
-static void
+void
 tape_handle_stop_request( const libspectrum_tape_edge *edge )
 {
   if( !tape_edge_requests_stop( edge ) ) return;
@@ -483,6 +483,13 @@ tape_handle_stop_request( const libspectrum_tape_edge *edge )
     tape_autoplay_blocked = 1;
 }
 
+int
+tape_should_stop_for_rom_block( libspectrum_tape_block *block )
+{
+  return tape_autoplay && settings_current.tape_traps && !rzx_recording &&
+         libspectrum_tape_block_type( block ) == LIBSPECTRUM_TAPE_BLOCK_ROM;
+}
+
 static int
 tape_handle_block_end( const libspectrum_tape_edge *edge )
 {
@@ -499,15 +506,14 @@ tape_handle_block_end( const libspectrum_tape_edge *edge )
   /* Automatically played tapes stop before a new ROM block so the tape trap
      can load it without scheduling another edge. */
   block = libspectrum_tape_current_block( tape );
-  if( tape_autoplay && settings_current.tape_traps && !rzx_recording &&
-      libspectrum_tape_block_type( block ) == LIBSPECTRUM_TAPE_BLOCK_ROM ) {
+  if( tape_should_stop_for_rom_block( block ) ) {
     tape_stop();
     return 1;
   }
   return 0;
 }
 
-static void
+void
 tape_schedule_edge( libspectrum_dword last_tstates,
                     const libspectrum_tape_edge *edge,
                     int from_acceleration )

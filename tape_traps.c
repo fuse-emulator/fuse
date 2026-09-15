@@ -35,8 +35,8 @@
 /* Pause appended after each ROM-routine tape-save block (milliseconds) */
 #define TAPE_ROM_SAVE_PAUSE_MS 1000
 
-static int trap_load_block( libspectrum_tape_block *block,
-                            size_t *bytes_consumed );
+int tape_trap_load_block( libspectrum_tape_block *block,
+                          size_t *bytes_consumed );
 static libspectrum_error tape_trap_advance_rom( size_t data_edges );
 
 static int
@@ -213,7 +213,7 @@ tape_load_trap( void )
   phantom_typist_deactivate();
   set_load_return_pc();
 
-  error = trap_load_block( block, &bytes_consumed );
+  error = tape_trap_load_block( block, &bytes_consumed );
   if( error ) return error;
   trap_resume_pending = 0;
   return finish_trapped_load( bytes_consumed );
@@ -356,8 +356,8 @@ trap_check_parity( trap_load_state *state )
   trap_load_fail( state );
 }
 
-static int
-trap_load_block( libspectrum_tape_block *block, size_t *bytes_consumed )
+int
+tape_trap_load_block( libspectrum_tape_block *block, size_t *bytes_consumed )
 {
   /* On exit:
    *  A = calculated parity byte if parity checked, else 0 (CHECKME)

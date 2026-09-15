@@ -29,6 +29,7 @@
 
 #include "libspectrum.h"
 
+#include "fuse.h"
 #include "tape.h"
 
 /* Length of a standard ZX Spectrum ROM tape header block (flag byte +
@@ -199,7 +200,7 @@ tape_block_details( char *buffer, size_t length,
 
   buffer[0] = '\0';
 
-  for( i = 0; i < sizeof( formatters ) / sizeof( formatters[0] ); i++ ) {
+  for( i = 0; i < ARRAY_SIZE( formatters ); i++ ) {
     if( formatters[i].type == type ) {
       formatters[i].formatter( buffer, length, block );
       break;
