@@ -286,6 +286,12 @@ trap_load_special_cases_unittest( const libspectrum_byte *valid,
 
   error |= run_trap_load( valid, valid_length, 0, 0xff, 0, &consumed );
   error |= consumed != 1 || DE != 0 || IX != 0x8000 || B != 0xb0;
+
+  /* A one-byte ROM block contains only the flag and no data bytes. */
+  static const libspectrum_byte single[] = { 0xff };
+  error |= run_trap_load( single, sizeof( single ), 0, 0xff, 2, &consumed );
+  error |= consumed != 1 || DE != 2 || IX != 0x8000 || L != 1 ||
+           ( F & FLAG_C );
   return error;
 }
 

@@ -425,8 +425,9 @@ tape_trap_load_block( libspectrum_tape_block *block, size_t *bytes_consumed )
     return 0;
   }
 
-  /* Now set L to the last byte in the block. */
-  L = state.data[ state.read - 1 ];
+  /* Set L to the last data byte that will be processed. For a bare flag
+     byte, there is no data and L already contains the flag. */
+  if( state.read ) L = state.data[ state.read - 1 ];
   if( state.verify && trap_verify_bytes( &state ) ) {
     trap_load_fail( &state );
     return 0;
