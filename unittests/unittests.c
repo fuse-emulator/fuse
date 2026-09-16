@@ -2382,7 +2382,7 @@ utils_file_lifecycle_test( void )
   utils_file_free( &file );
   if( file.filename || file.buffer || file.length ||
       file.type != LIBSPECTRUM_ID_UNKNOWN ||
-      file.class != LIBSPECTRUM_CLASS_UNKNOWN ) r++;
+      file.file_class != LIBSPECTRUM_CLASS_UNKNOWN ) r++;
 
   compat_file_set_vtable( &utils_file_previous_vtable );
   unlink( filename );
@@ -2421,7 +2421,7 @@ utils_file_harddisk_identify_test( void )
 
   utils_file_init( &file, filename );
   if( utils_file_identify( &file ) ||
-      file.class != LIBSPECTRUM_CLASS_HARDDISK || file.buffer ||
+      file.file_class != LIBSPECTRUM_CLASS_HARDDISK || file.buffer ||
       utils_file_open_count != 1 || utils_file_read_count != 1 ) r++;
 
   utils_file_free( &file );
@@ -2453,7 +2453,7 @@ utils_open_loaded_file_test( void )
   memcpy( file.buffer, tap, sizeof( tap ) );
   file.length = sizeof( tap );
   file.type = LIBSPECTRUM_ID_TAPE_TAP;
-  file.class = LIBSPECTRUM_CLASS_TAPE;
+  file.file_class = LIBSPECTRUM_CLASS_TAPE;
 
   if( utils_open_loaded_file( &file, 0, NULL ) ||
       utils_file_open_count || utils_file_read_count ) r++;
@@ -2587,6 +2587,8 @@ utils_open_loaded_disk_test( void )
   utils_file_init( &file, filename );
   file.length = 40 * 10 * 512;
   file.buffer = libspectrum_new0( unsigned char, file.length );
+  file.type = LIBSPECTRUM_ID_DISK_IMG;
+  file.file_class = LIBSPECTRUM_CLASS_DISK_PLUSD;
   if( disk_open_loaded( &disk, &file, 0, 0 ) != DISK_OK ||
       utils_file_open_count || utils_file_read_count ) r++;
 
@@ -2595,6 +2597,49 @@ utils_open_loaded_disk_test( void )
   compat_file_set_vtable( &utils_file_previous_vtable );
   if( r ) printf( "utils_open_loaded_disk_test failed\n" );
   return r;
+}
+
+static int
+utils_open_loaded_compressed_disk_test( void )
+{
+#ifdef HAVE_ZLIB_H
+  static const unsigned char compressed[] = {
+    31, 139, 8, 0, 0, 0, 0, 0, 2, 255, 237, 193, 1, 13, 0, 0,
+    0, 194, 160, 247, 79, 109, 15, 7, 20, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 79,
+    6, 63, 79, 55, 213, 0, 32, 3, 0,
+  };
+  utils_file file;
+  disk_t disk;
+  int r = 0;
+
+  memset( &disk, 0, sizeof( disk ) );
+  utils_file_init( &file, "compressed.img.gz" );
+  file.buffer = libspectrum_new( unsigned char, sizeof( compressed ) );
+  memcpy( file.buffer, compressed, sizeof( compressed ) );
+  file.length = sizeof( compressed );
+  if( utils_file_identify( &file ) ||
+      file.type != LIBSPECTRUM_ID_DISK_IMG ||
+      disk_open_loaded( &disk, &file, 0, 0 ) != DISK_OK ) r++;
+
+  disk_close( &disk );
+  utils_file_free( &file );
+  if( r ) printf( "utils_open_loaded_compressed_disk_test failed\n" );
+  return r;
+#else
+  return 0;
+#endif
 }
 
 static int
@@ -2639,6 +2684,8 @@ utils_open_loaded_disk_merge_test( void )
   utils_file_init( &file, filename_a );
   file.buffer = data;
   file.length = 40 * 10 * 512;
+  file.type = LIBSPECTRUM_ID_DISK_IMG;
+  file.file_class = LIBSPECTRUM_CLASS_DISK_PLUSD;
   saved_ask_merge = settings_current.disk_ask_merge;
   settings_current.disk_ask_merge = 0;
   if( disk_open_loaded( &disk, &file, 0, 1 ) != DISK_OK ||
@@ -2753,6 +2800,7 @@ unittests_run( void )
   r += utils_open_loaded_dck_test();
   r += utils_open_loaded_microdrive_test();
   r += utils_open_loaded_disk_test();
+  r += utils_open_loaded_compressed_disk_test();
   r += utils_open_loaded_disk_merge_test();
 
   printf("Final return value: %d (should be 0)\n", r);

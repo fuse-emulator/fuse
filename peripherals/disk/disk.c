@@ -2223,7 +2223,6 @@ disk_open_buffer( disk_t *d, const utils_file *file, int preindex )
   buffer_t buffer;
   const char *filename = file->filename;
   libspectrum_id_t type;
-  int error;
 
 #ifdef GEKKO		/* Wii doesn't have access() */
   d->wrprot = 0;
@@ -2237,9 +2236,7 @@ disk_open_buffer( disk_t *d, const utils_file *file, int preindex )
   buffer.file = *file;              /* borrowed: never close this buffer */
   buffer.index = 0;
 
-  error = libspectrum_identify_file_raw( &type, filename,
-                                         buffer.file.buffer, buffer.file.length );
-  if( error ) return d->status = DISK_OPEN;
+  type = file->type;
   d->type = DISK_TYPE_NONE;
 #ifdef CPC_DEBUG
 fprintf( stderr, "\n::::%s:::: ", filename );

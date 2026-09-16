@@ -706,7 +706,7 @@ parse_nonoption_args( int argc, char **argv, int first_arg,
     }
 
     type = file.type;
-    class = file.class;
+    class = file.file_class;
 
     switch( class ) {
 

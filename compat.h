@@ -136,12 +136,12 @@ extern const compat_fd COMPAT_FILE_OPEN_FAILED;
 
 /* File handling */
 
-struct utils_file;
+struct libspectrum_file;
 
 typedef struct compat_file_vtable_t {
   compat_fd (*open)( const char *path, int write );
   off_t (*get_length)( compat_fd fd );
-  int (*read)( compat_fd fd, struct utils_file *file );
+  int (*read)( compat_fd fd, struct libspectrum_file *file );
   int (*write)( compat_fd fd, const unsigned char *buffer, size_t length );
   int (*close)( compat_fd fd );
   int (*exists)( const char *path );
@@ -154,7 +154,7 @@ void compat_file_get_vtable( compat_file_vtable_t *vtable );
 
 compat_fd compat_file_open( const char *path, int write );
 off_t compat_file_get_length( compat_fd fd );
-int compat_file_read( compat_fd fd, struct utils_file *file );
+int compat_file_read( compat_fd fd, struct libspectrum_file *file );
 int compat_file_write( compat_fd fd, const unsigned char *buffer,
                        size_t length );
 int compat_file_close( compat_fd fd );
