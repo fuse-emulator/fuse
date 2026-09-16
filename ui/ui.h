@@ -65,7 +65,6 @@ libspectrum_error ui_libspectrum_error( libspectrum_error error,
      GCC_PRINTF( 2, 0 );
 int ui_verror( ui_error_level severity, const char *format, va_list ap )
      GCC_PRINTF( 2, 0 );
-int ui_error_specific( ui_error_level severity, const char *message );
 void ui_error_frame( void );
 
 /* Callbacks used by the debugger */
@@ -91,7 +90,6 @@ typedef enum ui_confirm_save_t {
 
 ui_confirm_save_t ui_confirm_save( const char *format, ... )
      GCC_PRINTF( 1, 2 );
-ui_confirm_save_t ui_confirm_save_specific( const char *message );
 
 /* Confirm whether we want to change a joystick setting */
 typedef enum ui_confirm_joystick_t {
@@ -291,7 +289,9 @@ int ui_tape_browser_update( ui_tape_browser_update_type change,
 
 char *ui_get_open_filename( const char *title );
 char *ui_get_save_filename( const char *title );
-int ui_query( const char *message );
+
+/* Ask the user an OK/Cancel question. Returns non-zero when confirmed. */
+int ui_query( const char *format, ... ) GCC_PRINTF( 1, 2 );
 
 #ifdef USE_WIDGET
 #include "ui/widget/widget.h"

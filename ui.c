@@ -37,6 +37,7 @@
 #include "settings.h"
 #include "tape.h"
 #include "ui/ui.h"
+#include "ui/ui_internals.h"
 #include "ui/uidisplay.h"
 #include "ui/uimedia.h"
 #include "ui/widget/widget.h"
@@ -120,6 +121,22 @@ ui_confirm_save( const char *format, ... )
   confirm = ui_confirm_save_specific( message );
 
   va_end( ap );
+
+  return confirm;
+}
+
+int
+ui_query( const char *format, ... )
+{
+  va_list ap;
+  char message[ MESSAGE_MAX_LENGTH ];
+  int confirm;
+
+  va_start( ap, format );
+  vsnprintf( message, MESSAGE_MAX_LENGTH, format, ap );
+  va_end( ap );
+
+  confirm = ui_query_message( message );
 
   return confirm;
 }

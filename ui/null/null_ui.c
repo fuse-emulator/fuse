@@ -25,6 +25,7 @@
 
 #include "keyboard.h"
 #include "ui/ui.h"
+#include "ui/ui_internals.h"
 
 #include "../uijoystick.c"
 
@@ -170,7 +171,7 @@ ui_pokemem_selector( const char *filename )
 }
 
 int
-ui_query( const char *message )
+ui_query_message( const char *message )
 {
   /* Query confirmed */
   return 1;
