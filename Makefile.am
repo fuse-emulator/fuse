@@ -90,7 +90,11 @@ endif
 
 fuse_DEPENDENCIES =
 
-EXTRA_fuse_SOURCES =
+EXTRA_fuse_SOURCES = automation.c automation.h
+
+if ENABLE_AUTOMATION
+fuse_SOURCES += automation.c automation.h
+endif
 
 BUILT_SOURCES = options.h settings.c settings.h
 

@@ -86,6 +86,9 @@ print hashline( __LINE__ ), << 'CODE';
 #include <libxml/parser.h>
 #endif				/* #ifdef HAVE_LIB_XML2 */
 
+#ifdef ENABLE_AUTOMATION
+#include "automation.h"
+#endif
 #include "fuse.h"
 #include "infrastructure/startup_manager.h"
 #include "machine.h"
@@ -145,11 +148,20 @@ settings_init( int *first_arg, int argc, char **argv )
 
   settings_defaults( &settings_current );
 
-  error = read_config_file( &settings_current );
-  if( error ) return error;
+#ifdef ENABLE_AUTOMATION
+  if( !automation_options_present( argc, argv ) )
+#endif
+  {
+    error = read_config_file( &settings_current );
+    if( error ) return error;
+  }
 
   error = settings_command_line( &settings_current, first_arg, argc, argv );
   if( error ) return error;
+
+#ifdef ENABLE_AUTOMATION
+  if( automation_validate_scenario() ) return 1;
+#endif
 
   return 0;
 }
@@ -595,6 +607,10 @@ static int
 settings_command_line( settings_info *settings, int *first_arg,
                        int argc, char **argv )
 {
+#ifdef ENABLE_AUTOMATION
+  int automation_requested = automation_options_present( argc, argv );
+#endif
+
 #ifdef GEKKO
   /* No argv on the Wii. Just return */
   return 0;
@@ -634,6 +650,10 @@ CODE
 
 print hashline( __LINE__ ), << 'CODE';
 
+#ifdef ENABLE_AUTOMATION
+    { "automation-output", 1, NULL, 1000 },
+    { "automation-frames", 1, NULL, 1001 },
+#endif
     { "help", 0, NULL, 'h' },
     { "version", 0, NULL, 'V' },
 
@@ -684,11 +704,22 @@ foreach my $name ( sort keys %options ) {
 
 print hashline( __LINE__ ), << 'CODE';
 
+#ifdef ENABLE_AUTOMATION
+    case 1000:
+      if( automation_set_output_directory( optarg ) ) return 1;
+      break;
+    case 1001:
+      if( automation_set_frame_limit( optarg ) ) return 1;
+      break;
+#endif
     case 'h': settings->show_help = 1; break;
     case 'V': settings->show_version = 1; break;
 
     case ':':
     case '?':
+#ifdef ENABLE_AUTOMATION
+      if( automation_requested ) return 1;
+#endif
       break;
 
     default:

@@ -23,6 +23,9 @@
 
 #include "config.h"
 
+#ifdef ENABLE_AUTOMATION
+#include "automation.h"
+#endif
 #include "keyboard.h"
 #include "ui/ui.h"
 #include "ui/ui_internals.h"
@@ -104,7 +107,9 @@ ui_end( void )
 int
 ui_error_specific( ui_error_level severity, const char *message )
 {
-  /* No error */
+#ifdef ENABLE_AUTOMATION
+  automation_diagnostic( severity, message );
+#endif
   return 0;
 }
 

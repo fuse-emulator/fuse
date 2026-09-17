@@ -104,8 +104,8 @@ spectrum_frame_event_fn( libspectrum_dword last_tstates, int type,
   ui_error_frame();
 }
 
-static libspectrum_dword
-get_frame_count( void )
+libspectrum_dword
+spectrum_get_frame_count( void )
 {
   return frames_since_reset;
 }
@@ -119,7 +119,7 @@ spectrum_init( void *context )
   module_register( &module_info );
 
   debugger_system_variable_register( debugger_type_string,
-      frame_count_name, get_frame_count, NULL );
+      frame_count_name, spectrum_get_frame_count, NULL );
 
   return 0;
 }

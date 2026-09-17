@@ -768,9 +768,23 @@ fi
 AC_SUBST(XML_CFLAGS)
 AC_SUBST(XML_LIBS)
 
+dnl Development-only one-shot automation interface
+AC_ARG_ENABLE([automation],
+  AS_HELP_STRING([--enable-automation],
+                 [enable development automation interface]),
+  [automation=$enableval], [automation=no])
+if test "$automation" = yes; then
+  AC_DEFINE([ENABLE_AUTOMATION], 1,
+            [Defined if development automation is enabled])
+fi
+AM_CONDITIONAL([ENABLE_AUTOMATION], [test "$automation" = yes])
+
 dnl Work out which timer routines to use
 AC_MSG_CHECKING(which timer routines to use)
-if test "$UI" = sdl; then
+if test "$automation" = yes; then
+  TIMER_LIBADD='timer/null.$(OBJEXT)'
+  AC_MSG_RESULT(conditional virtual timer)
+elif test "$UI" = sdl; then
   TIMER_LIBADD='timer/sdl.$(OBJEXT)'
   AC_MSG_RESULT(SDL)
 elif test "$UI" = sdl2; then

@@ -54,6 +54,9 @@
 #include <libxml/encoding.h>
 #endif
 
+#ifdef ENABLE_AUTOMATION
+#include "automation.h"
+#endif
 #include "debugger/debugger.h"
 #include "display.h"
 #include "event.h"
@@ -201,15 +204,29 @@ int main(int argc, char **argv)
   if( settings_current.unittests ) {
     r = unittests_run();
   } else {
+#ifdef ENABLE_AUTOMATION
+    if( automation_active() ) automation_arm( spectrum_get_frame_count() );
+#endif
     while( !fuse_exiting ) {
       z80_do_opcodes();
       event_do_events();
+#ifdef ENABLE_AUTOMATION
+      if( automation_active() &&
+          automation_frame_limit_reached( spectrum_get_frame_count() ) )
+        fuse_exiting = 1;
+#endif
     }
     r = debugger_get_exit_code();
   }
 
   fuse_end();
-  
+#ifdef ENABLE_AUTOMATION
+  if( automation_active() ) {
+    if( automation_write_result() ) r = 1;
+    automation_end();
+  }
+#endif
+
   return r;
 }
 
@@ -381,6 +398,9 @@ static int fuse_init(int argc, char **argv)
 #endif
 
   if( settings_init( &first_arg, argc, argv ) ) return 1;
+#ifdef ENABLE_AUTOMATION
+  if( automation_active() ) settings_current.autosave_settings = 0;
+#endif
 
   if( settings_current.show_version ) {
     fuse_show_version();
@@ -538,6 +558,12 @@ static void fuse_show_help( void )
 {
   printf( "\n" );
   fuse_show_version();
+#ifdef ENABLE_AUTOMATION
+  printf(
+   "\nDevelopment automation options:\n\n"
+   "--automation-output <directory>  Write one-shot result artifacts here.\n"
+   "--automation-frames <count>      Stop after completed machine frames.\n" );
+#endif
   printf(
    "\nAvailable command-line options:\n\n"
    "Boolean options (use `--no-<option>' to turn off):\n\n"
