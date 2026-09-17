@@ -87,7 +87,7 @@ print hashline( __LINE__ ), << 'CODE';
 #endif				/* #ifdef HAVE_LIB_XML2 */
 
 #ifdef ENABLE_AUTOMATION
-#include "automation.h"
+#include "automation/automation.h"
 #endif
 #include "fuse.h"
 #include "infrastructure/startup_manager.h"
@@ -653,6 +653,10 @@ print hashline( __LINE__ ), << 'CODE';
 #ifdef ENABLE_AUTOMATION
     { "automation-output", 1, NULL, 1000 },
     { "automation-frames", 1, NULL, 1001 },
+    { "automation-max-frames", 1, NULL, 1002 },
+    { "automation-success-pc", 1, NULL, 1003 },
+    { "automation-failure-pc", 1, NULL, 1004 },
+    { "automation-failure-pc-ignore", 1, NULL, 1005 },
 #endif
     { "help", 0, NULL, 'h' },
     { "version", 0, NULL, 'V' },
@@ -709,7 +713,17 @@ print hashline( __LINE__ ), << 'CODE';
       if( automation_set_output_directory( optarg ) ) return 1;
       break;
     case 1001:
+    case 1002:
       if( automation_set_frame_limit( optarg ) ) return 1;
+      break;
+    case 1003:
+      if( automation_set_success_pc( optarg ) ) return 1;
+      break;
+    case 1004:
+      if( automation_set_failure_pc( optarg ) ) return 1;
+      break;
+    case 1005:
+      if( automation_set_failure_pc_ignore( optarg ) ) return 1;
       break;
 #endif
     case 'h': settings->show_help = 1; break;

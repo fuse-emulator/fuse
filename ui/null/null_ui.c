@@ -24,7 +24,7 @@
 #include "config.h"
 
 #ifdef ENABLE_AUTOMATION
-#include "automation.h"
+#include "automation/automation.h"
 #endif
 #include "keyboard.h"
 #include "ui/ui.h"

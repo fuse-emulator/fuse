@@ -55,7 +55,7 @@
 #endif
 
 #ifdef ENABLE_AUTOMATION
-#include "automation.h"
+#include "automation/automation.h"
 #endif
 #include "debugger/debugger.h"
 #include "display.h"
@@ -217,14 +217,17 @@ int main(int argc, char **argv)
 #endif
     }
     r = debugger_get_exit_code();
+#ifdef ENABLE_AUTOMATION
+    if( automation_active() ) r = automation_exit_status();
+#endif
   }
 
+#ifdef ENABLE_AUTOMATION
+  if( automation_active() && automation_write_result() ) r = 1;
+#endif
   fuse_end();
 #ifdef ENABLE_AUTOMATION
-  if( automation_active() ) {
-    if( automation_write_result() ) r = 1;
-    automation_end();
-  }
+  if( automation_active() ) automation_end();
 #endif
 
   return r;
@@ -561,8 +564,12 @@ static void fuse_show_help( void )
 #ifdef ENABLE_AUTOMATION
   printf(
    "\nDevelopment automation options:\n\n"
-   "--automation-output <directory>  Write one-shot result artifacts here.\n"
-   "--automation-frames <count>      Stop after completed machine frames.\n" );
+   "--automation-output <directory>       Write one-shot result artifacts here.\n"
+   "--automation-frames <count>           Stop after completed machine frames.\n"
+   "--automation-max-frames <count>       Deadline for a condition run.\n"
+   "--automation-success-pc <address>     Stop successfully at this PC.\n"
+   "--automation-failure-pc <address>     Stop unsuccessfully at this PC.\n"
+   "--automation-failure-pc-ignore <n>    Ignore the first n failure hits.\n" );
 #endif
   printf(
    "\nAvailable command-line options:\n\n"

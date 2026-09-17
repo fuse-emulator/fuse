@@ -33,6 +33,13 @@ noinst_PROGRAMS += unittests/sdl2joysticktest
 noinst_PROGRAMS += unittests/sdl2mousetest
 noinst_PROGRAMS += unittests/palcompositetest
 noinst_PROGRAMS += unittests/scalerexpandtest
+if ENABLE_AUTOMATION
+noinst_PROGRAMS += unittests/automation_json_test
+unittests_automation_json_test_SOURCES = \
+	unittests/automation_json.c \
+	automation/json.c \
+	automation/json.h
+endif
 
 unittests_displaytest_SOURCES = \
         unittests/displaytest.c \

@@ -17,35 +17,41 @@
 */
 #ifndef FUSE_AUTOMATION_H
 #define FUSE_AUTOMATION_H
-
 #include <stddef.h>
+#include "libspectrum.h"
 #include "ui/ui.h"
+#include "utils.h"
 
-typedef struct automation_scenario {
-  char *output_directory;
-  unsigned long maximum_frames;
+typedef struct automation_condition { int present; libspectrum_word address;
+                                      unsigned long ignore, hits;
+} automation_condition;
+typedef struct automation_scenario { char *output_directory;
+                                     unsigned long maximum_frames;
+                                     automation_condition success, failure;
 } automation_scenario;
-
-typedef enum automation_termination_type {
-  AUTOMATION_TERMINATION_FRAMES,
-  AUTOMATION_TERMINATION_ERROR
-} automation_termination_type;
-
-typedef struct automation_result {
-  unsigned long frames_completed;
-  automation_termination_type termination;
-} automation_result;
-
+typedef enum automation_termination_type { AUTOMATION_TERMINATION_FRAMES,
+                                           AUTOMATION_TERMINATION_SUCCESS,
+                                           AUTOMATION_TERMINATION_FAILURE,
+                                           AUTOMATION_TERMINATION_DEADLINE,
+                                           AUTOMATION_TERMINATION_ERROR }
+automation_termination_type;
+typedef struct automation_result { unsigned long frames_completed;
+                                   automation_termination_type termination;
+                                   libspectrum_word pc; } automation_result;
 int automation_options_present( int argc, char **argv );
 int automation_set_output_directory( const char *directory );
 int automation_set_frame_limit( const char *frames );
+int automation_set_success_pc( const char *text );
+int automation_set_failure_pc( const char *text );
+int automation_set_failure_pc_ignore( const char *text );
 int automation_validate_scenario( void );
 int automation_active( void );
-unsigned long automation_maximum_frames( void );
 void automation_arm( unsigned long frame_count );
+int automation_check_pc( libspectrum_word pc );
 int automation_frame_limit_reached( unsigned long frame_count );
+int automation_exit_status( void );
+void automation_record_media( const utils_file *file );
 void automation_diagnostic( ui_error_level severity, const char *message );
 int automation_write_result( void );
 void automation_end( void );
-
 #endif

@@ -17,7 +17,7 @@
 */
 #include "config.h"
 
-#include "automation.h"
+#include "automation/automation.h"
 #include "compat.h"
 #include "timer/timer.h"
 

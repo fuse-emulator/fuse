@@ -38,6 +38,9 @@
 
 #include "libspectrum.h"
 
+#ifdef ENABLE_AUTOMATION
+#include "automation/automation.h"
+#endif
 #include "fuse.h"
 #include "machines/specplus3.h"
 #include "memory_pages.h"
@@ -100,6 +103,9 @@ utils_open_loaded_file( utils_file *file, int autoload,
   if( error ) return error;
 
   if( utils_file_identify( file ) ) return 1;
+#ifdef ENABLE_AUTOMATION
+  if( automation_active() ) automation_record_media( file );
+#endif
 
   /* Keep the existing dispatch readable while the loaded file owns the data. */
   {

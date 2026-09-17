@@ -774,6 +774,9 @@ AC_ARG_ENABLE([automation],
                  [enable development automation interface]),
   [automation=$enableval], [automation=no])
 if test "$automation" = yes; then
+  if test "$zlib" != yes; then
+    AC_MSG_ERROR([development automation requires zlib])
+  fi
   AC_DEFINE([ENABLE_AUTOMATION], 1,
             [Defined if development automation is enabled])
 fi

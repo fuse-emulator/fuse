@@ -90,11 +90,7 @@ endif
 
 fuse_DEPENDENCIES =
 
-EXTRA_fuse_SOURCES = automation.c automation.h
-
-if ENABLE_AUTOMATION
-fuse_SOURCES += automation.c automation.h
-endif
+EXTRA_fuse_SOURCES =
 
 BUILT_SOURCES = options.h settings.c settings.h
 
@@ -216,6 +212,7 @@ windres.o: windres.rc data/win32/winfuse.ico data/win32/fuse.manifest $(ui_win32
 endif
 
 
+include automation/Makefile.am
 include compat/Makefile.am
 include data/Makefile.am
 include debugger/Makefile.am
@@ -254,5 +251,8 @@ check-local: fuse unittests/displaytest unittests/sdl2displaytest unittests/sdl2
 	$(top_builddir)/unittests/sdl2mousetest
 	$(top_builddir)/unittests/palcompositetest
 	$(top_builddir)/unittests/scalerexpandtest
+if ENABLE_AUTOMATION
+	$(top_builddir)/unittests/automation_json_test
+endif
 	$(top_builddir)/z80/coretest $(srcdir)/z80/tests/tests.in > $(top_builddir)/z80/tests.actual
 	cmp $(top_builddir)/z80/tests.actual $(srcdir)/z80/tests/tests.expected

@@ -427,6 +427,20 @@ debugger_check( debugger_breakpoint_type type GCC_UNUSED, libspectrum_dword valu
   abort();
 }
 
+#ifdef ENABLE_AUTOMATION
+int
+automation_active( void )
+{
+  return 0;
+}
+
+int
+automation_check_pc( libspectrum_word pc GCC_UNUSED )
+{
+  return 0;
+}
+#endif
+
 void debugger_system_variable_register(
   const char *type, const char *detail,
   debugger_get_system_variable_fn_t get,

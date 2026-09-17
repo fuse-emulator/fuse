@@ -28,6 +28,10 @@
 
 #include <stdio.h>
 
+#ifdef ENABLE_AUTOMATION
+#include "automation/automation.h"
+#endif
+
 #include "debugger/debugger.h"
 #include "event.h"
 #include "machine.h"
@@ -158,6 +162,16 @@ z80_do_opcodes( void )
     }
 
     END_CHECK
+
+    /* Automation conditions share this instruction-boundary observation
+       point without creating debugger state or commands. */
+#ifdef ENABLE_AUTOMATION
+    CHECK( automation, automation_active() )
+
+    if( automation_check_pc( PC ) ) break;
+
+    END_CHECK
+#endif
 
     /* Check if the debugger should become active at this point */
     CHECK( debugger, debugger_mode != DEBUGGER_MODE_INACTIVE )
