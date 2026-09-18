@@ -145,6 +145,7 @@ typedef struct compat_file_vtable_t {
   int (*write)( compat_fd fd, const unsigned char *buffer, size_t length );
   int (*close)( compat_fd fd );
   int (*exists)( const char *path );
+  int (*unlink)( const char *path );
 } compat_file_vtable_t;
 
 /* Copies the supplied operations into the active file backend. */
@@ -159,6 +160,8 @@ int compat_file_write( compat_fd fd, const unsigned char *buffer,
                        size_t length );
 int compat_file_close( compat_fd fd );
 int compat_file_exists( const char *path );
+/* Remove a file; unlike directory removal this never removes directories. */
+int compat_file_unlink( const char *path );
 
 /* Directory handling */
 

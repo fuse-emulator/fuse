@@ -83,10 +83,16 @@ expresses the scenario's intent.
 --automation-capture-audio
 ```
 
-`--automation-capture-screen` writes the last completed display frame to
-`screen.png` using the current scaler. It requires the null UI and a build with
-PNG support. The artifact dimensions describe the scaled PNG, while
-`pixel_crc32` identifies the unscaled logical RGB24 framebuffer.
+`--automation-capture-screen` writes the last completed logical display frame
+to `screen.png`. It requires the null UI and a build with PNG support. The
+`logical-display` stage starts with the null UI framebuffer after normal
+ULA/Spectrum, border, Timex/Pentagon and other machine display rendering and
+Fuse's fixed palette (or black-and-white conversion). The configured Fuse
+scaler is then applied when serializing the PNG, including a selected
+PAL/NTSC/composite scaler. It remains before host-window scaling and
+SDL/OpenGL/Metal/Cocoa or other host presentation. The PNG dimensions describe
+the scaled output, while `pixel_crc32` deliberately identifies the unscaled
+logical RGB24 framebuffer.
 
 `--automation-capture-audio` enables the null sound driver as a virtual output
 device and writes `audio.wav`. It overrides `--no-sound` because normal sound
@@ -94,7 +100,10 @@ synthesis and mixing must run for capture, but it never opens a host device.
 Only low-level PCM blocks delivered after the scenario is armed are retained.
 For a fixed-frame run this is exactly the normal sound output associated with
 the requested completed frames; Fuse does not synthesize or flush an extra
-partial frame at termination.
+partial frame at termination. Its `final-mix` stage is the PCM returned by
+`output_mixer_end_frame()` and delivered through Fuse's normal low-level sound
+path, after AY, ULA/MIC/beeper, speech and peripheral source routing and mixing,
+but before any host sound-device transformation.
 
 For example:
 
@@ -219,7 +228,11 @@ A representative RZX result is:
   "scenario": {
     "maximum_frames": 10000000,
     "until_rzx_end": true,
-    "requested_machine": "48"
+    "requested_machine": "48",
+    "capture": {
+      "screen": true,
+      "audio": true
+    }
   },
   "execution": {
     "frames_completed": 429,
@@ -285,7 +298,20 @@ A representative RZX result is:
     "fastload": true,
     "tape_traps": true,
     "loader_acceleration": true,
-    "phantom_typist_mode": "Auto"
+    "phantom_typist_mode": "Auto",
+    "audio": {
+      "emulation_speed_percent": 100,
+      "sample_rate": 44100,
+      "channel_mode": "mono",
+      "ay_channel_arrangement": "none",
+      "speaker_mode": "automatic",
+      "effective_speaker_model": "beeper"
+    },
+    "display": {
+      "colour_mode": "colour",
+      "palette": "spectrum-rgb",
+      "effective_scaler": "Normal"
+    }
   },
   "diagnostics": [
     {
@@ -295,6 +321,8 @@ A representative RZX result is:
   ],
   "artifacts": {
     "screen": {
+      "status": "ok",
+      "stage": "logical-display",
       "path": "screen.png",
       "size": 601,
       "file_crc32": "3c471066",
@@ -304,6 +332,8 @@ A representative RZX result is:
       "pixel_crc32": "7f3ff1df"
     },
     "audio": {
+      "status": "ok",
+      "stage": "final-mix",
       "path": "audio.wav",
       "size": 5326,
       "file_crc32": "336b5007",
@@ -323,6 +353,8 @@ A representative RZX result is:
 `scenario.maximum_frames` contains the fixed-frame count or deadline.
 `scenario.until_rzx_end` records whether RZX completion was requested.
 `scenario.requested_machine` records the configured machine identifier.
+`scenario.capture.screen` and `scenario.capture.audio` always record capture
+intent, independently of whether either artifact was ultimately produced.
 
 For PC runs, the scenario also contains `success_pc`, and, when configured,
 `failure_pc` and `failure_pc_ignore`.
@@ -391,6 +423,25 @@ The result records settings known to affect automated loading:
 
 This is not a complete serialization of all Fuse settings.
 
+When audio capture is requested, `settings.audio` records the effective speed
+and processor clock used by synthesis, effective sample rate and channel mode,
+resolved AY channel arrangement, clamped AY/beeper and auxiliary-source gains,
+the selected and machine-resolved speaker model, source routing, loading-sound
+policy, and enabled sound peripherals. In particular, an automatic speaker
+selection is retained as the mode while `effective_speaker_model` records its
+resolved value.
+
+When screen capture is requested, `settings.display` records the effective
+colour/greyscale conversion, fixed logical palette, and effective scaler used
+to generate the PNG. Machine display mode,
+screen page, and border are produced by normal emulation and are represented
+by the actual pixels and final machine state rather than copied as generic
+preferences.
+
+Settings describe emulator configuration contributing to evidence; artifact
+members describe the stream or image actually produced. The artifact sample
+rate and dimensions remain authoritative for the serialized evidence.
+
 ### Diagnostics
 
 The null UI forwards `ui_error_specific()` messages to the coordinator. Each
@@ -401,14 +452,23 @@ special process status.
 
 ### Artifacts
 
-With `--automation-capture-screen`, `artifacts.screen` describes `screen.png`
-and records its scaled dimensions, the unscaled logical RGB24 pixel CRC-32,
-and serialized file CRC-32.
-With `--automation-capture-audio`, `artifacts.audio` describes `audio.wav` and
-records its sample rate, channels, S16LE PCM-frame count, PCM CRC-32, file
-CRC-32, and zero frame-relative starting tstate. Audio contains exactly the
-normal low-level PCM deliveries for completed frames after automation is armed;
-startup audio and an extra partial termination frame are not included.
+A successful requested artifact has `status: "ok"`. Screen artifacts have the
+stable stage `logical-display`; audio artifacts have the stable stage
+`final-mix`. `artifacts.screen` records the scaled PNG dimensions, the
+unscaled logical RGB24 pixel CRC-32, and serialized PNG CRC-32.
+`artifacts.audio` records the actual sample rate, channels, S16LE PCM-frame
+count, PCM CRC-32, WAV CRC-32, and zero frame-relative starting tstate. Audio
+contains exactly the normal low-level PCM deliveries for completed frames after
+automation is armed; startup audio and an extra partial termination frame are
+not included.
+
+If capture, encoding, writing, or finalization fails, the requested artifact is
+retained with `status: "error"`, its semantic `stage`, and a `message`; it has
+no successful path/hash metadata. Incomplete PNG/WAV files are removed. Other
+successfully produced requested evidence is retained. The execution termination
+becomes `error` and the process exits with status 1. An absent artifact can
+therefore be distinguished from an unrequested capture through
+`scenario.capture`, without parsing diagnostics or stderr.
 
 The `state` object is a fixed final summary of CPU registers, interrupt state,
 frame-relative tstate, screen and border state, and tape/RZX activity. It is

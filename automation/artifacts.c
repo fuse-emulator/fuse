@@ -36,10 +36,11 @@ static size_t screen_width, screen_height;
 static size_t screen_file_width, screen_file_height;
 static libspectrum_signed_word *pcm;
 static size_t pcm_count, pcm_capacity;
-static int pcm_rate, pcm_channels;
+static int pcm_rate, pcm_channels, audio_initialized;
 static uLong screen_crc, screen_file_crc, pcm_crc, audio_file_crc;
 static size_t screen_file_size, audio_file_size;
 static int screen_written, audio_written;
+static const char *screen_error, *audio_error;
 
 static uLong
 checksum( const unsigned char *data, size_t length )
@@ -85,6 +86,14 @@ automation_artifacts_capture_screen( const libspectrum_byte *pixels,
 
   screen_width = width;
   screen_height = height;
+}
+
+void
+automation_artifacts_audio_initialized( int sample_rate, int channels )
+{
+  audio_initialized = 1;
+  pcm_rate = sample_rate;
+  pcm_channels = channels;
 }
 
 void
@@ -144,7 +153,10 @@ write_screen( const char *directory )
   scaler_type scaler = current_scaler == SCALER_NUM ? SCALER_NORMAL :
                        current_scaler;
 
-  if( !screen_rgb ) return 0;
+  if( !screen_rgb ) {
+    screen_error = "logical framebuffer unavailable";
+    return 1;
+  }
 
   path = libspectrum_new( char, strlen( directory ) + 12 );
   sprintf( path, "%s" FUSE_DIR_SEP_STR "screen.png", directory );
@@ -157,9 +169,13 @@ write_screen( const char *directory )
     screen_file_width = screen_width * factor;
     screen_file_height = screen_height * factor;
     screen_written = 1;
+  } else {
+    screen_error = "could not encode or finalize screen.png";
+    compat_file_unlink( path );
   }
 #else
   ui_error( UI_ERROR_ERROR, "Screen capture requires PNG support" );
+  screen_error = "screen capture requires PNG support";
   error = 1;
 #endif
   libspectrum_free( path );
@@ -209,10 +225,16 @@ write_wav( const char *path, const libspectrum_byte header[44],
   if( compat_file_write( file, header, 44 ) ||
       ( byte_count && compat_file_write( file, bytes, byte_count ) ) ) {
     compat_file_close( file );
+    compat_file_unlink( path );
     return 1;
   }
 
-  return compat_file_close( file );
+  if( compat_file_close( file ) ) {
+    compat_file_unlink( path );
+    return 1;
+  }
+
+  return 0;
 }
 
 static int
@@ -222,6 +244,11 @@ write_audio( const char *directory )
   size_t byte_count;
   char *path;
   int error;
+
+  if( !audio_initialized ) {
+    audio_error = "null sound capture device was not initialized";
+    return 1;
+  }
 
   bytes = make_pcm_bytes( &byte_count );
   make_wav_header( header, byte_count );
@@ -233,6 +260,8 @@ write_audio( const char *directory )
   if( !error ) {
     pcm_crc = checksum( bytes, byte_count );
     audio_written = 1;
+  } else {
+    audio_error = "could not write or finalize audio.wav";
   }
 
   libspectrum_free( bytes );
@@ -244,9 +273,11 @@ int
 automation_artifacts_write( const char *directory, int capture_screen,
                             int capture_audio )
 {
-  if( capture_screen && write_screen( directory ) ) return 1;
-  if( capture_audio && write_audio( directory ) ) return 1;
-  return 0;
+  int error = 0;
+
+  if( capture_screen ) error |= write_screen( directory );
+  if( capture_audio ) error |= write_audio( directory );
+  return error;
 }
 
 static void
@@ -269,6 +300,8 @@ write_screen_json( automation_json *json )
   if( !screen_written ) return;
 
   automation_json_object_begin( json, "screen" );
+  automation_json_string( json, "status", "ok" );
+  automation_json_string( json, "stage", AUTOMATION_ARTIFACT_STAGE_SCREEN );
   write_file_identity( json, "screen.png", screen_file_size, screen_file_crc );
   automation_json_ulong( json, "width", screen_file_width );
   automation_json_ulong( json, "height", screen_file_height );
@@ -286,6 +319,8 @@ write_audio_json( automation_json *json )
   if( !audio_written ) return;
 
   automation_json_object_begin( json, "audio" );
+  automation_json_string( json, "status", "ok" );
+  automation_json_string( json, "stage", AUTOMATION_ARTIFACT_STAGE_AUDIO );
   write_file_identity( json, "audio.wav", audio_file_size, audio_file_crc );
   automation_json_ulong( json, "sample_rate", pcm_rate );
   automation_json_ulong( json, "channels", pcm_channels );
@@ -298,11 +333,29 @@ write_audio_json( automation_json *json )
   automation_json_end( json );
 }
 
+static void
+write_error_json( automation_json *json, const char *name, const char *stage,
+                  const char *message )
+{
+  automation_json_object_begin( json, name );
+  automation_json_string( json, "status", "error" );
+  automation_json_string( json, "stage", stage );
+  automation_json_string( json, "message", message );
+  automation_json_end( json );
+}
+
 void
 automation_artifacts_write_json( automation_json *json )
 {
   write_screen_json( json );
+  if( screen_error )
+    write_error_json( json, "screen", AUTOMATION_ARTIFACT_STAGE_SCREEN,
+                      screen_error );
+
   write_audio_json( json );
+  if( audio_error )
+    write_error_json( json, "audio", AUTOMATION_ARTIFACT_STAGE_AUDIO,
+                      audio_error );
 }
 
 void

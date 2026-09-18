@@ -7,6 +7,8 @@ EXTRA_fuse_SOURCES += \
 	     automation/automation.h \
 	     automation/json.c \
 	     automation/json.h \
+	     automation/result_settings.c \
+	     automation/result_settings.h \
 	     automation/state.c \
 	     automation/state.h
 
@@ -18,6 +20,8 @@ fuse_SOURCES += \
 	automation/automation.h \
 	automation/json.c \
 	automation/json.h \
+	automation/result_settings.c \
+	automation/result_settings.h \
 	automation/state.c \
 	automation/state.h
 endif

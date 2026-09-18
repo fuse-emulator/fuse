@@ -2702,7 +2702,7 @@ utils_open_loaded_disk_merge_test( void )
 }
 
 static FILE compat_file_test_file;
-static int compat_file_test_calls[ 6 ];
+static int compat_file_test_calls[ 7 ];
 
 static compat_fd compat_file_test_open( const char *path GCC_UNUSED,
                                         int write GCC_UNUSED )
@@ -2720,13 +2720,16 @@ static int compat_file_test_close( compat_fd fd GCC_UNUSED )
 { compat_file_test_calls[ 4 ]++; return 0; }
 static int compat_file_test_exists( const char *path GCC_UNUSED )
 { compat_file_test_calls[ 5 ]++; return 1; }
+static int compat_file_test_unlink( const char *path GCC_UNUSED )
+{ compat_file_test_calls[ 6 ]++; return 0; }
 
 static int
 compat_file_vtable_test( void )
 {
   compat_file_vtable_t vtable = {
     compat_file_test_open, compat_file_test_get_length, compat_file_test_read,
-    compat_file_test_write, compat_file_test_close, compat_file_test_exists
+    compat_file_test_write, compat_file_test_close, compat_file_test_exists,
+    compat_file_test_unlink
   };
   compat_file_vtable_t previous_vtable;
   utils_file file;
@@ -2743,10 +2746,10 @@ compat_file_vtable_test( void )
   if( fd != &compat_file_test_file || compat_file_get_length( fd ) != 42 ||
       compat_file_read( fd, &file ) ||
       compat_file_write( fd, &buffer, 1 ) || compat_file_close( fd ) ||
-      !compat_file_exists( "test" ) ) r++;
+      !compat_file_exists( "test" ) || compat_file_unlink( "test" ) ) r++;
 
   compat_file_set_vtable( &previous_vtable );
-  for( i = 0; i < 6; i++ ) if( compat_file_test_calls[ i ] != 1 ) r++;
+  for( i = 0; i < 7; i++ ) if( compat_file_test_calls[ i ] != 1 ) r++;
   if( r ) printf( "compat_file_vtable_test failed\n" );
   return r;
 }

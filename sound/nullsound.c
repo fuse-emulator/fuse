@@ -21,6 +21,7 @@
 #include "sound.h"
 
 #ifdef ENABLE_AUTOMATION
+#include "automation/artifacts.h"
 #include "automation/automation.h"
 #endif
 
@@ -33,6 +34,7 @@ sound_lowlevel_init( const char *device, int *freqptr, int *stereoptr )
   if( automation_capture_audio_enabled() ) {
     sample_rate = *freqptr;
     channels = *stereoptr == SOUND_STEREO_AY_NONE ? 1 : 2;
+    automation_artifacts_audio_initialized( sample_rate, channels );
     return 0;
   }
 #endif

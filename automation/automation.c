@@ -28,6 +28,7 @@
 #include "automation.h"
 #include "artifacts.h"
 #include "json.h"
+#include "result_settings.h"
 #include "state.h"
 #include "compat.h"
 #include "fuse.h"
@@ -421,6 +422,10 @@ write_scenario( automation_json *json )
     automation_json_ulong( json, "failure_pc", scenario.failure.address );
     automation_json_ulong( json, "failure_pc_ignore", scenario.failure.ignore );
   }
+  automation_json_object_begin( json, "capture" );
+  automation_json_boolean( json, "screen", scenario.capture_screen );
+  automation_json_boolean( json, "audio", scenario.capture_audio );
+  automation_json_end( json );
   automation_json_end( json );
 }
 
@@ -495,20 +500,6 @@ write_identity( automation_json *json )
 }
 
 static void
-write_settings( automation_json *json )
-{
-  automation_json_object_begin( json, "settings" );
-  automation_json_boolean( json, "autoload", settings_current.auto_load );
-  automation_json_boolean( json, "fastload", settings_current.fastload );
-  automation_json_boolean( json, "tape_traps", settings_current.tape_traps );
-  automation_json_boolean( json, "loader_acceleration",
-                           settings_current.accelerate_loader );
-  automation_json_string( json, "phantom_typist_mode",
-                          settings_current.phantom_typist_mode );
-  automation_json_end( json );
-}
-
-static void
 write_diagnostics( automation_json *json )
 {
   automation_json_array_begin( json, "diagnostics" );
@@ -532,9 +523,10 @@ automation_write_result( void )
   compat_fd file;
   automation_json json;
 
-  if( automation_artifacts_write( scenario.output_directory,
-                                  scenario.capture_screen,
-                                  scenario.capture_audio ) ) return 1;
+  int artifact_error = automation_artifacts_write( scenario.output_directory,
+                                                    scenario.capture_screen,
+                                                    scenario.capture_audio );
+  if( artifact_error ) result.termination = AUTOMATION_TERMINATION_ERROR;
 
   path = libspectrum_new( char, strlen( scenario.output_directory ) + 13 );
   sprintf( path, "%s" FUSE_DIR_SEP_STR "result.json",
@@ -552,7 +544,8 @@ automation_write_result( void )
   write_execution( &json );
   automation_state_write_json( &json );
   write_identity( &json );
-  write_settings( &json );
+  automation_result_settings_write_json( &json, scenario.capture_audio,
+                                          scenario.capture_screen );
   write_diagnostics( &json );
   automation_json_object_begin( &json, "artifacts" );
   automation_artifacts_write_json( &json );
@@ -564,7 +557,7 @@ automation_write_result( void )
   if( compat_file_close( file ) )
     error = 1;
 
-  return error;
+  return error || artifact_error;
 }
 
 void

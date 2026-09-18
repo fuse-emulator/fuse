@@ -23,11 +23,16 @@
 #include "libspectrum.h"
 #include "json.h"
 
+/* Stable semantic observation stages in the result contract. */
+#define AUTOMATION_ARTIFACT_STAGE_SCREEN "logical-display"
+#define AUTOMATION_ARTIFACT_STAGE_AUDIO  "final-mix"
+
 void automation_artifacts_capture_screen( const libspectrum_byte *pixels,
                                           size_t width, size_t height );
 void automation_artifacts_capture_pcm( const libspectrum_signed_word *samples,
                                        int count, int sample_rate,
                                        int channels );
+void automation_artifacts_audio_initialized( int sample_rate, int channels );
 int automation_artifacts_write( const char *directory, int capture_screen,
                                 int capture_audio );
 void automation_artifacts_write_json( automation_json *json );
