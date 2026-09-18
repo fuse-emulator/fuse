@@ -23,11 +23,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <zlib.h>
 
 #include "automation.h"
 #include "json.h"
+#include "compat.h"
 #include "fuse.h"
 #include "machine.h"
 #include "memory_pages.h"
@@ -425,12 +425,13 @@ write_diagnostics( automation_json *json )
 int
 automation_write_result( void )
 {
-  char *path; FILE *file; automation_json json;
-  if( mkdir( scenario.output_directory, 0777 ) && errno != EEXIST ) return 1;
+  char *path; compat_fd file; automation_json json;
   path = malloc( strlen( scenario.output_directory ) + 13 );
   if( !path ) return 1;
-  sprintf( path, "%s/result.json", scenario.output_directory );
-  file = fopen( path, "w" ); free( path ); if( !file ) return 1;
+  sprintf( path, "%s" FUSE_DIR_SEP_STR "result.json",
+           scenario.output_directory );
+  file = compat_file_open( path, 1 ); free( path );
+  if( file == COMPAT_FILE_OPEN_FAILED ) return 1;
   automation_json_init( &json, file );
   automation_json_object_begin( &json, NULL );
   automation_json_ulong( &json, "schema", 1 );
@@ -440,7 +441,7 @@ automation_write_result( void )
   automation_json_end( &json ); automation_json_end( &json );
   fputc( '\n', file );
   int error = automation_json_error( &json );
-  if( fclose( file ) ) error = 1;
+  if( compat_file_close( file ) ) error = 1;
   return error;
 }
 
