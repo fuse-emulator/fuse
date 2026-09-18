@@ -161,6 +161,7 @@ settings_init( int *first_arg, int argc, char **argv )
 
 #ifdef ENABLE_AUTOMATION
   if( automation_validate_scenario() ) return 1;
+  if( automation_capture_audio_enabled() ) settings_current.sound = 1;
 #endif
 
   return 0;
@@ -658,6 +659,8 @@ print hashline( __LINE__ ), << 'CODE';
     { "automation-failure-pc", 1, NULL, 1004 },
     { "automation-failure-pc-ignore", 1, NULL, 1005 },
     { "automation-until-rzx-end", 0, NULL, 1006 },
+    { "automation-capture-screen", 0, NULL, 1007 },
+    { "automation-capture-audio", 0, NULL, 1008 },
 #endif
     { "help", 0, NULL, 'h' },
     { "version", 0, NULL, 'V' },
@@ -728,6 +731,12 @@ print hashline( __LINE__ ), << 'CODE';
       break;
     case 1006:
       automation_set_until_rzx_end();
+      break;
+    case 1007:
+      automation_set_capture_screen();
+      break;
+    case 1008:
+      automation_set_capture_audio();
       break;
 #endif
     case 'h': settings->show_help = 1; break;

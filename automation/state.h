@@ -1,5 +1,5 @@
-/* nullsound.c: dummy sound routines
-   Copyright (c) 2003-2007 Philip Kendall
+/* state.h: fixed automation state summary
+   Copyright (c) 2026 Fredrick Meunier
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -14,40 +14,13 @@
    You should have received a copy of the GNU General Public License along
    with this program; if not, write to the Free Software Foundation, Inc.,
    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-
 */
 
-#include "config.h"
-#include "sound.h"
+#ifndef FUSE_AUTOMATION_STATE_H
+#define FUSE_AUTOMATION_STATE_H
 
-#ifdef ENABLE_AUTOMATION
-#include "automation/automation.h"
+#include "json.h"
+
+void automation_state_write_json( automation_json *json );
+
 #endif
-
-static int sample_rate, channels;
-
-int
-sound_lowlevel_init( const char *device, int *freqptr, int *stereoptr )
-{
-#ifdef ENABLE_AUTOMATION
-  if( automation_capture_audio_enabled() ) {
-    sample_rate = *freqptr;
-    channels = *stereoptr == SOUND_STEREO_AY_NONE ? 1 : 2;
-    return 0;
-  }
-#endif
-  return 1;
-}
-
-void
-sound_lowlevel_end( void )
-{
-}
-
-void
-sound_lowlevel_frame( libspectrum_signed_word *data, int len )
-{
-#ifdef ENABLE_AUTOMATION
-  automation_capture_pcm( data, len, sample_rate, channels );
-#endif
-}

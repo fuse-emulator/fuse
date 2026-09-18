@@ -294,7 +294,17 @@ RZX sentinel warnings and compatibility notices therefore remain structured
 warnings rather than changing an otherwise successful termination into a
 special process status.
 
-`artifacts` is currently an empty object.
+With `--automation-capture-screen`, `artifacts.screen` describes `screen.png`
+and records its dimensions, RGB24 pixel CRC-32, and serialized file CRC-32.
+With `--automation-capture-audio`, `artifacts.audio` describes `audio.wav` and
+records its sample rate, channels, S16LE PCM-frame count, PCM CRC-32, file
+CRC-32, and zero frame-relative starting tstate. Audio contains exactly the
+normal low-level PCM deliveries for completed frames after automation is armed;
+startup audio and an extra partial termination frame are not included.
+
+The `state` object is a fixed final summary of CPU registers, interrupt state,
+frame-relative tstate, screen and border state, and tape/RZX activity. It is
+not a general inspection interface.
 
 ## Process exit status
 
@@ -317,7 +327,9 @@ The interface intentionally remains narrow:
 - there are no arbitrary debugger commands;
 - there is no arbitrary memory or register query API;
 - there is no scripted keyboard/joystick input;
-- there is no framebuffer, audio, trace, or compact-state capture yet;
+- screen capture requires a build with PNG support and the null UI;
+- audio capture requires the null sound driver;
+- there is no instruction trace or arbitrary state capture;
 - hashes are CRC-32 rather than cryptographic content hashes;
 - diagnostics are retained in memory for the duration of a run and are not yet
   bounded;

@@ -26,7 +26,9 @@
 #include <zlib.h>
 
 #include "automation.h"
+#include "artifacts.h"
 #include "json.h"
+#include "state.h"
 #include "compat.h"
 #include "fuse.h"
 #include "machine.h"
@@ -34,7 +36,8 @@
 #include "settings.h"
 #include "utils.h"
 
-typedef struct diagnostic { ui_error_level severity; char *message;} diagnostic;
+typedef struct diagnostic { ui_error_level severity;
+                            char *message;} diagnostic;
 static automation_scenario scenario;
 static automation_result result;
 static unsigned long first_frame;
@@ -48,11 +51,14 @@ static uLong rzx_crc32, snapshot_crc32;
 static size_t rzx_size, snapshot_size;
 static char *rzx_name, *snapshot_name;
 static int rzx_recorded, snapshot_recorded;
+static int armed;
 
 static int
 parse_count( const char *text, unsigned long *value, int allow_zero )
 {
-  char *end; errno = 0; *value = strtoul( text, &end, 0 );
+  char *end;
+  errno = 0;
+  *value = strtoul( text, &end, 0 );
   return errno || !text[0] || *end || ( !allow_zero && !*value );
 }
 
@@ -62,7 +68,8 @@ set_address( const char *text, automation_condition *condition )
   unsigned long value;
 
   if( parse_count( text, &value, 1 ) || value > 0xffff ) {
-    fprintf( stderr, "invalid automation PC address: %s\n", text ); return 1;
+    fprintf( stderr, "invalid automation PC address: %s\n", text );
+    return 1;
   }
 
   condition->present = 1;
@@ -108,6 +115,30 @@ automation_set_until_rzx_end( void )
   scenario.until_rzx_end = 1;
 }
 
+void
+automation_set_capture_screen( void )
+{
+  scenario.capture_screen = 1;
+}
+
+void
+automation_set_capture_audio( void )
+{
+  scenario.capture_audio = 1;
+}
+
+int
+automation_capture_screen_enabled( void )
+{
+  return scenario.capture_screen;
+}
+
+int
+automation_capture_audio_enabled( void )
+{
+  return scenario.capture_audio;
+}
+
 int
 automation_set_success_pc( const char *text )
 {
@@ -140,7 +171,8 @@ automation_validate_scenario( void )
   int conditions = scenario.success.present || scenario.failure.present;
 
   if( !scenario.output_directory && !scenario.maximum_frames && !conditions &&
-      !scenario.failure.ignore && !scenario.until_rzx_end )
+      !scenario.failure.ignore && !scenario.until_rzx_end &&
+      !scenario.capture_screen && !scenario.capture_audio )
     return 0;
 
   if( !scenario.output_directory || !scenario.maximum_frames ||
@@ -163,7 +195,9 @@ automation_active( void )
 void
 automation_arm( unsigned long frame_count )
 {
-  first_frame = frame_count; result.frames_completed = 0;
+  first_frame = frame_count;
+  result.frames_completed = 0;
+  armed = 1;
   if( result.termination == AUTOMATION_TERMINATION_FRAMES )
     result.termination =
       ( scenario.success.present || scenario.until_rzx_end ) ?
@@ -220,7 +254,8 @@ checksum( const unsigned char *data, size_t length )
   while( length ) {
     uInt part = length > UINT_MAX ? UINT_MAX : (uInt)length;
     value = crc32( value, data, part );
-    data += part; length -= part;
+    data += part;
+    length -= part;
   }
   return value;
 }
@@ -236,7 +271,8 @@ automation_record_media( const utils_file *file )
   media_size = libspectrum_file_size( file );
   media_crc32 = checksum( libspectrum_file_data( file ), media_size );
   media_recorded = 1;
-  name = libspectrum_file_name( file ); libspectrum_free( media_name );
+  name = libspectrum_file_name( file );
+  libspectrum_free( media_name );
   media_name = utils_safe_strdup( name );
 }
 
@@ -313,6 +349,22 @@ automation_rzx_aborted( void )
 {
   if( result.termination == AUTOMATION_TERMINATION_DEADLINE )
     rzx_finish( AUTOMATION_TERMINATION_RZX_ABORTED );
+}
+
+void
+automation_capture_screen( const libspectrum_byte *pixels, size_t width,
+                           size_t height )
+{
+  if( armed && scenario.capture_screen )
+    automation_artifacts_capture_screen( pixels, width, height );
+}
+
+void
+automation_capture_pcm( const libspectrum_signed_word *samples, int count,
+                        int sample_rate, int channels )
+{
+  if( armed && scenario.capture_audio )
+    automation_artifacts_capture_pcm( samples, count, sample_rate, channels );
 }
 
 void
@@ -438,7 +490,8 @@ write_identity( automation_json *json )
     automation_json_end( json );
   }
 
-  automation_json_end( json ); automation_json_end( json );
+  automation_json_end( json );
+  automation_json_end( json );
 }
 
 static void
@@ -462,7 +515,8 @@ write_diagnostics( automation_json *json )
   for( size_t i = 0; i < diagnostics_count; i++ ) {
     automation_json_object_begin( json, NULL );
     automation_json_string( json, "severity",
-                            diagnostics[i].severity == UI_ERROR_ERROR ? "error" :
+                            diagnostics[i].severity ==
+                            UI_ERROR_ERROR ? "error" :
                             diagnostics[i].severity == UI_ERROR_WARNING ?
                             "warning" : "info" );
     automation_json_string( json, "message", diagnostics[i].message );
@@ -478,6 +532,10 @@ automation_write_result( void )
   compat_fd file;
   automation_json json;
 
+  if( automation_artifacts_write( scenario.output_directory,
+                                  scenario.capture_screen,
+                                  scenario.capture_audio ) ) return 1;
+
   path = libspectrum_new( char, strlen( scenario.output_directory ) + 13 );
   sprintf( path, "%s" FUSE_DIR_SEP_STR "result.json",
            scenario.output_directory );
@@ -492,10 +550,12 @@ automation_write_result( void )
   automation_json_ulong( &json, "schema", 1 );
   write_scenario( &json );
   write_execution( &json );
+  automation_state_write_json( &json );
   write_identity( &json );
   write_settings( &json );
   write_diagnostics( &json );
   automation_json_object_begin( &json, "artifacts" );
+  automation_artifacts_write_json( &json );
   automation_json_end( &json );
   automation_json_end( &json );
   fputc( '\n', file );
@@ -518,6 +578,7 @@ automation_end( void )
   libspectrum_free( media_name );
   libspectrum_free( rzx_name );
   libspectrum_free( snapshot_name );
+  automation_artifacts_end();
 }
 
 #endif

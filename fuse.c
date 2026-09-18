@@ -570,7 +570,9 @@ static void fuse_show_help( void )
    "--automation-until-rzx-end            Stop when RZX playback ends.\n"
    "--automation-success-pc <address>     Stop successfully at this PC.\n"
    "--automation-failure-pc <address>     Stop unsuccessfully at this PC.\n"
-   "--automation-failure-pc-ignore <n>    Ignore the first n failure hits.\n" );
+   "--automation-failure-pc-ignore <n>    Ignore the first n failure hits.\n"
+   "--automation-capture-screen           Write the final screen as PNG.\n"
+   "--automation-capture-audio            Capture frame-aligned PCM as WAV.\n" );
 #endif
   printf(
    "\nAvailable command-line options:\n\n"

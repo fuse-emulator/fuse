@@ -28,7 +28,8 @@ typedef struct automation_condition { int present; libspectrum_word address;
 
 typedef struct automation_scenario { char *output_directory;
                                      unsigned long maximum_frames;
-                                     int until_rzx_end;
+                                     int until_rzx_end, capture_screen,
+                                         capture_audio;
                                      automation_condition success, failure;
 } automation_scenario;
 
@@ -60,6 +61,10 @@ int automation_options_present( int argc, char **argv );
 int automation_set_output_directory( const char *directory );
 int automation_set_frame_limit( const char *frames );
 void automation_set_until_rzx_end( void );
+void automation_set_capture_screen( void );
+void automation_set_capture_audio( void );
+int automation_capture_screen_enabled( void );
+int automation_capture_audio_enabled( void );
 int automation_set_success_pc( const char *text );
 int automation_set_failure_pc( const char *text );
 int automation_set_failure_pc_ignore( const char *text );
@@ -83,6 +88,10 @@ void automation_rzx_snapshot_error( void );
 void automation_rzx_aborted( void );
 
 void automation_diagnostic( ui_error_level severity, const char *message );
+void automation_capture_screen( const libspectrum_byte *pixels,
+                                size_t width, size_t height );
+void automation_capture_pcm( const libspectrum_signed_word *samples, int count,
+                             int sample_rate, int channels );
 int automation_write_result( void );
 
 void automation_end( void );
