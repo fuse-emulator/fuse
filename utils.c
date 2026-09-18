@@ -104,7 +104,13 @@ utils_open_loaded_file( utils_file *file, int autoload,
 
   if( utils_file_identify( file ) ) return 1;
 #ifdef ENABLE_AUTOMATION
-  if( automation_active() ) automation_record_media( file );
+  if( automation_active() ) {
+    automation_record_media( file );
+    if( libspectrum_file_class( file ) == LIBSPECTRUM_CLASS_RECORDING )
+      automation_record_rzx( file );
+    else if( libspectrum_file_class( file ) == LIBSPECTRUM_CLASS_SNAPSHOT )
+      automation_record_external_snapshot( file );
+  }
 #endif
 
   /* Keep the existing dispatch readable while the loaded file owns the data. */

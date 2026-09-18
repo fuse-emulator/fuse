@@ -23,6 +23,9 @@
 */
 
 #include "config.h"
+#ifdef ENABLE_AUTOMATION
+#include "automation/automation.h"
+#endif
 
 #include "libspectrum.h"
 
@@ -327,6 +330,9 @@ readport_internal( libspectrum_word port )
     error = rzx_playback_byte( &value );
     if( error ) {
       rzx_spectaculator_cpu_hint();
+#ifdef ENABLE_AUTOMATION
+      automation_rzx_desynchronised();
+#endif
       rzx_stop_playback( 1 );
 
       /* Add a null event to mean we pick up the RZX state change in

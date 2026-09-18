@@ -44,6 +44,10 @@ static uLong media_crc32;
 static size_t media_size;
 static int media_recorded;
 static char *media_name;
+static uLong rzx_crc32, snapshot_crc32;
+static size_t rzx_size, snapshot_size;
+static char *rzx_name, *snapshot_name;
+static int rzx_recorded, snapshot_recorded;
 
 static int
 parse_count( const char *text, unsigned long *value, int allow_zero )
@@ -88,6 +92,12 @@ automation_set_frame_limit( const char *frames )
   return 0;
 }
 
+void
+automation_set_until_rzx_end( void )
+{
+  scenario.until_rzx_end = 1;
+}
+
 int
 automation_set_success_pc( const char *text )
 {
@@ -115,7 +125,7 @@ automation_validate_scenario( void )
 {
   int conditions = scenario.success.present || scenario.failure.present;
   if( !scenario.output_directory && !scenario.maximum_frames && !conditions &&
-      !scenario.failure.ignore ) return 0;
+      !scenario.failure.ignore && !scenario.until_rzx_end ) return 0;
   if( !scenario.output_directory || !scenario.maximum_frames ||
       ( conditions && !scenario.success.present ) ||
       ( scenario.failure.ignore && !scenario.failure.present ) ) {
@@ -136,9 +146,10 @@ void
 automation_arm( unsigned long frame_count )
 {
   first_frame = frame_count; result.frames_completed = 0;
-  result.termination =
-    scenario.success.present ? AUTOMATION_TERMINATION_DEADLINE :
-    AUTOMATION_TERMINATION_FRAMES;
+  if( result.termination == AUTOMATION_TERMINATION_FRAMES )
+    result.termination =
+      ( scenario.success.present || scenario.until_rzx_end ) ?
+      AUTOMATION_TERMINATION_DEADLINE : AUTOMATION_TERMINATION_FRAMES;
 }
 
 int
@@ -168,9 +179,13 @@ automation_frame_limit_reached( unsigned long frame_count )
 int
 automation_exit_status( void )
 {
-  return result.termination ==
-         AUTOMATION_TERMINATION_DEADLINE ? 2 : result.termination ==
-         AUTOMATION_TERMINATION_FAILURE ? 1 : 0;
+  return result.termination == AUTOMATION_TERMINATION_DEADLINE ? 2 :
+         result.termination == AUTOMATION_TERMINATION_FAILURE ||
+         result.termination == AUTOMATION_TERMINATION_RZX_DESYNC ||
+         result.termination == AUTOMATION_TERMINATION_RZX_PARSE_ERROR ||
+         result.termination == AUTOMATION_TERMINATION_RZX_SNAPSHOT_ERROR ||
+         result.termination == AUTOMATION_TERMINATION_RZX_ABORTED ||
+         result.termination == AUTOMATION_TERMINATION_ERROR ? 1 : 0;
 }
 
 static uLong
@@ -197,6 +212,76 @@ automation_record_media( const utils_file *file )
   media_name = name ? strdup( name ) : NULL;
 }
 
+static void
+record_file( const utils_file *file, uLong *crc, size_t *size, char **name )
+{
+  const char *source = libspectrum_file_name( file );
+  *size = libspectrum_file_size( file );
+  *crc = checksum( libspectrum_file_data( file ), *size );
+  free( *name ); *name = source ? strdup( source ) : NULL;
+}
+
+void
+automation_record_rzx( const utils_file *file )
+{
+  record_file( file, &rzx_crc32, &rzx_size, &rzx_name ); rzx_recorded = 1;
+}
+
+void
+automation_record_external_snapshot( const utils_file *file )
+{
+  record_file( file, &snapshot_crc32, &snapshot_size, &snapshot_name );
+  snapshot_recorded = 1;
+}
+
+void
+automation_rzx_started( int embedded_snapshot )
+{
+  result.snapshot_source =
+    embedded_snapshot ? AUTOMATION_RZX_SNAPSHOT_EMBEDDED :
+    AUTOMATION_RZX_SNAPSHOT_EXTERNAL;
+  result.rzx_cpu_mode_recorded = 1;
+  result.rzx_cpu_cmos = settings_current.z80_is_cmos;
+}
+
+static void
+rzx_finish( automation_termination_type termination )
+{
+  if( !automation_active() || !scenario.until_rzx_end ) return;
+  result.termination = termination; fuse_exiting = 1;
+}
+
+void
+automation_rzx_completed( void )
+{
+  rzx_finish( AUTOMATION_TERMINATION_RZX_END );
+}
+
+void
+automation_rzx_desynchronised( void )
+{
+  rzx_finish( AUTOMATION_TERMINATION_RZX_DESYNC );
+}
+
+void
+automation_rzx_parse_error( void )
+{
+  rzx_finish( AUTOMATION_TERMINATION_RZX_PARSE_ERROR );
+}
+
+void
+automation_rzx_snapshot_error( void )
+{
+  rzx_finish( AUTOMATION_TERMINATION_RZX_SNAPSHOT_ERROR );
+}
+
+void
+automation_rzx_aborted( void )
+{
+  if( result.termination == AUTOMATION_TERMINATION_DEADLINE )
+    rzx_finish( AUTOMATION_TERMINATION_RZX_ABORTED );
+}
+
 void
 automation_diagnostic( ui_error_level severity, const char *message )
 {
@@ -214,6 +299,11 @@ termination_name( void )
   switch( result.termination ) {
   case AUTOMATION_TERMINATION_SUCCESS: return "success";
   case AUTOMATION_TERMINATION_FAILURE: return "failure";
+  case AUTOMATION_TERMINATION_RZX_END: return "rzx-end";
+  case AUTOMATION_TERMINATION_RZX_DESYNC: return "rzx-desynchronisation";
+  case AUTOMATION_TERMINATION_RZX_PARSE_ERROR: return "rzx-parse-error";
+  case AUTOMATION_TERMINATION_RZX_SNAPSHOT_ERROR: return "rzx-snapshot-error";
+  case AUTOMATION_TERMINATION_RZX_ABORTED: return "rzx-aborted";
   case AUTOMATION_TERMINATION_DEADLINE: return "deadline";
   case AUTOMATION_TERMINATION_ERROR: return "error";
   default: return "frames";
@@ -228,6 +318,110 @@ write_crc32( automation_json *json, const unsigned char *data, size_t length )
   automation_json_string( json, "crc32", text );
 }
 
+static void
+write_scenario( automation_json *json )
+{
+  automation_json_object_begin( json, "scenario" );
+  automation_json_ulong( json, "maximum_frames", scenario.maximum_frames );
+  automation_json_boolean( json, "until_rzx_end", scenario.until_rzx_end );
+  automation_json_string( json, "requested_machine",
+                          settings_current.start_machine );
+  if( scenario.success.present )
+    automation_json_ulong( json, "success_pc", scenario.success.address );
+  if( scenario.failure.present ) {
+    automation_json_ulong( json, "failure_pc", scenario.failure.address );
+    automation_json_ulong( json, "failure_pc_ignore", scenario.failure.ignore );
+  }
+  automation_json_end( json );
+}
+
+static void
+write_execution( automation_json *json )
+{
+  automation_json_object_begin( json, "execution" );
+  automation_json_ulong( json, "frames_completed", result.frames_completed );
+  automation_json_string( json, "actual_machine", machine_current->id );
+  automation_json_string( json, "cpu_mode",
+                          ( result.rzx_cpu_mode_recorded ? result.rzx_cpu_cmos :
+                            settings_current.z80_is_cmos ) ? "cmos" : "nmos" );
+  automation_json_object_begin( json, "termination" );
+  automation_json_string( json, "type", termination_name() );
+  if( result.termination == AUTOMATION_TERMINATION_SUCCESS ||
+      result.termination == AUTOMATION_TERMINATION_FAILURE )
+    automation_json_ulong( json, "pc", result.pc );
+  automation_json_end( json ); automation_json_end( json );
+}
+
+static void
+write_file_identity( automation_json *json, const char *key, const char *name,
+                     size_t size, uLong crc32 )
+{
+  char crc[9]; snprintf( crc, sizeof( crc ), "%08lx", crc32 );
+  automation_json_object_begin( json, key );
+  if( name ) automation_json_string( json, "path", name );
+  automation_json_ulong( json, "size", size );
+  automation_json_string( json, "crc32", crc );
+  automation_json_end( json );
+}
+
+static void
+write_identity( automation_json *json )
+{
+  automation_json_object_begin( json, "identity" );
+  if( rzx_recorded )
+    write_file_identity( json, "rzx", rzx_name, rzx_size, rzx_crc32 );
+  if( result.snapshot_source != AUTOMATION_RZX_SNAPSHOT_NONE )
+    automation_json_string( json, "rzx_snapshot_source",
+                            result.snapshot_source ==
+                            AUTOMATION_RZX_SNAPSHOT_EMBEDDED ? "embedded" :
+                            "external" );
+  if( snapshot_recorded )
+    write_file_identity( json, "external_snapshot", snapshot_name,
+                         snapshot_size, snapshot_crc32 );
+  if( media_recorded )
+    write_file_identity( json, "tape", media_name, media_size, media_crc32 );
+  automation_json_array_begin( json, "active_roms" );
+  for( int page = 0; page < SPECTRUM_ROM_PAGES; page++ ) {
+    memory_page *p = &memory_map_rom[page * MEMORY_PAGES_IN_16K];
+    if( !p->page ) continue;
+    automation_json_object_begin( json, NULL );
+    automation_json_ulong( json, "page", page );
+    automation_json_ulong( json, "size", 0x4000 );
+    write_crc32( json, p->page, 0x4000 ); automation_json_end( json );
+  }
+  automation_json_end( json ); automation_json_end( json );
+}
+
+static void
+write_settings( automation_json *json )
+{
+  automation_json_object_begin( json, "settings" );
+  automation_json_boolean( json, "autoload", settings_current.auto_load );
+  automation_json_boolean( json, "fastload", settings_current.fastload );
+  automation_json_boolean( json, "tape_traps", settings_current.tape_traps );
+  automation_json_boolean( json, "loader_acceleration",
+                           settings_current.accelerate_loader );
+  automation_json_string( json, "phantom_typist_mode",
+                          settings_current.phantom_typist_mode );
+  automation_json_end( json );
+}
+
+static void
+write_diagnostics( automation_json *json )
+{
+  automation_json_array_begin( json, "diagnostics" );
+  for( size_t i = 0; i < diagnostics_count; i++ ) {
+    automation_json_object_begin( json, NULL );
+    automation_json_string( json, "severity",
+                            diagnostics[i].severity == UI_ERROR_ERROR ? "error" :
+                            diagnostics[i].severity == UI_ERROR_WARNING ?
+                            "warning" : "info" );
+    automation_json_string( json, "message", diagnostics[i].message );
+    automation_json_end( json );
+  }
+  automation_json_end( json );
+}
+
 int
 automation_write_result( void )
 {
@@ -240,73 +434,13 @@ automation_write_result( void )
   automation_json_init( &json, file );
   automation_json_object_begin( &json, NULL );
   automation_json_ulong( &json, "schema", 1 );
-  automation_json_object_begin( &json, "scenario" );
-  automation_json_ulong( &json, "maximum_frames", scenario.maximum_frames );
-  automation_json_string( &json, "requested_machine",
-                          settings_current.start_machine );
-  if( scenario.success.present ) automation_json_ulong( &json, "success_pc",
-                                                        scenario.success.address );
-  if( scenario.failure.present ) {
-    automation_json_ulong( &json, "failure_pc", scenario.failure.address );
-    automation_json_ulong( &json, "failure_pc_ignore",
-                           scenario.failure.ignore );
-  }
-  automation_json_end( &json );
-  automation_json_object_begin( &json, "execution" );
-  automation_json_ulong( &json, "frames_completed", result.frames_completed );
-  automation_json_string( &json, "actual_machine", machine_current->id );
-  automation_json_object_begin( &json, "termination" );
-  automation_json_string( &json, "type", termination_name() );
-  if( result.termination == AUTOMATION_TERMINATION_SUCCESS ||
-      result.termination ==
-      AUTOMATION_TERMINATION_FAILURE ) automation_json_ulong( &json, "pc",
-                                                              result.pc );
-  automation_json_end( &json ); automation_json_end( &json );
-  automation_json_object_begin( &json, "identity" );
-  if( media_recorded ) {
-    char crc[9]; snprintf( crc, sizeof( crc ), "%08lx", media_crc32 );
-    automation_json_object_begin( &json, "tape" );
-    if( media_name ) automation_json_string( &json, "path", media_name );
-    automation_json_ulong( &json, "size", media_size );
-    automation_json_string( &json, "crc32", crc ); automation_json_end( &json );
-  }
-  automation_json_array_begin( &json, "active_roms" );
-  for( int page = 0; page < SPECTRUM_ROM_PAGES; page++ ) {
-    memory_page *p = &memory_map_rom[page * MEMORY_PAGES_IN_16K];
-    if( !p->page ) continue;
-    automation_json_object_begin( &json, NULL );
-    automation_json_ulong( &json, "page", page );
-    automation_json_ulong( &json, "size", 0x4000 );
-    write_crc32( &json, p->page, 0x4000 ); automation_json_end( &json );
-  }
-  automation_json_end( &json ); automation_json_end( &json );
-  automation_json_object_begin( &json, "settings" );
-  automation_json_boolean( &json, "autoload", settings_current.auto_load );
-  automation_json_boolean( &json, "fastload", settings_current.fastload );
-  automation_json_boolean( &json, "tape_traps", settings_current.tape_traps );
-  automation_json_boolean( &json, "loader_acceleration",
-                           settings_current.accelerate_loader );
-  automation_json_string( &json, "phantom_typist_mode",
-                          settings_current.phantom_typist_mode );
-  automation_json_end( &json );
-  automation_json_array_begin( &json, "diagnostics" );
-  for( size_t i = 0; i < diagnostics_count; i++ ) {
-    automation_json_object_begin( &json, NULL );
-    automation_json_string( &json, "severity",
-                            diagnostics[i].severity ==
-                            UI_ERROR_ERROR ? "error" :
-                            diagnostics[i].severity ==
-                            UI_ERROR_WARNING ? "warning" : "info" );
-    automation_json_string( &json, "message", diagnostics[i].message );
-    automation_json_end( &json );
-  }
-  automation_json_end( &json );
+  write_scenario( &json ); write_execution( &json ); write_identity( &json );
+  write_settings( &json ); write_diagnostics( &json );
   automation_json_object_begin( &json, "artifacts" );
   automation_json_end( &json ); automation_json_end( &json );
   fputc( '\n', file );
   int error = automation_json_error( &json );
   if( fclose( file ) ) error = 1;
-
   return error;
 }
 
@@ -316,6 +450,7 @@ automation_end( void )
   for( size_t i = 0; i < diagnostics_count;
        i++ ) free( diagnostics[i].message );
   free( diagnostics ); free( scenario.output_directory ); free( media_name );
+  free( rzx_name ); free( snapshot_name );
 }
 
 #endif

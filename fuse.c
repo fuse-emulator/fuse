@@ -566,7 +566,8 @@ static void fuse_show_help( void )
    "\nDevelopment automation options:\n\n"
    "--automation-output <directory>       Write one-shot result artifacts here.\n"
    "--automation-frames <count>           Stop after completed machine frames.\n"
-   "--automation-max-frames <count>       Deadline for a condition run.\n"
+   "--automation-max-frames <count>       Deadline for a bounded run.\n"
+   "--automation-until-rzx-end            Stop when RZX playback ends.\n"
    "--automation-success-pc <address>     Stop successfully at this PC.\n"
    "--automation-failure-pc <address>     Stop unsuccessfully at this PC.\n"
    "--automation-failure-pc-ignore <n>    Ignore the first n failure hits.\n" );
@@ -1024,12 +1025,20 @@ do_start_files( start_files_t *start_files )
   if( start_files->playback.filename ) {
     error = utils_file_read( &start_files->playback );
     if( error ) return error;
+#ifdef ENABLE_AUTOMATION
+    if( automation_active() ) automation_record_rzx( &start_files->playback );
+#endif
 
     check_snapshot = start_files->snapshot.filename ? 0 : 1;
     error = rzx_start_playback_from_buffer_with_snapshot_check(
       start_files->playback.buffer, start_files->playback.length,
       check_snapshot );
-    if( error ) return error;
+    if( error ) {
+#ifdef ENABLE_AUTOMATION
+      if( automation_active() ) return 0;
+#endif
+      return error;
+    }
   }
 
   if( start_files->recording ) {

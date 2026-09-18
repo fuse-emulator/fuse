@@ -657,6 +657,7 @@ print hashline( __LINE__ ), << 'CODE';
     { "automation-success-pc", 1, NULL, 1003 },
     { "automation-failure-pc", 1, NULL, 1004 },
     { "automation-failure-pc-ignore", 1, NULL, 1005 },
+    { "automation-until-rzx-end", 0, NULL, 1006 },
 #endif
     { "help", 0, NULL, 'h' },
     { "version", 0, NULL, 'V' },
@@ -724,6 +725,9 @@ print hashline( __LINE__ ), << 'CODE';
       break;
     case 1005:
       if( automation_set_failure_pc_ignore( optarg ) ) return 1;
+      break;
+    case 1006:
+      automation_set_until_rzx_end();
       break;
 #endif
     case 'h': settings->show_help = 1; break;
