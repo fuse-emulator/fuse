@@ -60,10 +60,15 @@ static int
 set_address( const char *text, automation_condition *condition )
 {
   unsigned long value;
+
   if( parse_count( text, &value, 1 ) || value > 0xffff ) {
     fprintf( stderr, "invalid automation PC address: %s\n", text ); return 1;
   }
-  condition->present = 1; condition->address = value; return 0;
+
+  condition->present = 1;
+  condition->address = value;
+
+  return 0;
 }
 
 int
@@ -79,16 +84,21 @@ automation_options_present( int argc, char **argv )
 int
 automation_set_output_directory( const char *directory )
 {
-  char *copy = strdup( directory ); if( !copy ) return 1;
-  free( scenario.output_directory ); scenario.output_directory = copy; return 0;
+  char *copy = utils_safe_strdup( directory );
+  libspectrum_free( scenario.output_directory );
+  scenario.output_directory = copy;
+
+  return 0;
 }
 
 int
 automation_set_frame_limit( const char *frames )
 {
   if( parse_count( frames, &scenario.maximum_frames, 0 ) ) {
-    fprintf( stderr, "invalid automation frame count: %s\n", frames ); return 1;
+    fprintf( stderr, "invalid automation frame count: %s\n", frames );
+    return 1;
   }
+
   return 0;
 }
 
@@ -114,18 +124,25 @@ int
 automation_set_failure_pc_ignore( const char *text )
 {
   unsigned long value;
+
   if( parse_count( text, &value, 1 ) ) {
-    fprintf( stderr, "invalid automation ignore count: %s\n", text ); return 1;
+    fprintf( stderr, "invalid automation ignore count: %s\n", text );
+    return 1;
   }
-  scenario.failure.ignore = value; return 0;
+
+  scenario.failure.ignore = value;
+  return 0;
 }
 
 int
 automation_validate_scenario( void )
 {
   int conditions = scenario.success.present || scenario.failure.present;
+
   if( !scenario.output_directory && !scenario.maximum_frames && !conditions &&
-      !scenario.failure.ignore && !scenario.until_rzx_end ) return 0;
+      !scenario.failure.ignore && !scenario.until_rzx_end )
+    return 0;
+
   if( !scenario.output_directory || !scenario.maximum_frames ||
       ( conditions && !scenario.success.present ) ||
       ( scenario.failure.ignore && !scenario.failure.present ) ) {
@@ -133,6 +150,7 @@ automation_validate_scenario( void )
              "automation requires --automation-output, a frame limit, and a success PC for condition runs\n" );
     return 1;
   }
+
   return 0;
 }
 
@@ -155,17 +173,24 @@ automation_arm( unsigned long frame_count )
 int
 automation_check_pc( libspectrum_word pc )
 {
-  if( !automation_active() || !scenario.success.present ) return 0;
-  if( scenario.failure.present && pc == scenario.failure.address ) {
-    if( scenario.failure.hits++ >= scenario.failure.ignore ) {
-      result.termination = AUTOMATION_TERMINATION_FAILURE; result.pc = pc;
-      fuse_exiting = 1; return 1;
-    }
+  if( !automation_active() || !scenario.success.present )
+    return 0;
+
+  if( scenario.failure.present && pc == scenario.failure.address &&
+      scenario.failure.hits++ >= scenario.failure.ignore ) {
+    result.termination = AUTOMATION_TERMINATION_FAILURE;
+    result.pc = pc;
+    fuse_exiting = 1;
+    return 1;
   }
+
   if( pc == scenario.success.address ) {
-    result.termination = AUTOMATION_TERMINATION_SUCCESS; result.pc = pc;
-    fuse_exiting = 1; return 1;
+    result.termination = AUTOMATION_TERMINATION_SUCCESS;
+    result.pc = pc;
+    fuse_exiting = 1;
+    return 1;
   }
+
   return 0;
 }
 
@@ -204,12 +229,15 @@ void
 automation_record_media( const utils_file *file )
 {
   const char *name;
-  if( libspectrum_file_class( file ) != LIBSPECTRUM_CLASS_TAPE ) return;
+
+  if( libspectrum_file_class( file ) != LIBSPECTRUM_CLASS_TAPE )
+    return;
+
   media_size = libspectrum_file_size( file );
   media_crc32 = checksum( libspectrum_file_data( file ), media_size );
   media_recorded = 1;
-  name = libspectrum_file_name( file ); free( media_name );
-  media_name = name ? strdup( name ) : NULL;
+  name = libspectrum_file_name( file ); libspectrum_free( media_name );
+  media_name = utils_safe_strdup( name );
 }
 
 static void
@@ -218,13 +246,15 @@ record_file( const utils_file *file, uLong *crc, size_t *size, char **name )
   const char *source = libspectrum_file_name( file );
   *size = libspectrum_file_size( file );
   *crc = checksum( libspectrum_file_data( file ), *size );
-  free( *name ); *name = source ? strdup( source ) : NULL;
+  libspectrum_free( *name );
+  *name = utils_safe_strdup( source );
 }
 
 void
 automation_record_rzx( const utils_file *file )
 {
-  record_file( file, &rzx_crc32, &rzx_size, &rzx_name ); rzx_recorded = 1;
+  record_file( file, &rzx_crc32, &rzx_size, &rzx_name );
+  rzx_recorded = 1;
 }
 
 void
@@ -247,8 +277,11 @@ automation_rzx_started( int embedded_snapshot )
 static void
 rzx_finish( automation_termination_type termination )
 {
-  if( !automation_active() || !scenario.until_rzx_end ) return;
-  result.termination = termination; fuse_exiting = 1;
+  if( !automation_active() || !scenario.until_rzx_end )
+    return;
+
+  result.termination = termination;
+  fuse_exiting = 1;
 }
 
 void
@@ -285,12 +318,16 @@ automation_rzx_aborted( void )
 void
 automation_diagnostic( ui_error_level severity, const char *message )
 {
-  diagnostic *p; if( !automation_active() ) return;
-  p = realloc( diagnostics, ( diagnostics_count + 1 ) * sizeof( *p ) );
-  if( !p ) return;
-  diagnostics = p; diagnostics[diagnostics_count].severity = severity;
-  diagnostics[diagnostics_count].message = strdup( message );
-  if( diagnostics[diagnostics_count].message ) diagnostics_count++;
+  diagnostic *p;
+
+  if( !automation_active() )
+    return;
+
+  p = libspectrum_renew( diagnostic, diagnostics, diagnostics_count + 1 );
+  diagnostics = p;
+  diagnostics[diagnostics_count].severity = severity;
+  diagnostics[diagnostics_count].message = utils_safe_strdup( message );
+  diagnostics_count++;
 }
 
 static const char *
@@ -349,16 +386,21 @@ write_execution( automation_json *json )
   if( result.termination == AUTOMATION_TERMINATION_SUCCESS ||
       result.termination == AUTOMATION_TERMINATION_FAILURE )
     automation_json_ulong( json, "pc", result.pc );
-  automation_json_end( json ); automation_json_end( json );
+  automation_json_end( json );
+  automation_json_end( json );
 }
 
 static void
 write_file_identity( automation_json *json, const char *key, const char *name,
                      size_t size, uLong crc32 )
 {
-  char crc[9]; snprintf( crc, sizeof( crc ), "%08lx", crc32 );
+  char crc[9];
+  snprintf( crc, sizeof( crc ), "%08lx", crc32 );
   automation_json_object_begin( json, key );
-  if( name ) automation_json_string( json, "path", name );
+
+  if( name )
+    automation_json_string( json, "path", name );
+
   automation_json_ulong( json, "size", size );
   automation_json_string( json, "crc32", crc );
   automation_json_end( json );
@@ -368,18 +410,23 @@ static void
 write_identity( automation_json *json )
 {
   automation_json_object_begin( json, "identity" );
+
   if( rzx_recorded )
     write_file_identity( json, "rzx", rzx_name, rzx_size, rzx_crc32 );
+
   if( result.snapshot_source != AUTOMATION_RZX_SNAPSHOT_NONE )
     automation_json_string( json, "rzx_snapshot_source",
                             result.snapshot_source ==
                             AUTOMATION_RZX_SNAPSHOT_EMBEDDED ? "embedded" :
                             "external" );
+
   if( snapshot_recorded )
     write_file_identity( json, "external_snapshot", snapshot_name,
                          snapshot_size, snapshot_crc32 );
+
   if( media_recorded )
     write_file_identity( json, "tape", media_name, media_size, media_crc32 );
+
   automation_json_array_begin( json, "active_roms" );
   for( int page = 0; page < SPECTRUM_ROM_PAGES; page++ ) {
     memory_page *p = &memory_map_rom[page * MEMORY_PAGES_IN_16K];
@@ -387,8 +434,10 @@ write_identity( automation_json *json )
     automation_json_object_begin( json, NULL );
     automation_json_ulong( json, "page", page );
     automation_json_ulong( json, "size", 0x4000 );
-    write_crc32( json, p->page, 0x4000 ); automation_json_end( json );
+    write_crc32( json, p->page, 0x4000 );
+    automation_json_end( json );
   }
+
   automation_json_end( json ); automation_json_end( json );
 }
 
@@ -425,33 +474,50 @@ write_diagnostics( automation_json *json )
 int
 automation_write_result( void )
 {
-  char *path; compat_fd file; automation_json json;
-  path = malloc( strlen( scenario.output_directory ) + 13 );
-  if( !path ) return 1;
+  char *path;
+  compat_fd file;
+  automation_json json;
+
+  path = libspectrum_new( char, strlen( scenario.output_directory ) + 13 );
   sprintf( path, "%s" FUSE_DIR_SEP_STR "result.json",
            scenario.output_directory );
-  file = compat_file_open( path, 1 ); free( path );
-  if( file == COMPAT_FILE_OPEN_FAILED ) return 1;
+  file = compat_file_open( path, 1 );
+  libspectrum_free( path );
+
+  if( file == COMPAT_FILE_OPEN_FAILED )
+    return 1;
+
   automation_json_init( &json, file );
   automation_json_object_begin( &json, NULL );
   automation_json_ulong( &json, "schema", 1 );
-  write_scenario( &json ); write_execution( &json ); write_identity( &json );
-  write_settings( &json ); write_diagnostics( &json );
+  write_scenario( &json );
+  write_execution( &json );
+  write_identity( &json );
+  write_settings( &json );
+  write_diagnostics( &json );
   automation_json_object_begin( &json, "artifacts" );
-  automation_json_end( &json ); automation_json_end( &json );
+  automation_json_end( &json );
+  automation_json_end( &json );
   fputc( '\n', file );
   int error = automation_json_error( &json );
-  if( compat_file_close( file ) ) error = 1;
+
+  if( compat_file_close( file ) )
+    error = 1;
+
   return error;
 }
 
 void
 automation_end( void )
 {
-  for( size_t i = 0; i < diagnostics_count;
-       i++ ) free( diagnostics[i].message );
-  free( diagnostics ); free( scenario.output_directory ); free( media_name );
-  free( rzx_name ); free( snapshot_name );
+  for( size_t i = 0; i < diagnostics_count; i++ )
+    libspectrum_free( diagnostics[i].message );
+
+  libspectrum_free( diagnostics );
+  libspectrum_free( scenario.output_directory );
+  libspectrum_free( media_name );
+  libspectrum_free( rzx_name );
+  libspectrum_free( snapshot_name );
 }
 
 #endif
