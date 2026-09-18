@@ -22,6 +22,8 @@ The implementation currently supports:
 - structured RZX completion and failure outcomes;
 - collection of diagnostics from the null UI;
 - machine, relevant setting, media, snapshot, RZX, and ROM identity;
+- optional final-frame PNG and frame-aligned PCM WAV capture;
+- a fixed final CPU and machine-state summary;
 - unthrottled execution using synthetic time in the null timer.
 
 The `play_disk`, `check_loaders`, `play_rzx`, and `check_rzx` tools in the
@@ -41,8 +43,11 @@ make
 ```
 
 `--enable-automation` adds the automation coordinator and command-line options.
-The null UI supplies a noninteractive frontend, while the null audio driver
-avoids opening a host sound device.
+The null UI supplies a noninteractive frontend and conditionally maintains a
+logical framebuffer for screen capture. The null audio driver normally behaves
+as an unavailable device; with audio capture requested, it becomes a virtual
+device receiving Fuse's normal final mixed PCM path without opening a host
+sound device.
 
 An automation-enabled build behaves normally unless an `--automation-*` option
 is supplied. When a scenario is active, settings autosave is disabled so the
@@ -70,6 +75,37 @@ creation and cleanup.
 `--automation-max-frames N` supplies the deadline for a PC-condition or RZX
 run. Both options populate the same frame-limit field; use the spelling which
 expresses the scenario's intent.
+
+### Evidence capture
+
+```text
+--automation-capture-screen
+--automation-capture-audio
+```
+
+`--automation-capture-screen` writes the last completed display frame to
+`screen.png` using the current scaler. It requires the null UI and a build with
+PNG support. The artifact dimensions describe the scaled PNG, while
+`pixel_crc32` identifies the unscaled logical RGB24 framebuffer.
+
+`--automation-capture-audio` enables the null sound driver as a virtual output
+device and writes `audio.wav`. It overrides `--no-sound` because normal sound
+synthesis and mixing must run for capture, but it never opens a host device.
+Only low-level PCM blocks delivered after the scenario is armed are retained.
+For a fixed-frame run this is exactly the normal sound output associated with
+the requested completed frames; Fuse does not synthesize or flush an extra
+partial frame at termination.
+
+For example:
+
+```sh
+fuse \
+  --automation-output /tmp/evidence \
+  --automation-frames 250 \
+  --automation-capture-screen \
+  --automation-capture-audio \
+  --no-confirm-actions
+```
 
 ### PC conditions
 
@@ -193,6 +229,42 @@ A representative RZX result is:
       "type": "rzx-end"
     }
   },
+  "state": {
+    "cpu": {
+      "af": 16448,
+      "bc": 0,
+      "de": 65535,
+      "hl": 0,
+      "af_alt": 0,
+      "bc_alt": 0,
+      "de_alt": 0,
+      "hl_alt": 0,
+      "ix": 0,
+      "iy": 0,
+      "sp": 65535,
+      "pc": 4572,
+      "i": 63,
+      "r": 70,
+      "iff1": false,
+      "iff2": false,
+      "interrupt_mode": 0,
+      "halted": false,
+      "frame_tstate": 2
+    },
+    "machine": {
+      "screen_page": 5,
+      "border": 7,
+      "tape_playing": false,
+      "rzx_playback": false,
+      "paging": {
+        "ram_page": 0,
+        "rom_page": 0,
+        "locked": false,
+        "special": false,
+        "romcs": false
+      }
+    }
+  },
   "identity": {
     "rzx": {
       "path": "recording.rzx",
@@ -221,7 +293,28 @@ A representative RZX result is:
       "message": "Finished RZX playback"
     }
   ],
-  "artifacts": {}
+  "artifacts": {
+    "screen": {
+      "path": "screen.png",
+      "size": 601,
+      "file_crc32": "3c471066",
+      "width": 320,
+      "height": 240,
+      "pixel_format": "rgb24",
+      "pixel_crc32": "7f3ff1df"
+    },
+    "audio": {
+      "path": "audio.wav",
+      "size": 5326,
+      "file_crc32": "336b5007",
+      "sample_rate": 44100,
+      "channels": 1,
+      "format": "s16le",
+      "frames": 2641,
+      "start_frame_tstate": 0,
+      "pcm_crc32": "5039b329"
+    }
+  }
 }
 ```
 
@@ -259,6 +352,18 @@ Current termination names are:
 A successful or failed PC termination also records the matching `pc` in the
 termination object.
 
+### Fixed final state
+
+`state.cpu` contains AF, BC, DE, HL, their alternate register pairs, IX, IY,
+SP, PC, I, the effective eight-bit R value, interrupt flip-flops and mode,
+halted state, and the final frame-relative tstate.
+
+`state.machine` contains the selected screen page and border colour, tape and
+RZX activity, and a deliberately limited paging summary. The paging summary
+records the current RAM and ROM pages, paging lock, special paging mode, and
+ROMCS state. This is a fixed result summary rather than a general register,
+memory, or machine-inspection API.
+
 ### Identity
 
 Identity records use CRC-32, lowercase hexadecimal, and include the byte size.
@@ -294,8 +399,11 @@ RZX sentinel warnings and compatibility notices therefore remain structured
 warnings rather than changing an otherwise successful termination into a
 special process status.
 
+### Artifacts
+
 With `--automation-capture-screen`, `artifacts.screen` describes `screen.png`
-and records its dimensions, RGB24 pixel CRC-32, and serialized file CRC-32.
+and records its scaled dimensions, the unscaled logical RGB24 pixel CRC-32,
+and serialized file CRC-32.
 With `--automation-capture-audio`, `artifacts.audio` describes `audio.wav` and
 records its sample rate, channels, S16LE PCM-frame count, PCM CRC-32, file
 CRC-32, and zero frame-relative starting tstate. Audio contains exactly the
@@ -345,6 +453,9 @@ uncontrolled host inputs as qualifications of the experiment.
 
 ## Source layout and validation
 
-The coordinator and JSON writer are in `automation/`. Integration points are
-primarily in `fuse.c`, `settings.pl`, `utils.c`, `rzx.c`, `periph.c`, the null
-UI, the null timer, and instruction/frame accounting.
+The scenario coordinator is in `automation/automation.c`, artifact capture and
+serialization are in `automation/artifacts.c`, the fixed state summary is in
+`automation/state.c`, and the JSON writer is in `automation/json.c`.
+Integration points are primarily in `fuse.c`, `settings.pl`, `utils.c`,
+`rzx.c`, `periph.c`, the null UI and sound backends, the null timer, and
+instruction/frame accounting.

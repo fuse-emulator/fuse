@@ -32,6 +32,7 @@
 #include "keyboard.h"
 #include "machine.h"
 #include "utils.h"
+#include "ui/scaler/scaler.h"
 #include "ui/ui.h"
 #include "ui/ui_internals.h"
 
@@ -262,6 +263,8 @@ uidisplay_init( int width, int height )
 {
 #ifdef ENABLE_AUTOMATION
   if( automation_capture_screen_enabled() ) {
+    for( scaler_type scaler = 0; scaler < SCALER_NUM; scaler++ )
+      scaler_register( scaler );
     framebuffer_width = width;
     framebuffer_height = height;
     framebuffer = libspectrum_new( libspectrum_byte, (size_t)width * height );

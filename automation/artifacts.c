@@ -33,6 +33,7 @@
 
 static libspectrum_byte *screen_rgb;
 static size_t screen_width, screen_height;
+static size_t screen_file_width, screen_file_height;
 static libspectrum_signed_word *pcm;
 static size_t pcm_count, pcm_capacity;
 static int pcm_rate, pcm_channels;
@@ -140,16 +141,21 @@ write_screen( const char *directory )
 {
   char *path;
   int error;
+  scaler_type scaler = current_scaler == SCALER_NUM ? SCALER_NORMAL :
+                       current_scaler;
 
   if( !screen_rgb ) return 0;
 
   path = libspectrum_new( char, strlen( directory ) + 12 );
   sprintf( path, "%s" FUSE_DIR_SEP_STR "screen.png", directory );
 #ifdef USE_LIBPNG
-  error = screenshot_write( path, SCALER_NORMAL ) ||
+  error = screenshot_write( path, scaler ) ||
           file_identity( path, &screen_file_crc, &screen_file_size );
   if( !error ) {
+    float factor = scaler_get_scaling_factor( scaler );
     screen_crc = checksum( screen_rgb, screen_width * screen_height * 3 );
+    screen_file_width = screen_width * factor;
+    screen_file_height = screen_height * factor;
     screen_written = 1;
   }
 #else
@@ -264,8 +270,8 @@ write_screen_json( automation_json *json )
 
   automation_json_object_begin( json, "screen" );
   write_file_identity( json, "screen.png", screen_file_size, screen_file_crc );
-  automation_json_ulong( json, "width", screen_width );
-  automation_json_ulong( json, "height", screen_height );
+  automation_json_ulong( json, "width", screen_file_width );
+  automation_json_ulong( json, "height", screen_file_height );
   automation_json_string( json, "pixel_format", "rgb24" );
   snprintf( text, sizeof( text ), "%08lx", screen_crc );
   automation_json_string( json, "pixel_crc32", text );
