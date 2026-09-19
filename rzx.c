@@ -491,8 +491,8 @@ static int playback_frame( void )
     if( !rzx_spin_tape_save_compat_active ) {
       rzx_spin_tape_save_compat_active = 1;
       if( !rzx_spin_tape_save_compat_warned ) {
-        ui_error( UI_ERROR_WARNING,
-                  "Applying SPIN 0.5 RZX tape-save compatibility" );
+        ui_error_console( UI_ERROR_WARNING,
+                          "Applying SPIN 0.5 RZX tape-save compatibility" );
         rzx_spin_tape_save_compat_warned = 1;
       }
     }
@@ -512,8 +512,9 @@ static int playback_frame( void )
     if( error ) return error;
     rzx_spin_input_carry = 1;
     if( !rzx_spin_input_carry_warned ) {
-      ui_error( UI_ERROR_WARNING,
-                "Applying SPIN 0.5 RZX input-boundary compatibility" );
+      ui_error_console(
+        UI_ERROR_WARNING,
+        "Applying SPIN 0.5 RZX input-boundary compatibility" );
       rzx_spin_input_carry_warned = 1;
     }
   }
@@ -600,8 +601,9 @@ rzx_sentinel( libspectrum_dword ts GCC_UNUSED, int type GCC_UNUSED,
 {
   if( !sentinel_warning ) {
     /* This message could pop up very often. Limited to once per playback */
-    ui_error( UI_ERROR_WARNING, "RZX frame is longer than %u tstates",
-              RZX_SENTINEL_TIME );
+    ui_error_console( UI_ERROR_WARNING,
+                      "RZX frame is longer than %u tstates",
+                      RZX_SENTINEL_TIME );
     sentinel_warning = 1;
   }
 
