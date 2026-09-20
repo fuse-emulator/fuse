@@ -471,9 +471,10 @@ utils_file_identify( utils_file *file )
   /* Identify HDF images from their signature so they need not be read in
      full. Passing no filename prevents an .hdf extension from masking an
      invalid header. */
-  error = libspectrum_identify_file_with_class( &file->type, &file->file_class,
-                                                NULL, header.buffer,
-                                                header.length );
+  error = libspectrum_identify_file_raw( &file->type, NULL, header.buffer,
+                                        header.length );
+  if( !error )
+    error = libspectrum_identify_class( &file->file_class, file->type );
   if( error || file->file_class == LIBSPECTRUM_CLASS_HARDDISK ) {
     if( file->file_class == LIBSPECTRUM_CLASS_HARDDISK )
       file->storage = LIBSPECTRUM_FILE_STORAGE_PATH;
@@ -482,9 +483,10 @@ utils_file_identify( utils_file *file )
     return error;
   }
 
-  error = libspectrum_identify_file_with_class( &filename_type,
-                                                &filename_class,
-                                                file->filename, NULL, 0 );
+  error = libspectrum_identify_file_raw( &filename_type, file->filename,
+                                        NULL, 0 );
+  if( !error )
+    error = libspectrum_identify_class( &filename_class, filename_type );
   if( error || filename_class == LIBSPECTRUM_CLASS_HARDDISK ) {
     utils_file_free( &header );
     if( compat_file_close( fd ) ) return 1;
