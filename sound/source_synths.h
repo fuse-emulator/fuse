@@ -5,6 +5,10 @@
 
 #include "sound/blipbuffer.h"
 
+/* Map a percentage volume setting to a Blip_Synth gain factor, clamping
+ * out-of-range values: <0% -> silence, >100% -> full gain. */
+double source_volume( int volume );
+
 void source_synths_init( Blip_Buffer *left, Blip_Buffer *right, int stereo,
                          int specdrum_volume, int covox_volume,
                          int uspeech_volume );

@@ -67,6 +67,7 @@
 #include "sound.h"
 #include "sound/blipbuffer.h"
 #include "sound/dc_filter.h"
+#include "sound/source_synths.h"
 #include "sound/speaker_filter.h"
 #include "sound/tv_filter.h"
 #include "sound/ula_filter.h"
@@ -786,6 +787,31 @@ ula_sound_levels_test( void )
   sound_ula_levels( 1, 1, &mic_ampl, &beeper_ampl ); /* 10 -> 11 */
   TEST_ASSERT( mic_ampl == SOUND_AMPL_BEEPER + SOUND_AMPL_TAPE );
   TEST_ASSERT( beeper_ampl == SOUND_AMPL_BEEPER + SOUND_AMPL_TAPE );
+
+  return 0;
+}
+
+static int
+source_volume_test( void )
+{
+  double v;
+
+  /* Below range clamps to silence (0.0) */
+  v = source_volume( -1 ); TEST_ASSERT( v == 0.0 );
+
+  /* Exact lower boundary is silence (0.0) */
+  v = source_volume( 0 ); TEST_ASSERT( v == 0.0 );
+
+  /* In-range values scale linearly (percent / 100) */
+  v = source_volume( 50 ); TEST_ASSERT( v == 0.5 );
+  v = source_volume( 25 ); TEST_ASSERT( v == 0.25 );
+
+  /* Exact upper boundary is full gain (1.0) */
+  v = source_volume( 100 ); TEST_ASSERT( v == 1.0 );
+
+  /* Above range clamps to full gain (1.0) */
+  v = source_volume( 101 ); TEST_ASSERT( v == 1.0 );
+  v = source_volume( 10000 ); TEST_ASSERT( v == 1.0 );
 
   return 0;
 }
@@ -2772,6 +2798,7 @@ unittests_run( void )
   r += ula_filter_test();
   r += sound_source_routes_test();
   r += ula_sound_levels_test();
+  r += source_volume_test();
   r += floating_bus_merge_test();
   r += snapshot_copy_from_releases_keyboard_test();
   r += snapshot_custom_rom_is_replaced_by_soft_reset_test();

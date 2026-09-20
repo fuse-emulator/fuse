@@ -20,7 +20,7 @@ static Blip_Synth *left_specdrum, *right_specdrum;
 static Blip_Synth *left_covox, *right_covox;
 static Blip_Synth *left_sp0256, *right_sp0256;
 
-static double
+double
 source_volume( int volume )
 {
   if( volume < 0 ) return 0.0;
