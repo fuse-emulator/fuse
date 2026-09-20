@@ -184,10 +184,15 @@ DISTCLEANFILES =
 
 pkgdata_DATA =
 
+if UI_NULL
 test: z80/coretest unittests/displaytest
 	z80/coretest $(srcdir)/z80/tests/tests.in > z80/tests.actual
 	cmp z80/tests.actual $(srcdir)/z80/tests/tests.expected
 	./unittests/displaytest
+else
+test:
+	@echo "SKIP: internal unit tests require a null-UI build"
+endif
 
 metrics:
 	@if test -n "$(FILE)"; then $(srcdir)/tools/metrics "$(FILE)"; else $(srcdir)/tools/metrics; fi
@@ -241,6 +246,7 @@ include ui/xlib/Makefile.am
 include unittests/Makefile.am
 include z80/Makefile.am
 
+if UI_NULL
 check-local: fuse unittests/displaytest unittests/sdl2displaytest unittests/sdl2scalerstatetest unittests/sdl2joysticktest unittests/sdl2mousetest unittests/palcompositetest unittests/scalerexpandtest z80/coretest
 	@test -e $(top_builddir)/roms || ln -sf "$(abs_top_srcdir)/roms" $(top_builddir)/roms
 	$(top_builddir)/fuse --unittests
@@ -256,3 +262,7 @@ if ENABLE_AUTOMATION
 endif
 	$(top_builddir)/z80/coretest $(srcdir)/z80/tests/tests.in > $(top_builddir)/z80/tests.actual
 	cmp $(top_builddir)/z80/tests.actual $(srcdir)/z80/tests/tests.expected
+else
+check-local:
+	@echo "SKIP: internal unit tests require a null-UI build"
+endif

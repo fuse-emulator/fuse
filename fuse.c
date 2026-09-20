@@ -111,7 +111,9 @@
 #include "ui/scaler/scaler.h"
 #include "ui/ui.h"
 #include "ui/uimedia.h"
+#ifdef UI_NULL
 #include "unittests/unittests.h"
+#endif
 #include "utils.h"
 
 #include "z80/z80.h"
@@ -201,9 +203,12 @@ int main(int argc, char **argv)
   if( settings_current.show_help ||
       settings_current.show_version ) return 0;
 
+#ifdef UI_NULL
   if( settings_current.unittests ) {
     r = unittests_run();
-  } else {
+  } else
+#endif
+  {
 #ifdef ENABLE_AUTOMATION
     if( automation_active() ) automation_arm( spectrum_get_frame_count() );
 #endif
@@ -401,6 +406,12 @@ static int fuse_init(int argc, char **argv)
 #endif
 
   if( settings_init( &first_arg, argc, argv ) ) return 1;
+#ifndef UI_NULL
+  if( settings_current.unittests ) {
+    fprintf( stderr, "--unittests is available only with the null UI\n" );
+    return 1;
+  }
+#endif
 #ifdef ENABLE_AUTOMATION
   if( automation_active() ) settings_current.autosave_settings = 0;
 #endif

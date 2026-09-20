@@ -1,5 +1,6 @@
-/* unittests.h: Unit testing framework for Fuse
+/* helpers.h: shared helpers for Fuse's embedded white-box unit tests
    Copyright (c) 2008-2015 Philip Kendall
+   Copyright (c) 2026 Fredrick Meunier
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -18,12 +19,19 @@
    Author contact information:
 
    E-mail: philip-fuse@shadowmagic.org.uk
-
 */
 
-#ifndef FUSE_UNITTESTS_H
-#define FUSE_UNITTESTS_H
+#ifndef FUSE_UNITTESTS_HELPERS_H
+#define FUSE_UNITTESTS_HELPERS_H
 
-int unittests_run( void );
+#include <libspectrum.h>
 
-#endif				/* #ifndef FUSE_UNITTESTS_H */
+int unittests_assert_2k_page( libspectrum_word base, int source, int page );
+int unittests_assert_4k_page( libspectrum_word base, int source, int page );
+int unittests_assert_8k_page( libspectrum_word base, int source, int page );
+int unittests_assert_16k_page( libspectrum_word base, int source, int page );
+int unittests_assert_16k_ram_page( libspectrum_word base, int page );
+
+int unittests_paging_test_48( int ram8000 );
+
+#endif /* #ifndef FUSE_UNITTESTS_HELPERS_H */

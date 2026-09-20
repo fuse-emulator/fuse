@@ -20,11 +20,15 @@
 ##
 ## E-mail: philip-fuse@shadowmagic.org.uk
 
-fuse_SOURCES += unittests/unittests.c
+fuse_SOURCES += unittests/helpers.c
+noinst_HEADERS += unittests/helpers.h
 
+if UI_NULL
+
+fuse_SOURCES += unittests/unittests.c
 noinst_HEADERS += unittests/unittests.h
 
-## The display code tester
+## Standalone internal test programs
 
 noinst_PROGRAMS += unittests/displaytest
 noinst_PROGRAMS += unittests/sdl2displaytest
@@ -88,3 +92,5 @@ unittests_scalerexpandtest_SOURCES = \
 unittests_scalerexpandtest_LDADD = $(LIBSPECTRUM_LIBS) \
         ui/scaler/scalers16.o ui/scaler/scalers32.o ui/scaler/snes_ntsc.o
 unittests_scalerexpandtest_CPPFLAGS = $(AM_CPPFLAGS)
+
+endif

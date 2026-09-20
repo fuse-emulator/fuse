@@ -80,6 +80,7 @@
 #include "rzx.h"
 #include "spectrum.h"
 #include "ui/scaler/scaler.h"
+#include "helpers.h"
 #include "unittests.h"
 #include "utils.h"
 #include "z80/z80.h"
@@ -1459,55 +1460,9 @@ mempool_test( void )
 }
 
 static int
-assert_page( libspectrum_word base, libspectrum_word length, int source, int page )
-{
-  int base_index = base / MEMORY_PAGE_SIZE;
-  int i;
-
-  for( i = 0; i < length / MEMORY_PAGE_SIZE; i++ ) {
-    TEST_ASSERT( memory_map_read[ base_index + i ].source == source );
-    TEST_ASSERT( memory_map_read[ base_index + i ].page_num == page );
-    TEST_ASSERT( memory_map_write[ base_index + i ].source == source );
-    TEST_ASSERT( memory_map_write[ base_index + i ].page_num == page );
-  }
-
-  return 0;
-}
-
-int
-unittests_assert_2k_page( libspectrum_word base, int source, int page )
-{
-  return assert_page( base, 0x0800, source, page );
-}
-
-int
-unittests_assert_4k_page( libspectrum_word base, int source, int page )
-{
-  return assert_page( base, 0x1000, source, page );
-}
-
-int
-unittests_assert_8k_page( libspectrum_word base, int source, int page )
-{
-  return assert_page( base, 0x2000, source, page );
-}
-
-int
-unittests_assert_16k_page( libspectrum_word base, int source, int page )
-{
-  return assert_page( base, 0x4000, source, page );
-}
-
-static int
 assert_16k_rom_page( libspectrum_word base, int page )
 {
   return unittests_assert_16k_page( base, memory_source_rom, page );
-}
-
-int
-unittests_assert_16k_ram_page( libspectrum_word base, int page )
-{
-  return unittests_assert_16k_page( base, memory_source_ram, page );
 }
 
 static int
@@ -1545,17 +1500,6 @@ paging_test_16( void )
   r += unittests_assert_16k_ram_page( 0x4000, 5 );
   r += unittests_assert_16k_page( 0x8000, memory_source_none, 0 );
   r += unittests_assert_16k_page( 0xc000, memory_source_none, 0 );
-
-  return r;
-}
-
-int
-unittests_paging_test_48( int ram8000 )
-{
-  int r = 0;
-
-  r += assert_16k_pages( 0, 5, ram8000, 0 );
-  TEST_ASSERT( memory_current_screen == 5 );
 
   return r;
 }

@@ -43,7 +43,7 @@
 #include "settings.h"
 #include "utils.h"
 #include "ui/ui.h"
-#include "unittests/unittests.h"
+#include "unittests/helpers.h"
 
 #undef IF1_DEBUG_MDR
 #undef IF1_DEBUG_NET
