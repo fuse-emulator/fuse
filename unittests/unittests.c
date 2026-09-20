@@ -62,6 +62,7 @@
 #include "peripherals/ttx2000s.h"
 #include "peripherals/ula.h"
 #include "peripherals/usource.h"
+#include "psg.h"
 #include "pokefinder/pokefinder.h"
 #include "settings.h"
 #include "sound.h"
@@ -1242,6 +1243,102 @@ utils_safe_strdup_test( void )
   libspectrum_free( result );
 
   return 0;
+}
+
+static int
+psg_unittest( void )
+{
+  static const unsigned char header[] = "PSG\x1a";
+  char temporary_path[] = "/tmp/fuse-psg-test-XXXXXX";
+  unsigned char expected[ 26 ];
+  unsigned char read_back[ 26 ];
+  FILE *file;
+  int fd, saved_recording;
+  size_t length;
+  int i, r = 0;
+
+  /* mkdtemp is not provided by MinGW; use mkstemp to obtain a unique
+     filename prefix instead. */
+  fd = mkstemp( temporary_path );
+  if( fd < 0 ) return 1;
+  close( fd );
+  unlink( temporary_path );
+
+  saved_recording = psg_recording;
+  psg_recording = 0;
+
+  /* Calls while not recording are harmless no-ops, and stopping a recording
+     that was never started fails */
+  if( psg_frame() || psg_write_register( 7, 0x40 ) ||
+      psg_stop_recording() != 1 ) r++;
+
+  /* Starting a recording writes the header and refuses a second start */
+  if( psg_start_recording( temporary_path ) || !psg_recording ||
+      psg_start_recording( temporary_path ) != 1 ) r++;
+
+  /* Six empty frames are accumulated in the pending empty-frame counter; a
+     register write marked afterwards is emitted with the register data, and
+     registers 14 and 15 (I/O ports) are never part of the frame data */
+  for( i = 0; i < 6; i++ ) if( psg_frame() ) r++;
+  if( psg_write_register( 7, 0x40 ) || psg_write_register( 14, 0xff ) ) r++;
+  if( psg_frame() ) r++;
+
+  /* Two more empty frames */
+  if( psg_frame() || psg_frame() ) r++;
+
+  /* Stopping flushes the pending empty frames */
+  if( psg_stop_recording() || psg_recording ) r++;
+
+  /* header (4 bytes + 12 padding) + FE 01 FF FF FF 07 40 + FE 01:
+     7 pending empty frames are encoded as a 4-frame block plus three
+     single-frame markers before the register data */
+  memcpy( expected, header, sizeof( header ) );
+  memset( expected + 4, 0, 12 );
+  expected[ 16 ] = 0xfe; expected[ 17 ] = 0x01;
+  expected[ 18 ] = 0xff; expected[ 19 ] = 0xff; expected[ 20 ] = 0xff;
+  expected[ 21 ] = 0x07; expected[ 22 ] = 0x40;
+  expected[ 23 ] = 0xfe; expected[ 24 ] = 0x01;
+  length = 25;
+
+  file = fopen( temporary_path, "rb" );
+  if( !file ) {
+    r++;
+  } else {
+    memset( read_back, 0, sizeof( read_back ) );
+    if( fread( read_back, 1, length, file ) != length || fgetc( file ) != EOF ||
+        memcmp( read_back, expected, length ) ) r++;
+    fclose( file );
+  }
+
+  /* A long run of empty frames is encoded with the multi-frame marker and a
+     count byte capped at 0xff empty frames */
+  if( psg_start_recording( temporary_path ) ) r++;
+  for( i = 0; i < 1020; i++ ) if( psg_frame() ) r++;
+  if( psg_write_register( 1, 0x20 ) ) r++;
+  if( psg_stop_recording() ) r++;
+
+  /* header + FE FF (0xff-frame block) FF 01 20 + FF */
+  memcpy( expected, header, sizeof( header ) );
+  memset( expected + 4, 0, 12 );
+  expected[ 16 ] = 0xfe; expected[ 17 ] = 0xff;
+  expected[ 18 ] = 0xff; expected[ 19 ] = 0x01; expected[ 20 ] = 0x20;
+  expected[ 21 ] = 0xff;
+  length = 22;
+
+  file = fopen( temporary_path, "rb" );
+  if( !file ) {
+    r++;
+  } else {
+    memset( read_back, 0, sizeof( read_back ) );
+    if( fread( read_back, 1, length, file ) != length || fgetc( file ) != EOF ||
+        memcmp( read_back, expected, length ) ) r++;
+    fclose( file );
+  }
+
+  unlink( temporary_path );
+  psg_recording = saved_recording;
+  if( r ) printf( "psg_unittest failed\n" );
+  return r;
 }
 
 static int
@@ -2813,6 +2910,7 @@ unittests_run( void )
   r += utils_safe_strdup_test();
   r += bitmap_ops_test();
   r += mempool_test();
+  r += psg_unittest();
   r += paging_test();
   r += pokefinder_unittest();
   r += debugger_disassemble_unittest();
