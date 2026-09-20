@@ -31,6 +31,7 @@
 #include "display.h"
 #include "keyboard.h"
 #include "machine.h"
+#include "spectrum.h"
 #include "utils.h"
 #include "ui/scaler/scaler.h"
 #include "ui/ui.h"
@@ -201,6 +202,13 @@ ui_query_message( const char *message )
 int
 ui_statusbar_update( ui_statusbar_item item, ui_statusbar_state state )
 {
+#ifdef ENABLE_AUTOMATION
+  if( automation_active() && item == UI_STATUSBAR_ITEM_DISK &&
+      ( state == UI_STATUSBAR_STATE_ACTIVE ||
+        state == UI_STATUSBAR_STATE_INACTIVE ) )
+    automation_disk_motor_changed( state == UI_STATUSBAR_STATE_ACTIVE,
+                                   spectrum_get_frame_count() );
+#endif
   /* No error */
   return 0;
 }

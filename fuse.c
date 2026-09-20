@@ -583,7 +583,9 @@ static void fuse_show_help( void )
    "--automation-failure-pc <address>     Stop unsuccessfully at this PC.\n"
    "--automation-failure-pc-ignore <n>    Ignore the first n failure hits.\n"
    "--automation-capture-screen           Write the final screen as PNG.\n"
-   "--automation-capture-audio            Capture frame-aligned PCM as WAV.\n" );
+   "--automation-capture-audio            Capture frame-aligned PCM as WAV.\n"
+   "--automation-until-disk-idle          Stop after disk motor activity becomes idle.\n"
+   "--automation-disk-idle-frames <n>     Required motor-off settling frames (default 50).\n" );
 #endif
   printf(
    "\nAvailable command-line options:\n\n"

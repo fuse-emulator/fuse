@@ -4,8 +4,9 @@
 
 Fuse has an optional, development-only automation mode for running bounded,
 headless emulator scenarios from the normal `fuse` executable. A scenario is
-specified with command-line options, runs through Fuse's ordinary initialization
-and emulation paths, writes a structured `result.json`, and exits.
+specified with command-line options, runs through Fuse's ordinary
+initialization and emulation paths, writes a structured `result.json`, and
+exits.
 
 The interface is intended for regression suites and controlled experiments. It
 is not a remote-control protocol, an interactive debugger API, or a persistent
@@ -19,6 +20,7 @@ The implementation currently supports:
 - ignoring an initial number of failure-PC hits;
 - bounded PC-condition runs with a frame deadline;
 - bounded execution until RZX playback completes;
+- bounded disk execution until observed motor activity becomes idle;
 - structured RZX completion and failure outcomes;
 - collection of diagnostics from the null UI;
 - machine, relevant setting, media, snapshot, RZX, and ROM identity;
@@ -26,9 +28,9 @@ The implementation currently supports:
 - a fixed final CPU and machine-state summary;
 - unthrottled execution using synthetic time in the null timer.
 
-The `play_disk`, `check_loaders`, `play_rzx`, and `check_rzx` tools in the
-adjacent `fuse-automation` repository consume this interface. RZX tools no
-longer require a locally patched Fuse executable.
+The `play_disk`, `check_disk`, `check_loaders`, `play_rzx`, and `check_rzx`
+tools in the adjacent `fuse-automation` repository consume this interface. RZX
+tools no longer require a locally patched Fuse executable.
 
 ## Building
 
@@ -102,8 +104,8 @@ For a fixed-frame run this is exactly the normal sound output associated with
 the requested completed frames; Fuse does not synthesize or flush an extra
 partial frame at termination. Its `final-mix` stage is the PCM returned by
 `output_mixer_end_frame()` and delivered through Fuse's normal low-level sound
-path, after AY, ULA/MIC/beeper, speech and peripheral source routing and mixing,
-but before any host sound-device transformation.
+path, after AY, ULA/MIC/beeper, speech and peripheral source routing and
+mixing, but before any host sound-device transformation.
 
 For example:
 
@@ -127,8 +129,8 @@ fuse \
 A PC-condition run requires a success PC. The optional failure PC terminates
 with failure. `--automation-failure-pc-ignore` ignores the first `COUNT` hits
 of the failure address before it becomes fatal. Addresses and counts accept the
-numeric forms understood by `strtoul(..., 0)`, including decimal and `0x`-prefixed
-hexadecimal.
+numeric forms understood by `strtoul(..., 0)`, including decimal and
+`0x`-prefixed hexadecimal.
 
 For example:
 
@@ -142,6 +144,36 @@ fuse \
   --no-sound --no-confirm-actions \
   game.tzx
 ```
+
+### Disk idle completion
+
+```text
+--automation-until-disk-idle
+--automation-disk-idle-frames N
+```
+
+This requests termination after the null UI observes the disk status become
+active and then remain inactive for `N` completed machine frames. The settling
+period defaults to 50 frames. It must be paired with
+`--automation-max-frames`, which bounds images that never start disk activity
+or never become idle:
+
+```sh
+fuse \
+  --automation-output /tmp/disk-result \
+  --automation-until-disk-idle \
+  --automation-disk-idle-frames 50 \
+  --automation-max-frames 5000 \
+  --machine plus3 --no-sound --no-confirm-actions \
+  game.dsk
+```
+
+The condition deliberately means that initial disk loading became idle, not
+that all later multi-load activity completed. The final CPU state and optional
+screen capture provide evidence at the idle point. Some programs leave the
+motor control asserted after loading; those runs reach their deadline even if
+the program is visibly running, and consumers should treat them as unresolved
+by this heuristic rather than as a proven loading failure.
 
 ### RZX completion
 
@@ -352,6 +384,8 @@ A representative RZX result is:
 
 `scenario.maximum_frames` contains the fixed-frame count or deadline.
 `scenario.until_rzx_end` records whether RZX completion was requested.
+`scenario.until_disk_idle` records whether disk-idle completion was
+requested; `disk_idle_frames` gives its settling period.
 `scenario.requested_machine` records the configured machine identifier.
 `scenario.capture.screen` and `scenario.capture.audio` always record capture
 intent, independently of whether either artifact was ultimately produced.
@@ -363,6 +397,8 @@ For PC runs, the scenario also contains `success_pc`, and, when configured,
 
 `execution.frames_completed` is measured relative to the point at which the
 scenario was armed. `actual_machine` records the machine which actually ran.
+For disk-idle scenarios, `execution.disk` records whether motor activity was
+observed, whether the motor remained on at exit, and the required idle period.
 `cpu_mode` is `nmos` or `cmos`; for RZX playback it preserves the mode in use
 while playback was active, including legacy Spectaculator compatibility.
 
@@ -375,9 +411,10 @@ Current termination names are:
 | `failure` | Failure PC was reached after its ignore count |
 | `rzx-end` | RZX playback completed normally |
 | `rzx-desynchronisation` | Recorded input no longer matched execution |
-| `rzx-parse-error` | The RZX container or playback stream could not be parsed |
+| `rzx-parse-error` | RZX container or playback stream could not be parsed |
 | `rzx-snapshot-error` | Initial or later RZX snapshot restoration failed |
 | `rzx-aborted` | Playback stopped without another RZX outcome |
+| `disk-idle` | Disk activity was followed by the inactive settling period |
 | `deadline` | The requested condition was not reached in time |
 | `error` | Other automation execution error |
 
@@ -403,6 +440,9 @@ The current implementation deliberately uses local CRC-32 rather than SHA-256
 to limit dependencies. Depending on the scenario, `identity` can contain:
 
 - `tape`: the loaded tape/PZX/TZX input;
+- `disk`: the disk image selected for insertion into an emulated disk drive;
+- `disk_location`: the disk controller (`plus3`, `beta`, `plusd`, `opus`,
+  `disciple`, or `didaktik`) and zero-based drive number;
 - `rzx`: the input recording;
 - `external_snapshot`: a separately loaded snapshot;
 - `rzx_snapshot_source`: `embedded` or `external`;
@@ -478,11 +518,11 @@ not a general inspection interface.
 
 The process status is a coarse indication suitable for shell scripts:
 
-| Status | Meaning                                                             |
-| ------ | -------                                                             |
-| `0`    | Frames, success PC, or RZX completion occurred as requested         |
-| `1`    | Failure PC, RZX error/abort, startup error, or result-writing error |
-| `2`    | Frame deadline was reached before the requested condition           |
+| Status | Meaning |
+| ------ | ------- |
+| `0` | Requested completion occurred |
+| `1` | Failure PC, RZX error/abort, startup error, or result-writing error |
+| `2` | Frame deadline was reached before the requested condition |
 
 Consumers needing a precise classification must read `result.json`. In
 particular, diagnostics do not replace the termination type.

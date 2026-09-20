@@ -68,11 +68,34 @@ static void init_path_context( path_context *ctx, utils_aux_type type );
 
 static int networking_init_count = 0;
 
+#ifdef ENABLE_AUTOMATION
+static const char *
+automation_disk_controller_name( ui_media_controller controller )
+{
+  switch( controller ) {
+  case UI_MEDIA_CONTROLLER_PLUS3: return "plus3";
+  case UI_MEDIA_CONTROLLER_BETA: return "beta";
+  case UI_MEDIA_CONTROLLER_PLUSD: return "plusd";
+  case UI_MEDIA_CONTROLLER_OPUS: return "opus";
+  case UI_MEDIA_CONTROLLER_DISCIPLE: return "disciple";
+  case UI_MEDIA_CONTROLLER_DIDAKTIK: return "didaktik";
+  default: return "unknown";
+  }
+}
+#endif
+
 static int
 utils_insert_disk( ui_media_controller controller, utils_file *file,
                    int autoload )
 {
   ui_media_drive_info_t *drive = ui_media_drive_find( controller, 0 );
+#ifdef ENABLE_AUTOMATION
+  /* Disk insertion may normalise the loaded image in place, so retain the
+     source identity before handing the buffer to the drive. */
+  if( drive && automation_active() )
+    automation_record_disk( file,
+                            automation_disk_controller_name( controller ), 0 );
+#endif
   return drive ? ui_media_drive_insert_file( drive, file, autoload ) : 1;
 }
 
@@ -105,7 +128,7 @@ utils_open_loaded_file( utils_file *file, int autoload,
   if( utils_file_identify( file ) ) return 1;
 #ifdef ENABLE_AUTOMATION
   if( automation_active() ) {
-    automation_record_media( file );
+    automation_record_tape( file );
     if( libspectrum_file_class( file ) == LIBSPECTRUM_CLASS_RECORDING )
       automation_record_rzx( file );
     else if( libspectrum_file_class( file ) == LIBSPECTRUM_CLASS_SNAPSHOT )

@@ -661,6 +661,8 @@ print hashline( __LINE__ ), << 'CODE';
     { "automation-until-rzx-end", 0, NULL, 1006 },
     { "automation-capture-screen", 0, NULL, 1007 },
     { "automation-capture-audio", 0, NULL, 1008 },
+    { "automation-until-disk-idle", 0, NULL, 1009 },
+    { "automation-disk-idle-frames", 1, NULL, 1010 },
 #endif
     { "help", 0, NULL, 'h' },
     { "version", 0, NULL, 'V' },
@@ -737,6 +739,12 @@ print hashline( __LINE__ ), << 'CODE';
       break;
     case 1008:
       automation_set_capture_audio();
+      break;
+    case 1009:
+      automation_set_until_disk_idle();
+      break;
+    case 1010:
+      if( automation_set_disk_idle_frames( optarg ) ) return 1;
       break;
 #endif
     case 'h': settings->show_help = 1; break;

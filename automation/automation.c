@@ -44,15 +44,17 @@ static automation_result result;
 static unsigned long first_frame;
 static diagnostic *diagnostics;
 static size_t diagnostics_count;
-static uLong media_crc32;
-static size_t media_size;
-static int media_recorded;
-static char *media_name;
+static uLong tape_crc32, disk_crc32;
+static size_t tape_size, disk_size;
+static int tape_recorded, disk_recorded;
+static char *tape_name, *disk_name, *disk_controller;
+static unsigned int disk_drive;
 static uLong rzx_crc32, snapshot_crc32;
 static size_t rzx_size, snapshot_size;
 static char *rzx_name, *snapshot_name;
 static int rzx_recorded, snapshot_recorded;
-static int armed;
+static int armed, disk_motor_on, disk_motor_observed;
+static unsigned long disk_motor_off_frame;
 
 static int
 parse_count( const char *text, unsigned long *value, int allow_zero )
@@ -117,6 +119,23 @@ automation_set_until_rzx_end( void )
 }
 
 void
+automation_set_until_disk_idle( void )
+{
+  scenario.until_disk_idle = 1;
+  if( !scenario.disk_idle_frames ) scenario.disk_idle_frames = 50;
+}
+
+int
+automation_set_disk_idle_frames( const char *frames )
+{
+  if( parse_count( frames, &scenario.disk_idle_frames, 0 ) ) {
+    fprintf( stderr, "invalid automation disk idle frame count: %s\n", frames );
+    return 1;
+  }
+  return 0;
+}
+
+void
 automation_set_capture_screen( void )
 {
   scenario.capture_screen = 1;
@@ -173,12 +192,15 @@ automation_validate_scenario( void )
 
   if( !scenario.output_directory && !scenario.maximum_frames && !conditions &&
       !scenario.failure.ignore && !scenario.until_rzx_end &&
+      !scenario.until_disk_idle && !scenario.disk_idle_frames &&
       !scenario.capture_screen && !scenario.capture_audio )
     return 0;
 
   if( !scenario.output_directory || !scenario.maximum_frames ||
       ( conditions && !scenario.success.present ) ||
-      ( scenario.failure.ignore && !scenario.failure.present ) ) {
+      ( scenario.failure.ignore && !scenario.failure.present ) ||
+      ( scenario.disk_idle_frames && !scenario.until_disk_idle ) ||
+      ( scenario.until_rzx_end && scenario.until_disk_idle ) ) {
     fprintf( stderr,
              "automation requires --automation-output, a frame limit, and a success PC for condition runs\n" );
     return 1;
@@ -201,7 +223,8 @@ automation_arm( unsigned long frame_count )
   armed = 1;
   if( result.termination == AUTOMATION_TERMINATION_FRAMES )
     result.termination =
-      ( scenario.success.present || scenario.until_rzx_end ) ?
+      ( scenario.success.present || scenario.until_rzx_end ||
+        scenario.until_disk_idle ) ?
       AUTOMATION_TERMINATION_DEADLINE : AUTOMATION_TERMINATION_FRAMES;
 }
 
@@ -233,6 +256,11 @@ int
 automation_frame_limit_reached( unsigned long frame_count )
 {
   result.frames_completed = frame_count - first_frame;
+  if( scenario.until_disk_idle && disk_motor_observed && !disk_motor_on &&
+      frame_count - disk_motor_off_frame >= scenario.disk_idle_frames ) {
+    result.termination = AUTOMATION_TERMINATION_DISK_IDLE;
+    return 1;
+  }
   return result.frames_completed >= scenario.maximum_frames;
 }
 
@@ -262,19 +290,19 @@ checksum( const unsigned char *data, size_t length )
 }
 
 void
-automation_record_media( const utils_file *file )
+automation_record_tape( const utils_file *file )
 {
   const char *name;
 
   if( libspectrum_file_class( file ) != LIBSPECTRUM_CLASS_TAPE )
     return;
 
-  media_size = libspectrum_file_size( file );
-  media_crc32 = checksum( libspectrum_file_data( file ), media_size );
-  media_recorded = 1;
+  tape_size = libspectrum_file_size( file );
+  tape_crc32 = checksum( libspectrum_file_data( file ), tape_size );
+  tape_recorded = 1;
   name = libspectrum_file_name( file );
-  libspectrum_free( media_name );
-  media_name = utils_safe_strdup( name );
+  libspectrum_free( tape_name );
+  tape_name = utils_safe_strdup( name );
 }
 
 static void
@@ -285,6 +313,28 @@ record_file( const utils_file *file, uLong *crc, size_t *size, char **name )
   *crc = checksum( libspectrum_file_data( file ), *size );
   libspectrum_free( *name );
   *name = utils_safe_strdup( source );
+}
+
+void
+automation_record_disk( const utils_file *file, const char *controller,
+                        unsigned int drive )
+{
+  record_file( file, &disk_crc32, &disk_size, &disk_name );
+  libspectrum_free( disk_controller );
+  disk_controller = utils_safe_strdup( controller );
+  disk_drive = drive;
+  disk_recorded = 1;
+}
+
+void
+automation_disk_motor_changed( int on, unsigned long frame_count )
+{
+  if( !armed || !scenario.until_disk_idle ) return;
+
+  on = !!on;
+  if( on ) disk_motor_observed = 1;
+  if( disk_motor_on && !on ) disk_motor_off_frame = frame_count;
+  disk_motor_on = on;
 }
 
 void
@@ -394,6 +444,7 @@ termination_name( void )
   case AUTOMATION_TERMINATION_RZX_PARSE_ERROR: return "rzx-parse-error";
   case AUTOMATION_TERMINATION_RZX_SNAPSHOT_ERROR: return "rzx-snapshot-error";
   case AUTOMATION_TERMINATION_RZX_ABORTED: return "rzx-aborted";
+  case AUTOMATION_TERMINATION_DISK_IDLE: return "disk-idle";
   case AUTOMATION_TERMINATION_DEADLINE: return "deadline";
   case AUTOMATION_TERMINATION_ERROR: return "error";
   default: return "frames";
@@ -414,6 +465,11 @@ write_scenario( automation_json *json )
   automation_json_object_begin( json, "scenario" );
   automation_json_ulong( json, "maximum_frames", scenario.maximum_frames );
   automation_json_boolean( json, "until_rzx_end", scenario.until_rzx_end );
+  automation_json_boolean( json, "until_disk_idle",
+                           scenario.until_disk_idle );
+  if( scenario.until_disk_idle )
+    automation_json_ulong( json, "disk_idle_frames",
+                           scenario.disk_idle_frames );
   automation_json_string( json, "requested_machine",
                           settings_current.start_machine );
   if( scenario.success.present )
@@ -440,10 +496,24 @@ write_execution( automation_json *json )
                             settings_current.z80_is_cmos ) ? "cmos" : "nmos" );
   automation_json_object_begin( json, "termination" );
   automation_json_string( json, "type", termination_name() );
+  if( result.termination == AUTOMATION_TERMINATION_DISK_IDLE ) {
+    automation_json_boolean( json, "motor_activity_observed",
+                             disk_motor_observed );
+    automation_json_ulong( json, "idle_frames", scenario.disk_idle_frames );
+  }
   if( result.termination == AUTOMATION_TERMINATION_SUCCESS ||
       result.termination == AUTOMATION_TERMINATION_FAILURE )
     automation_json_ulong( json, "pc", result.pc );
   automation_json_end( json );
+  if( scenario.until_disk_idle ) {
+    automation_json_object_begin( json, "disk" );
+    automation_json_boolean( json, "motor_activity_observed",
+                             disk_motor_observed );
+    automation_json_boolean( json, "motor_on_at_end", disk_motor_on );
+    automation_json_ulong( json, "required_idle_frames",
+                           scenario.disk_idle_frames );
+    automation_json_end( json );
+  }
   automation_json_end( json );
 }
 
@@ -481,8 +551,16 @@ write_identity( automation_json *json )
     write_file_identity( json, "external_snapshot", snapshot_name,
                          snapshot_size, snapshot_crc32 );
 
-  if( media_recorded )
-    write_file_identity( json, "tape", media_name, media_size, media_crc32 );
+  if( tape_recorded )
+    write_file_identity( json, "tape", tape_name, tape_size, tape_crc32 );
+
+  if( disk_recorded ) {
+    write_file_identity( json, "disk", disk_name, disk_size, disk_crc32 );
+    automation_json_object_begin( json, "disk_location" );
+    automation_json_string( json, "controller", disk_controller );
+    automation_json_ulong( json, "drive", disk_drive );
+    automation_json_end( json );
+  }
 
   automation_json_array_begin( json, "active_roms" );
   for( int page = 0; page < SPECTRUM_ROM_PAGES; page++ ) {
@@ -568,7 +646,9 @@ automation_end( void )
 
   libspectrum_free( diagnostics );
   libspectrum_free( scenario.output_directory );
-  libspectrum_free( media_name );
+  libspectrum_free( tape_name );
+  libspectrum_free( disk_name );
+  libspectrum_free( disk_controller );
   libspectrum_free( rzx_name );
   libspectrum_free( snapshot_name );
   automation_artifacts_end();

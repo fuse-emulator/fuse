@@ -31,6 +31,12 @@ const parameters = Type.Object({
 	run_until_rzx_complete: Type.Optional(
 		Type.Boolean({ description: "Run until RZX playback completes, subject to max_frames" }),
 	),
+	run_until_disk_idle: Type.Optional(
+		Type.Boolean({ description: "Run until observed disk activity remains inactive, subject to max_frames" }),
+	),
+	disk_idle_frames: Type.Optional(
+		Type.Integer({ minimum: 1, description: "Required inactive settling frames (default: 50)" }),
+	),
 	capture_screen: Type.Optional(Type.Boolean({ description: "Capture the final display as screen.png" })),
 	capture_audio: Type.Optional(Type.Boolean({ description: "Capture frame-aligned PCM audio as audio.wav" })),
 });
@@ -40,19 +46,30 @@ type Params = Static<typeof parameters>;
 function validate(params: Params): void {
 	const pcRun = params.success_pc !== undefined;
 	const rzxRun = params.run_until_rzx_complete === true;
+	const diskRun = params.run_until_disk_idle === true;
+	const conditionalRuns = Number(pcRun) + Number(rzxRun) + Number(diskRun);
 
-	if (pcRun && rzxRun) throw new Error("success_pc and run_until_rzx_complete select incompatible run modes");
+	if (conditionalRuns > 1) {
+		throw new Error("success_pc, run_until_rzx_complete, and run_until_disk_idle select incompatible run modes");
+	}
 	if (params.failure_pc !== undefined && !pcRun) throw new Error("failure_pc requires success_pc");
 	if (params.failure_ignore_count !== undefined && params.failure_pc === undefined) {
 		throw new Error("failure_ignore_count requires failure_pc");
 	}
+	if (params.disk_idle_frames !== undefined && !diskRun) {
+		throw new Error("disk_idle_frames requires run_until_disk_idle");
+	}
 
-	if (pcRun || rzxRun) {
-		if (params.max_frames === undefined) throw new Error("PC-condition and RZX-completion runs require max_frames");
+	if (pcRun || rzxRun || diskRun) {
+		if (params.max_frames === undefined) {
+			throw new Error("PC-condition, RZX-completion, and disk-idle runs require max_frames");
+		}
 		if (params.frame_count !== undefined) throw new Error("frame_count is only valid for an ordinary fixed-frame run");
 	} else {
 		if (params.frame_count === undefined) throw new Error("an ordinary run requires frame_count");
-		if (params.max_frames !== undefined) throw new Error("max_frames is only valid for a PC-condition or RZX-completion run");
+		if (params.max_frames !== undefined) {
+			throw new Error("max_frames is only valid for a PC-condition, RZX-completion, or disk-idle run");
+		}
 	}
 
 	if (rzxRun && params.input_file === undefined) {
@@ -84,7 +101,7 @@ export default function (pi: ExtensionAPI) {
 		name: "fuse_run",
 		label: "Fuse Run",
 		description:
-			"Run one bounded scenario through Fuse's development --automation-* CLI, parse its authoritative result.json, and return requested evidence. Use frame_count for ordinary runs; use max_frames with success_pc or run_until_rzx_complete.",
+			"Run one bounded scenario through Fuse's development --automation-* CLI, parse its authoritative result.json, and return requested evidence. Use frame_count for ordinary runs; use max_frames with success_pc, run_until_rzx_complete, or run_until_disk_idle.",
 		promptSnippet: "Run a bounded Fuse automation scenario and return result.json plus requested evidence",
 		parameters,
 
@@ -108,6 +125,10 @@ export default function (pi: ExtensionAPI) {
 				args.push("--automation-failure-pc-ignore", String(params.failure_ignore_count));
 			}
 			if (params.run_until_rzx_complete) args.push("--automation-until-rzx-end");
+			if (params.run_until_disk_idle) args.push("--automation-until-disk-idle");
+			if (params.disk_idle_frames !== undefined) {
+				args.push("--automation-disk-idle-frames", String(params.disk_idle_frames));
+			}
 			if (params.capture_screen) args.push("--automation-capture-screen");
 			if (params.capture_audio) args.push("--automation-capture-audio");
 			else args.push("--no-sound");
