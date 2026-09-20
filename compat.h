@@ -180,6 +180,7 @@ int compat_closedir( compat_dir directory );
 
 double compat_timer_get_time( void );
 void compat_timer_sleep( int ms );
+long long compat_monotonic_time_us( void );
 
 /* TUN/TAP handling */
 
