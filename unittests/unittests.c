@@ -27,6 +27,7 @@
 
 #include <fcntl.h>
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -2607,11 +2608,20 @@ utils_open_loaded_microdrive_test( void )
 {
   compat_file_vtable_t vtable;
   utils_file file;
-  const char *filename = "lib/tests/success.mdr";
+  const char *srcdir;
+  char *filename;
   int r = 0;
+
+  srcdir = getenv( "FUSE_TEST_SRCDIR" );
+  if( !srcdir ) srcdir = ".";
+  filename = libspectrum_new( char,
+                              strlen( srcdir ) +
+                                sizeof( "/lib/tests/success.mdr" ) );
+  sprintf( filename, "%s/lib/tests/success.mdr", srcdir );
 
   if( utils_read_file( filename, &file ) ) {
     printf( "utils_open_loaded_microdrive_test: failed to read fixture\n" );
+    libspectrum_free( filename );
     return 1;
   }
 
@@ -2629,6 +2639,7 @@ utils_open_loaded_microdrive_test( void )
   if1_mdr_eject( 0 );
   compat_file_set_vtable( &utils_file_previous_vtable );
   utils_file_free( &file );
+  libspectrum_free( filename );
   if( r ) printf( "utils_open_loaded_microdrive_test failed\n" );
   return r;
 }

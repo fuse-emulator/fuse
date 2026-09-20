@@ -249,7 +249,7 @@ include z80/Makefile.am
 if UI_NULL
 check-local: fuse unittests/displaytest unittests/sdl2displaytest unittests/sdl2scalerstatetest unittests/sdl2joysticktest unittests/sdl2mousetest unittests/palcompositetest unittests/scalerexpandtest z80/coretest
 	@test -e $(top_builddir)/roms || ln -sf "$(abs_top_srcdir)/roms" $(top_builddir)/roms
-	$(top_builddir)/fuse --unittests
+	FUSE_TEST_SRCDIR="$(abs_top_srcdir)" $(top_builddir)/fuse --unittests
 	$(top_builddir)/unittests/displaytest
 	$(top_builddir)/unittests/sdl2displaytest
 	$(top_builddir)/unittests/sdl2scalerstatetest
