@@ -2779,6 +2779,97 @@ utils_open_loaded_disk_merge_test( void )
   return r;
 }
 
+/* A brand new blank disk image cannot be saved as a classic CPCEMU .dsk
+   image: the format cannot store unformatted tracks, and the image Fuse
+   used to write could not be reopened (bug #415) */
+static int
+disk_write_blank_disk_cpc_save_test( void )
+{
+  char temporary_path[] = "/tmp/fuse-disk-blank-cpc-XXXXXX";
+  char filename[ PATH_MAX ];
+  disk_t disk;
+  int fd, r = 0;
+
+  /* mkdtemp is not provided by MinGW; use mkstemp to obtain a unique
+     filename prefix instead. */
+  fd = mkstemp( temporary_path );
+  if( fd < 0 ) return 1;
+  close( fd );
+  unlink( temporary_path );
+  snprintf( filename, sizeof( filename ), "%s.dsk", temporary_path );
+
+  /* A new blank disk image, as created by the media menu's "Insert New"
+     item: every track is unformatted */
+  memset( &disk, 0, sizeof( disk ) );
+  if( disk_new( &disk, 2, 80, DISK_DENS_AUTO, DISK_UDI ) != DISK_OK ) r++;
+
+  /* Saving as a classic CPCEMU .dsk image must be refused */
+  disk.type = DISK_TYPE_NONE;
+  if( disk_write( &disk, filename ) != DISK_GEOM ) r++;
+
+  disk_close( &disk );
+  unlink( filename );
+
+  if( r ) printf( "disk_write_blank_disk_cpc_save_test failed\n" );
+  return r;
+}
+
+/* Write a blank UDI disk image and reopen it: the UDI writer and reader
+   previously had no direct test coverage */
+static int
+disk_write_open_udi_roundtrip_test( void )
+{
+  char temporary_path[] = "/tmp/fuse-disk-roundtrip-XXXXXX";
+  char filename[ PATH_MAX ];
+  disk_t write_disk, open_disk;
+  int fd, i, r = 0;
+  const int sides = 2, cylinders = 40;
+
+  /* mkdtemp is not provided by MinGW; use mkstemp to obtain a unique
+     filename prefix instead. */
+  fd = mkstemp( temporary_path );
+  if( fd < 0 ) return 1;
+  close( fd );
+  unlink( temporary_path );
+  snprintf( filename, sizeof( filename ), "%s.udi", temporary_path );
+
+  memset( &write_disk, 0, sizeof( write_disk ) );
+  if( disk_new( &write_disk, sides, cylinders, DISK_DENS_AUTO,
+                DISK_UDI ) != DISK_OK )
+    r++;
+
+  if( disk_write( &write_disk, filename ) != DISK_OK ) r++;
+
+  memset( &open_disk, 0, sizeof( open_disk ) );
+  if( !r && disk_open( &open_disk, filename, 0, 0 ) != DISK_OK ) r++;
+
+  if( !r && ( open_disk.sides != sides || open_disk.cylinders != cylinders ||
+              open_disk.type != DISK_UDI || open_disk.status != DISK_OK ) )
+    r++;
+
+  /* Every track must come back with the same type, length and contents */
+  if( !r ) {
+    disk_t *w = &write_disk, *o = &open_disk;
+    for( i = 0; i < sides * cylinders; i++ ) {
+      DISK_SET_TRACK_IDX( w, i );
+      DISK_SET_TRACK_IDX( o, i );
+      if( w->track[-1] != o->track[-1] || w->c_bpt != o->c_bpt ||
+          memcmp( w->track, o->track,
+                  o->c_bpt + 3 * DISK_CLEN( o->c_bpt ) ) ) {
+        r++;
+        break;
+      }
+    }
+  }
+
+  disk_close( &write_disk );
+  disk_close( &open_disk );
+  unlink( filename );
+
+  if( r ) printf( "disk_write_open_udi_roundtrip_test failed\n" );
+  return r;
+}
+
 static FILE compat_file_test_file;
 static int compat_file_test_calls[ 7 ];
 
@@ -2885,6 +2976,8 @@ unittests_run( void )
   r += utils_open_loaded_disk_test();
   r += utils_open_loaded_compressed_disk_test();
   r += utils_open_loaded_disk_merge_test();
+  r += disk_write_blank_disk_cpc_save_test();
+  r += disk_write_open_udi_roundtrip_test();
 
   printf("Final return value: %d (should be 0)\n", r);
 

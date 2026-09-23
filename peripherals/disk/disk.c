@@ -2758,7 +2758,14 @@ write_cpc( FILE *file, disk_t *d )
   size_t len;
 
   i = check_disk_geom( d, &sbase, &sectors, &seclen, &mfm, &cyl );
-  if( i & DISK_SECLEN_VARI || i & DISK_SPT_VARI || i & DISK_WEAK_DATA )
+
+  /* Classic CPCEMU DSK images cannot store unformatted tracks, and a disk
+     with no formatted sectors at all (e.g. a brand new blank disk) has no
+     sector geometry to write; refuse instead of writing an image which
+     Fuse itself cannot reopen */
+  if( sbase == -1 || seclen == -1 ||
+      i & DISK_SECLEN_VARI || i & DISK_SPT_VARI || i & DISK_WEAK_DATA ||
+      i & DISK_UNFORMATTED_TRACK )
     return d->status = DISK_GEOM;
 
   if( i & DISK_MFM_VARI )

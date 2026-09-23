@@ -5725,7 +5725,8 @@ contains three dumps of the loaded disk image at different details.
 Not all image formats can store all disk images.
 You cannot save a disk image with an inappropriate format
 that loses some information (e.g. variable track length or
-sector length).
+sector length). Classic CPCEMU .dsk images cannot store unformatted tracks,
+so a newly inserted blank disk must be saved in another format, such as UDI.
 .\"
 .\"------------------------------------------------------------------
 .\"
