@@ -108,6 +108,30 @@ format_pulses( char *buffer, size_t length, libspectrum_tape_block *block )
             (unsigned long)libspectrum_tape_block_count( block ) );
 }
 
+/* RLE pulse data uses the same encoding as CSW/TZX RLE streams: a pulse of
+   n samples is stored as a single byte if n <= 255, or as a zero marker
+   followed by a little-endian dword when n > 255. */
+static void
+format_rle_pulse( char *buffer, size_t length, libspectrum_tape_block *block )
+{
+  libspectrum_byte *data = libspectrum_tape_block_data( block );
+  size_t i, data_length = libspectrum_tape_block_data_length( block );
+  unsigned long pulses = 0;
+
+  if( data && data_length ) {
+    for( i = 0; i < data_length; i++ ) {
+      if( data[ i ] ) {
+        pulses++;                       /* one byte: pulse <= 255 samples */
+      } else {
+        i += 4;                         /* marker byte plus dword length */
+        pulses++;
+      }
+    }
+  }
+
+  snprintf( buffer, length, "%lu pulses", pulses );
+}
+
 static void
 format_pulse_sequence( char *buffer, size_t length,
                        libspectrum_tape_block *block )
@@ -189,6 +213,7 @@ static const tape_block_format_entry formatters[] = {
   { LIBSPECTRUM_TAPE_BLOCK_LOOP_START, format_iterations },
   { LIBSPECTRUM_TAPE_BLOCK_SELECT, format_options },
   { LIBSPECTRUM_TAPE_BLOCK_GENERALISED_DATA, format_data_symbols },
+  { LIBSPECTRUM_TAPE_BLOCK_RLE_PULSE, format_rle_pulse },
 };
 
 int

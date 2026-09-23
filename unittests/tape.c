@@ -126,18 +126,6 @@ check_block_details( libspectrum_tape_block *block, const char *expected )
 }
 
 static int
-check_simple_block_detail( libspectrum_tape_type type, const char *expected )
-{
-  libspectrum_tape_block *block = libspectrum_tape_block_alloc( type );
-  int error;
-
-  if( !block ) return 1;
-  error = check_block_details( block, expected );
-  libspectrum_tape_block_free( block );
-  return error;
-}
-
-static int
 tape_block_details_unittest( void )
 {
   libspectrum_tape_block *block;
@@ -228,7 +216,21 @@ tape_block_details_unittest( void )
   libspectrum_tape_block_set_count( block, 0 );
   libspectrum_tape_block_free( block );
 
-  error |= check_simple_block_detail( LIBSPECTRUM_TAPE_BLOCK_RLE_PULSE, "" );
+  /* RLE pulse data counts pulses using the CSW/TZX RLE encoding: a pulse of
+     n samples is one byte if n <= 255, otherwise a zero marker followed by a
+     little-endian dword (here 0x0000012c = 300 samples). */
+  block = libspectrum_tape_block_alloc( LIBSPECTRUM_TAPE_BLOCK_RLE_PULSE );
+  if( !block ) return 1;
+  data = libspectrum_new( libspectrum_byte, 6 );
+  if( !data ) { libspectrum_tape_block_free( block ); return 1; }
+  memset( data, 0, 6 );
+  data[0] = 100;
+  data[2] = 0x2c; data[3] = 1;
+  libspectrum_tape_block_set_data_length( block, 6 );
+  libspectrum_tape_block_set_data( block, data );
+  error |= check_block_details( block, "2 pulses" );
+  libspectrum_tape_block_free( block );
+
   return error;
 }
 
