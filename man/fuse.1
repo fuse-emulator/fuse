@@ -154,9 +154,8 @@ and select Pentagon mode on startup.
 .B \-\-bw\-tv
 .RS
 Specify whether the display should simulate a colour or black and
-white television. This option is effective under the GTK, Win32, Xlib
-and SDL user interfaces: the others will always simulate a colour TV.
-The same as the General Options dialog's
+white television. This option is effective under every Fuse user
+interface. The same as the General Options dialog's
 .I "Black and white TV"
 option.
 .RE
@@ -2476,8 +2475,7 @@ options.
 .I "Black and white TV"
 .RS
 This option allows you to choose whether to simulate a colour or black
-and white television. This is effective only under the GTK, Win32, Xlib and
-SDL user interfaces: the others will always simulate a colour TV.
+and white television. This is effective under every Fuse user interface.
 .RE
 .PP
 .I "Show statusbar"
@@ -5880,7 +5878,7 @@ The comp.sys.sinclair Spectrum FAQ, at
 .SH AUTHOR
 Philip Kendall (philip\-fuse@shadowmagic.org.uk).
 .PP
-Matan Ziv-Av wrote the SVGAlib and framebuffer UIs, the glib
+Matan Ziv-Av wrote the old SVGAlib and the framebuffer UIs, the glib
 replacement code, and did some work on the OSS-specific sound code and
 the original widget UI code.
 .PP
