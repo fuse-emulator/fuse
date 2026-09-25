@@ -17,7 +17,7 @@
     <category>Emulator</category>
   </categories>
   <releases>
-    <release date="2026-09-19" version="1.10.0">
+    <release date="2026-09-24" version="1.10.0">
       <description>
         <ul>
           <li>Expanded tape-loader detection and acceleration, allowing more games to load quickly and without manual tape control</li>
@@ -26,6 +26,7 @@
           <li>Added support for 16K Interface 1 ROMs and reliable snapshot restoration</li>
           <li>Enabled DISCiPLE on 128K machines and improved +D peripheral accuracy</li>
           <li>Improved GTK3 fullscreen controls and desktop application integration</li>
+          <li>Improved composite scaler performance and tape browser information</li>
           <li>Various other minor bug fixes and improvements</li>
         </ul>
       </description>

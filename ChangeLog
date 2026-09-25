@@ -1,4 +1,4 @@
-2026-09-19  Fredrick Meunier  <fredm@spamcop.net>
+2026-09-24  Fredrick Meunier  <fredm@spamcop.net>
 
         * Fuse 1.10.0 released.
 
@@ -25,6 +25,9 @@
           * Correct tape-loading sound through the beeper so loading audio is
             reproduced accurately (thanks, Kuba Adamowicz) (Fredrick
             Meunier).
+          * Refuse to save classic DSK images with unformatted tracks, avoiding
+            invalid disk images (fixes bug #415, patch #459) (thanks, Sergio
+            Baldoví) (Fredrick Meunier).
 
         * Machine specific improvements:
           * Support both 8K and 16K Interface 1 ROM images and preserve their
@@ -45,10 +48,13 @@
             desktop environments display the proper Fuse icon (Alberto Garcia).
           * Correct CAPS SHIFT handling when multiple host cursor keys are
             held (fixes bug #470, patch #448) (thanks, lvd) (Fredrick Meunier).
+          * Show pulse counts for RLE Pulse blocks in the tape browser
+            (patch #457) (Fredrick Meunier).
           * Add the FMF extension automatically when recording movies (fixes
             bug #469) (Gergely Szasz and Fredrick Meunier).
 
         * Scaler improvements:
+          * Improved composite scaler performance (Fredrick Meunier).
           * Extend composite scaler colours correctly to the screen edges,
             (thanks, Sergio Baldoví) (Fredrick Meunier).
 
@@ -80,6 +86,8 @@
           * Require C11 compiler support (Fredrick Meunier).
 
         * Testing improvements:
+          * Improve internal unit-test configuration, including out-of-tree
+            builds and null-UI test runs (Fredrick Meunier).
           * Improve development regression test harness (Fredrick Meunier).
           * Expand tape-loader, tape-trap and ROM-loading regression coverage
             to reduce the risk of compatibility bugs (Fredrick
