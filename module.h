@@ -47,9 +47,8 @@ typedef struct module_info_t
 int module_register( module_info_t *module );
 void module_end( void );
 
-void module_reset( int hard_reset );
+void module_reset( int hard_reset, libspectrum_snap *snap );
 void module_romcs( void );
-void module_set_pending_snapshot( libspectrum_snap *snap );
 void module_snapshot_enabled( libspectrum_snap *snap );
 void module_snapshot_from( libspectrum_snap *snap );
 void module_snapshot_roms( libspectrum_snap *snap );

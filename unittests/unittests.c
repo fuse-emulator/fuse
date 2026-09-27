@@ -984,6 +984,50 @@ snapshot_custom_rom_is_replaced_by_soft_reset_test( void )
 }
 
 static int
+snapshot_machine_rom_without_file_test( void )
+{
+  static char missing_rom[] = "/nonexistent/snapshot-machine.rom";
+  libspectrum_machine old_machine = machine_current->machine;
+  char *saved_rom = settings_current.rom_48;
+  char *saved_default_rom = settings_default.rom_48;
+  libspectrum_snap *snap;
+  libspectrum_byte *rom;
+  int r = 0;
+
+  if( machine_select( LIBSPECTRUM_MACHINE_48 ) ) return 1;
+  snap = libspectrum_snap_alloc();
+  if( !snap ) return 1;
+  if( snapshot_copy_to( snap ) ) { libspectrum_snap_free( snap ); return 1; }
+
+  rom = libspectrum_new( libspectrum_byte, 0x4000 );
+  memset( rom, 0xa5, 0x4000 );
+  libspectrum_snap_set_custom_rom( snap, 1 );
+  libspectrum_snap_set_custom_rom_pages( snap, 1 );
+  libspectrum_snap_set_roms( snap, 0, rom );
+  libspectrum_snap_set_rom_length( snap, 0, 0x4000 );
+
+  settings_current.rom_48 = missing_rom;
+  settings_default.rom_48 = missing_rom;
+  if( snapshot_copy_from( snap ) || !memory_map_rom[ 0 ].page ||
+      memory_map_rom[ 0 ].page[ 0 ] != 0xa5 ) r++;
+
+  settings_current.rom_48 = saved_rom;
+  settings_default.rom_48 = saved_default_rom;
+  if( machine_select( LIBSPECTRUM_MACHINE_128 ) ) r++;
+
+  settings_current.rom_48 = missing_rom;
+  settings_default.rom_48 = missing_rom;
+  if( snapshot_copy_from( snap ) || !memory_map_rom[ 0 ].page ||
+      memory_map_rom[ 0 ].page[ 0 ] != 0xa5 ) r++;
+
+  settings_current.rom_48 = saved_rom;
+  settings_default.rom_48 = saved_default_rom;
+  if( machine_select( old_machine ) ) r++;
+  if( libspectrum_snap_free( snap ) ) r++;
+  return r;
+}
+
+static int
 snapshot_missing_rom_file_uses_snapshot_rom_test( void )
 {
   libspectrum_snap *snap;
@@ -3020,6 +3064,7 @@ unittests_run( void )
   r += floating_bus_merge_test();
   r += snapshot_copy_from_releases_keyboard_test();
   r += snapshot_custom_rom_is_replaced_by_soft_reset_test();
+  r += snapshot_machine_rom_without_file_test();
   r += snapshot_missing_rom_file_uses_snapshot_rom_test();
   r += slt_is_cleared_by_reset_test();
   r += slt_screen_is_cleared_by_reset_test();

@@ -34,10 +34,6 @@
 
 static GSList *registered_modules = NULL;
 
-/* Snapshot ROMs must be installed after machine setup but before peripheral
-   reset attempts to load ROM files. */
-static libspectrum_snap *pending_snapshot = NULL;
-
 int
 module_register( module_info_t *module )
 {
@@ -63,18 +59,11 @@ reset( gpointer data, gpointer user_data )
 }
 
 void
-module_reset( int hard_reset )
+module_reset( int hard_reset, libspectrum_snap *snap )
 {
-  if( pending_snapshot ) module_snapshot_roms( pending_snapshot );
+  if( snap ) module_snapshot_roms( snap );
 
   g_slist_foreach( registered_modules, reset, GINT_TO_POINTER( hard_reset ) );
-}
-
-/* Set the snapshot whose ROM banks the next reset should register. */
-void
-module_set_pending_snapshot( libspectrum_snap *snap )
-{
-  pending_snapshot = snap;
 }
 
 static void
