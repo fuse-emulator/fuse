@@ -984,6 +984,81 @@ snapshot_custom_rom_is_replaced_by_soft_reset_test( void )
 }
 
 static int
+snapshot_missing_rom_file_uses_snapshot_rom_test( void )
+{
+  libspectrum_snap *snap;
+  libspectrum_byte *rom;
+  char *saved_rom_plusd;
+  char *saved_default_rom_plusd;
+  static char missing_rom[] = "/nonexistent/plusd.rom";
+  int saved_plusd = settings_current.plusd;
+  int r = 0;
+
+  if( machine_select( LIBSPECTRUM_MACHINE_48 ) ) return 1;
+
+  snap = libspectrum_snap_alloc();
+  if( !snap ) return 1;
+
+  /* A +D snapshot ROM that the +D reset cannot find on disk */
+  rom = libspectrum_new( libspectrum_byte, 0x2000 );
+  if( !rom ) {
+    libspectrum_snap_free( snap );
+    return 1;
+  }
+  memset( rom, 0xa5, 0x2000 );
+  libspectrum_snap_set_machine( snap, LIBSPECTRUM_MACHINE_48 );
+  libspectrum_snap_set_plusd_active( snap, 1 );
+  libspectrum_snap_set_plusd_custom_rom( snap, 1 );
+  libspectrum_snap_set_plusd_rom( snap, 0, rom );
+
+  /* Hide both the configured +D ROM and its fallback so the +D reset cannot
+     read any ROM from disk and has to use the snapshot's ROM bank */
+  saved_rom_plusd = utils_safe_strdup( settings_current.rom_plusd );
+  saved_default_rom_plusd = utils_safe_strdup( settings_default.rom_plusd );
+  settings_current.rom_plusd = missing_rom;
+  settings_default.rom_plusd = missing_rom;
+
+  /* Soft reset: the snapshot's machine is the machine already selected */
+  if( snapshot_copy_from( snap ) || !plusd_available ||
+      periph_is_active( PERIPH_TYPE_PLUSD ) != 1 ||
+      settings_current.plusd != 1 )
+    r++;
+
+  plusd_page();
+  if( memory_map_read[ 0 ].page[ 0 ] != 0xa5 ) r++;
+  plusd_unpage();
+
+  /* Machine change: select a different machine first, then let the snapshot
+     select its own machine */
+  settings_current.rom_plusd = saved_rom_plusd;
+  settings_default.rom_plusd = saved_default_rom_plusd;
+
+  if( machine_select( LIBSPECTRUM_MACHINE_128 ) ) r++;
+
+  settings_current.rom_plusd = missing_rom;
+  settings_default.rom_plusd = missing_rom;
+
+  if( snapshot_copy_from( snap ) || !plusd_available ||
+      periph_is_active( PERIPH_TYPE_PLUSD ) != 1 ||
+      settings_current.plusd != 1 )
+    r++;
+
+  plusd_page();
+  if( memory_map_read[ 0 ].page[ 0 ] != 0xa5 ) r++;
+  plusd_unpage();
+
+  settings_current.rom_plusd = saved_rom_plusd;
+  settings_default.rom_plusd = saved_default_rom_plusd;
+  settings_current.plusd = saved_plusd;
+
+  if( machine_select( LIBSPECTRUM_MACHINE_48 ) ) r++;
+
+  if( libspectrum_snap_free( snap ) ) r++;
+
+  return r;
+}
+
+static int
 slt_is_cleared_by_reset_test( void )
 {
   libspectrum_snap *snap;
@@ -2945,6 +3020,7 @@ unittests_run( void )
   r += floating_bus_merge_test();
   r += snapshot_copy_from_releases_keyboard_test();
   r += snapshot_custom_rom_is_replaced_by_soft_reset_test();
+  r += snapshot_missing_rom_file_uses_snapshot_rom_test();
   r += slt_is_cleared_by_reset_test();
   r += slt_screen_is_cleared_by_reset_test();
   r += spec_se_dock_ram_reset_test();

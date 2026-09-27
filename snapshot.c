@@ -93,6 +93,11 @@ snapshot_copy_from( libspectrum_snap *snap )
 
   settings_current.late_timings = libspectrum_snap_late_timings( snap );
 
+  /* Drop stale banks; register this snapshot's ROMs between machine setup
+     and peripheral reset, before ROM files are consulted. */
+  machine_clear_snapshot_rom_banks();
+  module_set_pending_snapshot( snap );
+
   if( machine != machine_current->machine ) {
     error = machine_select( machine );
     if( error ) {
@@ -103,6 +108,8 @@ snapshot_copy_from( libspectrum_snap *snap )
   } else {
     machine_reset( 0 );
   }
+
+  module_set_pending_snapshot( NULL );
 
   keyboard_release_all();
 

@@ -40,6 +40,7 @@ typedef struct module_info_t
   module_snapshot_enabled_fn snapshot_enabled;
   module_snapshot_from_fn snapshot_from;
   module_snapshot_to_fn snapshot_to;
+  module_snapshot_from_fn snapshot_roms;
 
 } module_info_t;
 
@@ -48,8 +49,10 @@ void module_end( void );
 
 void module_reset( int hard_reset );
 void module_romcs( void );
+void module_set_pending_snapshot( libspectrum_snap *snap );
 void module_snapshot_enabled( libspectrum_snap *snap );
 void module_snapshot_from( libspectrum_snap *snap );
+void module_snapshot_roms( libspectrum_snap *snap );
 void module_snapshot_to( libspectrum_snap *snap );
 
 #endif			/* #ifndef FUSE_MODULE_H */

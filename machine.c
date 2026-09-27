@@ -67,7 +67,7 @@ typedef struct snapshot_rom_bank {
 static GSList *snapshot_rom_banks;
 
 static int machine_add_machine( int (*init_function)(fuse_machine_info *machine) );
-static void machine_clear_snapshot_rom_banks( void );
+void machine_clear_snapshot_rom_banks( void );
 static int machine_select_machine( fuse_machine_info *machine );
 static void machine_set_const_timings( fuse_machine_info *machine );
 static void machine_set_variable_timings( fuse_machine_info *machine );
@@ -359,7 +359,7 @@ snapshot_rom_bank_find( memory_page *map, int page_num )
   return NULL;
 }
 
-static void
+void
 machine_clear_snapshot_rom_banks( void )
 {
   while( snapshot_rom_banks ) {
