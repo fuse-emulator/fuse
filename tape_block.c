@@ -133,6 +133,14 @@ format_rle_pulse( char *buffer, size_t length, libspectrum_tape_block *block )
 }
 
 static void
+format_tzx_csw( char *buffer, size_t length, libspectrum_tape_block *block )
+{
+  snprintf( buffer, length, "%lu pulses, %lu Hz",
+            (unsigned long)libspectrum_tape_block_csw_pulses( block ),
+            (unsigned long)libspectrum_tape_block_sample_rate( block ) );
+}
+
+static void
 format_pulse_sequence( char *buffer, size_t length,
                        libspectrum_tape_block *block )
 {
@@ -214,6 +222,7 @@ static const tape_block_format_entry formatters[] = {
   { LIBSPECTRUM_TAPE_BLOCK_SELECT, format_options },
   { LIBSPECTRUM_TAPE_BLOCK_GENERALISED_DATA, format_data_symbols },
   { LIBSPECTRUM_TAPE_BLOCK_RLE_PULSE, format_rle_pulse },
+  { LIBSPECTRUM_TAPE_BLOCK_TZX_CSW, format_tzx_csw },
 };
 
 int
