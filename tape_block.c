@@ -112,7 +112,8 @@ format_pulses( char *buffer, size_t length, libspectrum_tape_block *block )
    n samples is stored as a single byte if n <= 255, or as a zero marker
    followed by a little-endian dword when n > 255. */
 static void
-format_rle_pulse( char *buffer, size_t length, libspectrum_tape_block *block )
+format_rle_pulse( char *buffer, size_t length,
+                  libspectrum_tape_block *block )
 {
   libspectrum_byte *data = libspectrum_tape_block_data( block );
   size_t i, data_length = libspectrum_tape_block_data_length( block );
@@ -129,7 +130,14 @@ format_rle_pulse( char *buffer, size_t length, libspectrum_tape_block *block )
     }
   }
 
-  snprintf( buffer, length, "%lu pulses", pulses );
+  /* Mirror the TZX CSW recording listing: report an exact stored sample
+     rate when the block carries one, and just the pulse count otherwise. */
+  if( libspectrum_tape_block_sample_rate( block ) ) {
+    snprintf( buffer, length, "%lu pulses, %lu Hz", pulses,
+              (unsigned long)libspectrum_tape_block_sample_rate( block ) );
+  } else {
+    snprintf( buffer, length, "%lu pulses", pulses );
+  }
 }
 
 static void

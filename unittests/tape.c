@@ -229,6 +229,17 @@ tape_block_details_unittest( void )
   libspectrum_tape_block_set_data_length( block, 6 );
   libspectrum_tape_block_set_data( block, data );
   error |= check_block_details( block, "2 pulses" );
+
+  /* A block that carries an exact sample rate (for example one loaded from
+     a standalone CSW file) reports the rate next to the pulse count, like
+     the TZX CSW recording listing. */
+  if( libspectrum_tape_block_set_sample_rate( block, 44100 ) ) {
+    libspectrum_tape_block_free( block );
+    return 1;
+  }
+  error |= check_block_details( block, "2 pulses, 44100 Hz" );
+  libspectrum_tape_block_set_sample_rate( block, 0 );
+  error |= check_block_details( block, "2 pulses" );
   libspectrum_tape_block_free( block );
 
   return error;
