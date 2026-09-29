@@ -764,8 +764,14 @@ Select which Fuse key code should be triggered by the applicable
 real joystick button press. The codes are the Fuse keyboard codes
 corresponding to the keys. The default value is
 .I 4096
-which corresponds to the virtual joystick fire button. Same as the
-Joysticks Options dialog's
+which corresponds to the virtual joystick fire button, except for button 2
+on each real joystick, which defaults to
+.I 4097
+(Menu). On widget-based user interfaces, Menu opens Fuse's main menu;
+on GTK3 and other interfaces without a widget menu, it acts as joystick
+fire instead. GTK3 offers only Joystick Fire, not Menu, in its joystick
+button selector. These settings correspond to the Joysticks Options
+dialog's
 .I "Joystick fire"
 options.
 .RE

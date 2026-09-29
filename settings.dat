@@ -109,7 +109,7 @@ volume_uspeech, numeric, 100
 
 joystick_1_output, numeric, 0
 joystick_1_fire_1, numeric, 4096
-joystick_1_fire_2, numeric, 4096
+joystick_1_fire_2, numeric, 4097
 joystick_1_fire_3, numeric, 4096
 joystick_1_fire_4, numeric, 4096
 joystick_1_fire_5, numeric, 4096
@@ -125,7 +125,7 @@ joystick_1_fire_14, numeric, 4096
 joystick_1_fire_15, numeric, 4096
 joystick_2_output, numeric, 0
 joystick_2_fire_1, numeric, 4096
-joystick_2_fire_2, numeric, 4096
+joystick_2_fire_2, numeric, 4097
 joystick_2_fire_3, numeric, 4096
 joystick_2_fire_4, numeric, 4096
 joystick_2_fire_5, numeric, 4096
