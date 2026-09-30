@@ -254,6 +254,63 @@ tape_block_details_unittest( void )
   error |= check_block_details( block, "11852 pulses, 44100 Hz" );
   libspectrum_tape_block_free( block );
 
+  /* A custom-ROM data block formats like a ROM block: the 19-byte header
+     decodes to the block type and name, and anything else falls back to a
+     byte count. */
+  block = libspectrum_tape_block_alloc( LIBSPECTRUM_TAPE_BLOCK_DATA_BLOCK );
+  if( !block ) return 1;
+  data = libspectrum_new( libspectrum_byte, 19 );
+  if( !data ) { libspectrum_tape_block_free( block ); return 1; }
+  memset( data, ' ', 19 );
+  data[0] = 0x00; data[1] = 0x03;
+  memcpy( &data[2], "TEST      ", 10 );
+  libspectrum_tape_block_set_data_length( block, 19 );
+  libspectrum_tape_block_set_data( block, data );
+  error |= check_block_details( block, "Bytes: \"TEST\"" );
+  data[0] = 0xff;
+  error |= check_block_details( block, "19 bytes" );
+  libspectrum_tape_block_free( block );
+
+  block = libspectrum_tape_block_alloc( LIBSPECTRUM_TAPE_BLOCK_PURE_DATA );
+  if( !block ) return 1;
+  libspectrum_tape_block_set_data_length( block, 42 );
+  error |= check_block_details( block, "42 bytes" );
+  libspectrum_tape_block_free( block );
+
+  block = libspectrum_tape_block_alloc( LIBSPECTRUM_TAPE_BLOCK_RAW_DATA );
+  if( !block ) return 1;
+  libspectrum_tape_block_set_data_length( block, 7 );
+  error |= check_block_details( block, "7 bytes" );
+  libspectrum_tape_block_free( block );
+
+  /* Group starts, messages and custom blocks all list their text. */
+  block = libspectrum_tape_block_alloc( LIBSPECTRUM_TAPE_BLOCK_GROUP_START );
+  if( !block ) return 1;
+  text = libspectrum_new( char, 6 );
+  if( !text ) { libspectrum_tape_block_free( block ); return 1; }
+  strcpy( text, "group" );
+  libspectrum_tape_block_set_text( block, text );
+  error |= check_block_details( block, "group" );
+  libspectrum_tape_block_free( block );
+
+  block = libspectrum_tape_block_alloc( LIBSPECTRUM_TAPE_BLOCK_MESSAGE );
+  if( !block ) return 1;
+  text = libspectrum_new( char, 8 );
+  if( !text ) { libspectrum_tape_block_free( block ); return 1; }
+  strcpy( text, "message" );
+  libspectrum_tape_block_set_text( block, text );
+  error |= check_block_details( block, "message" );
+  libspectrum_tape_block_free( block );
+
+  block = libspectrum_tape_block_alloc( LIBSPECTRUM_TAPE_BLOCK_CUSTOM );
+  if( !block ) return 1;
+  text = libspectrum_new( char, 7 );
+  if( !text ) { libspectrum_tape_block_free( block ); return 1; }
+  strcpy( text, "custom" );
+  libspectrum_tape_block_set_text( block, text );
+  error |= check_block_details( block, "custom" );
+  libspectrum_tape_block_free( block );
+
   return error;
 }
 
