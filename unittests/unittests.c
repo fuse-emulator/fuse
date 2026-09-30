@@ -570,6 +570,15 @@ speaker_filter_test( void )
     TEST_ASSERT( output[ i ] == speaker_filter_apply(
                                    &filter, i == 0 ? 2234.0 : 1234.0 ) );
 
+  /* Sub-threshold residual state must be flushed, as in the dc and tv
+   * filter tests, so processors without denormal flushing cannot slow a
+   * long silence down. */
+  speaker_filter_reset( &filter );
+  TEST_ASSERT( speaker_filter_apply( &filter, 0.0 ) == 0.0 );
+  TEST_ASSERT( fabs( speaker_filter_apply( &filter, 1.0e-30 ) ) < 1.0e-20 );
+  TEST_ASSERT( filter.z1 == 0.0 );
+  TEST_ASSERT( filter.z2 == 0.0 );
+
   return 0;
 }
 
