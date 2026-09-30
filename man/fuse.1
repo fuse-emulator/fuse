@@ -4476,6 +4476,10 @@ bit like using SCREEN$). There is currently no support for graphics
 when using the serial/parallel output, though any escape codes used
 will be `printed' faithfully. (!)
 .PP
+Serial and parallel printer output is written byte-for-byte, without
+host line-ending conversion. Simulated ZX\ Printer text output uses
+native host line endings: CR/LF on Windows and LF on other platforms.
+.PP
 By the way, it's not a good idea to modify the
 .I printout.pbm
 file outside of Fuse if you want to continue appending to it. The
