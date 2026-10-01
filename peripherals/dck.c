@@ -61,10 +61,19 @@ dck_clear_banks( void )
 static memory_rom_bank *
 dck_get_bank( libspectrum_dck_bank bank, int page )
 {
-  if( bank > LIBSPECTRUM_DCK_BANK_EXROM || page < 0 || page >= 8 )
-    return NULL;
+  if( page < 0 || page >= 8 ) return NULL;
 
-  return &dck_banks[ bank ][ page ];
+  /* DCK bank identifiers are sparse (0, 254 and 255). */
+  switch( bank ) {
+  case LIBSPECTRUM_DCK_BANK_DOCK:
+    return &dck_banks[ 0 ][ page ];
+  case LIBSPECTRUM_DCK_BANK_EXROM:
+    return &dck_banks[ 1 ][ page ];
+  case LIBSPECTRUM_DCK_BANK_HOME:
+    return &dck_banks[ 2 ][ page ];
+  default:
+    return NULL;
+  }
 }
 
 static int
