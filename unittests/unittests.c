@@ -2846,6 +2846,257 @@ cleanup:
   return r;
 }
 
+static void
+dck_test_map( libspectrum_dck_bank bank )
+{
+  writeport_internal( 0x00ff, bank == LIBSPECTRUM_DCK_BANK_EXROM ? 0x80 : 0 );
+  writeport_internal( 0x00f4, bank == LIBSPECTRUM_DCK_BANK_HOME ? 0 : 0xff );
+}
+
+static int
+dck_independent_pages_test( void )
+{
+  static const libspectrum_dck_bank banks[] = {
+    LIBSPECTRUM_DCK_BANK_DOCK, LIBSPECTRUM_DCK_BANK_EXROM,
+    LIBSPECTRUM_DCK_BANK_HOME
+  };
+  static const libspectrum_dck_page_type types[] = {
+    LIBSPECTRUM_DCK_PAGE_ROM, LIBSPECTRUM_DCK_PAGE_RAM,
+    LIBSPECTRUM_DCK_PAGE_RAM_EMPTY, LIBSPECTRUM_DCK_PAGE_NULL,
+    LIBSPECTRUM_DCK_PAGE_RAM, LIBSPECTRUM_DCK_PAGE_RAM_EMPTY,
+    LIBSPECTRUM_DCK_PAGE_NULL, LIBSPECTRUM_DCK_PAGE_RAM
+  };
+  libspectrum_machine old_machine = machine_current->machine;
+  libspectrum_byte *defaults = libspectrum_new( libspectrum_byte, 0x10000 );
+  utils_file file;
+  int bank, page, offset, r = 0;
+  size_t position;
+
+  utils_file_init( &file, "synthetic-page-types.dck" );
+  file.buffer = libspectrum_new0( unsigned char, 9 + 8 * 0x2000 );
+  for( bank = 0; bank < 3; bank++ ) {
+    if( machine_select( LIBSPECTRUM_MACHINE_TC2068 ) ) { r++; break; }
+    dck_test_map( banks[ bank ] );
+    for( offset = 0; offset < 0x10000; offset++ )
+      defaults[ offset ] = readbyte_internal( offset );
+
+    memset( file.buffer, 0, 9 );
+    file.buffer[ 0 ] = banks[ bank ];
+    position = 9;
+    for( page = 0; page < 8; page++ ) {
+      file.buffer[ 1 + page ] = types[ page ];
+      if( types[ page ] == LIBSPECTRUM_DCK_PAGE_ROM ||
+          types[ page ] == LIBSPECTRUM_DCK_PAGE_RAM ) {
+        memset( file.buffer + position, 0x60 + page, 0x2000 );
+        position += 0x2000;
+      }
+    }
+    file.length = position;
+    if( dck_insert_loaded( &file ) || !dck_active ) {
+      printf( "dck_independent_pages_test: bank %d rejected\n", banks[ bank ] );
+      r++;
+    } else {
+      dck_test_map( banks[ bank ] );
+      for( page = 0; page < 8; page++ ) {
+        for( offset = 0; offset < 0x2000; offset++ ) {
+          int address = page * 0x2000 + offset;
+          libspectrum_byte expected = types[ page ] == LIBSPECTRUM_DCK_PAGE_NULL ?
+            defaults[ address ] : types[ page ] == LIBSPECTRUM_DCK_PAGE_RAM_EMPTY ?
+            0 : 0x60 + page;
+          if( readbyte_internal( address ) != expected ) {
+            printf( "dck_independent_pages_test: bank %d page %d contents\n",
+                    banks[ bank ], page );
+            r++;
+            break;
+          }
+        }
+        if( types[ page ] != LIBSPECTRUM_DCK_PAGE_NULL ) {
+          int writable = types[ page ] != LIBSPECTRUM_DCK_PAGE_ROM;
+          libspectrum_byte before = readbyte_internal( page * 0x2000 );
+          writebyte_internal( page * 0x2000, 0xa5 );
+          if( readbyte_internal( page * 0x2000 ) !=
+              ( writable ? 0xa5 : before ) ) r++;
+        }
+      }
+    }
+    dck_eject();
+  }
+  if( machine_select( old_machine ) ) r++;
+  utils_file_free( &file );
+  libspectrum_free( defaults );
+  if( r ) printf( "dck_independent_pages_test failed\n" );
+  return r;
+}
+
+static int
+dck_lifecycle_test( void )
+{
+  static const libspectrum_dck_bank banks[] = {
+    LIBSPECTRUM_DCK_BANK_DOCK, LIBSPECTRUM_DCK_BANK_EXROM,
+    LIBSPECTRUM_DCK_BANK_HOME
+  };
+  libspectrum_machine old_machine = machine_current->machine;
+  utils_file file;
+  int bank, reset, fd, r = 0;
+  char filename[] = "/tmp/fuse-dck-lifecycle-XXXXXX";
+
+  fd = mkstemp( filename );
+  if( fd < 0 ) return 1;
+  utils_file_init( &file, filename );
+  file.length = 9 + 2 * 0x2000;
+  file.buffer = libspectrum_new0( unsigned char, file.length );
+  file.buffer[ 1 ] = LIBSPECTRUM_DCK_PAGE_RAM;
+  file.buffer[ 2 ] = LIBSPECTRUM_DCK_PAGE_ROM;
+  memset( file.buffer + 9, 0x35, 0x2000 );
+  memset( file.buffer + 9 + 0x2000, 0x79, 0x2000 );
+
+  for( bank = 0; bank < 3; bank++ ) {
+    file.buffer[ 0 ] = banks[ bank ];
+    if( lseek( fd, 0, SEEK_SET ) < 0 ||
+        write( fd, file.buffer, file.length ) != file.length ) { r++; break; }
+    if( machine_select( LIBSPECTRUM_MACHINE_TC2068 ) ||
+        dck_insert( filename ) || !dck_active ) { r++; break; }
+    dck_test_map( banks[ bank ] );
+    if( readbyte_internal( 0 ) != 0x35 ||
+        readbyte_internal( 0x2000 ) != 0x79 ) r++;
+
+    for( reset = 0; reset < 2; reset++ ) {
+      writebyte_internal( 0, 0xa5 );
+      if( machine_reset( reset ) ) r++;
+      dck_test_map( banks[ bank ] );
+      if( !dck_active || readbyte_internal( 0 ) != ( reset ? 0x35 : 0xa5 ) ||
+          readbyte_internal( 0x2000 ) != 0x79 ) {
+        printf( "dck_lifecycle_test: bank %d %s reset\n",
+                banks[ bank ], reset ? "hard" : "soft" );
+        r++;
+      }
+    }
+
+    /* Replace it with an empty block; old cartridge pages must disappear. */
+    file.length = 9;
+    memset( file.buffer + 1, 0, 8 );
+    if( dck_insert_loaded( &file ) || !dck_active ) r++;
+    dck_test_map( banks[ bank ] );
+    if( readbyte_internal( 0 ) == 0x35 ||
+        readbyte_internal( 0x2000 ) == 0x79 ) r++;
+    dck_eject();
+    if( dck_active || settings_current.dck_file ) r++;
+    writebyte_internal( 0x4000, 0x96 );
+    if( readbyte_internal( 0x4000 ) != 0x96 ) r++;
+    file.length = 9 + 2 * 0x2000;
+    file.buffer[ 1 ] = LIBSPECTRUM_DCK_PAGE_RAM;
+    file.buffer[ 2 ] = LIBSPECTRUM_DCK_PAGE_ROM;
+  }
+  if( dck_active ) dck_eject();
+  if( close( fd ) ) r++;
+  unlink( filename );
+  utils_file_free( &file );
+  if( machine_select( old_machine ) ) r++;
+  if( r ) printf( "dck_lifecycle_test failed\n" );
+  return r;
+}
+
+static int
+dck_malformed_test( void )
+{
+  libspectrum_machine old_machine = machine_current->machine;
+  utils_file file;
+  int test, r = 0;
+
+  utils_file_init( &file, "malformed.dck" );
+  file.buffer = libspectrum_new0( unsigned char, 9 + 0x2000 );
+  if( machine_select( LIBSPECTRUM_MACHINE_TC2068 ) ) { r++; goto cleanup; }
+  for( test = 0; test < 4; test++ ) {
+    /* A failed replacement must eject the previous valid cartridge. */
+    memset( file.buffer, 0, 9 );
+    file.length = 9;
+    if( dck_insert_loaded( &file ) || !dck_active ) r++;
+    memset( file.buffer, 0, 9 + 0x2000 );
+    file.length = 9;
+    switch( test ) {
+    case 0: file.length = 8; break; /* Truncated header. */
+    case 1: file.buffer[ 0 ] = 42; break; /* Unsupported bank. */
+    case 2: file.buffer[ 1 ] = 42; break; /* Invalid page type. */
+    case 3:
+      file.buffer[ 1 ] = LIBSPECTRUM_DCK_PAGE_ROM;
+      file.length = 9 + 0x2000 - 1; /* Truncated page. */
+      break;
+    }
+    dck_insert_loaded( &file );
+    if( dck_active || settings_current.dck_file ) {
+      printf( "dck_malformed_test: case %d accepted\n", test );
+      r++;
+      dck_eject();
+    }
+    writebyte_internal( 0x4000, 0x96 );
+    if( readbyte_internal( 0x4000 ) != 0x96 ) r++;
+  }
+cleanup:
+  utils_file_free( &file );
+  if( machine_select( old_machine ) ) r++;
+  if( r ) printf( "dck_malformed_test failed\n" );
+  return r;
+}
+
+static int
+dck_home_rom_ram_slots_test( void )
+{
+  libspectrum_machine old_machine = machine_current->machine;
+  memory_page *saved = libspectrum_new( memory_page,
+                                       SPECTRUM_RAM_PAGES * MEMORY_PAGES_IN_16K );
+  utils_file file;
+  int page, r = 0;
+
+  memcpy( saved, memory_map_ram, sizeof( memory_map_ram ) );
+  utils_file_init( &file, "home-rom-in-ram-slots.dck" );
+  file.length = 9 + 6 * 0x2000;
+  file.buffer = libspectrum_new0( unsigned char, file.length );
+  file.buffer[ 0 ] = LIBSPECTRUM_DCK_BANK_HOME;
+  for( page = 2; page < 8; page++ ) {
+    file.buffer[ 1 + page ] = LIBSPECTRUM_DCK_PAGE_ROM;
+    memset( file.buffer + 9 + ( page - 2 ) * 0x2000, 0x40 + page, 0x2000 );
+  }
+  if( machine_select( LIBSPECTRUM_MACHINE_TC2068 ) ||
+      dck_insert_loaded( &file ) || !dck_active ) r++;
+  for( page = 2; page < 8; page++ ) {
+    if( readbyte_internal( page * 0x2000 ) != 0x40 + page ) r++;
+    writebyte_internal( page * 0x2000, 0xa5 );
+    if( readbyte_internal( page * 0x2000 ) != 0x40 + page ) r++;
+  }
+  if( machine_reset( 0 ) ) r++;
+  for( page = 2; page < 8; page++ ) {
+    if( readbyte_internal( page * 0x2000 ) != 0x40 + page ) r++;
+    writebyte_internal( page * 0x2000, 0xa5 );
+    if( readbyte_internal( page * 0x2000 ) != 0x40 + page ) r++;
+  }
+  dck_eject();
+  for( page = 2; page < 8; page++ ) {
+    writebyte_internal( page * 0x2000, 0xa5 );
+    if( readbyte_internal( page * 0x2000 ) != 0xa5 ) {
+      printf( "dck_home_rom_ram_slots_test: page %d read-only after eject\n",
+              page );
+      r++;
+    }
+  }
+  if( machine_reset( 1 ) ) r++;
+  /* Check descriptors before reading: stale cartridge storage may be freed. */
+  for( page = 0; page < SPECTRUM_RAM_PAGES * MEMORY_PAGES_IN_16K; page++ ) {
+    if( memory_map_ram[ page ].page != saved[ page ].page ||
+        memory_map_ram[ page ].writable != saved[ page ].writable ) {
+      printf( "dck_home_rom_ram_slots_test: RAM mapping not restored by hard reset\n" );
+      r++;
+      break;
+    }
+  }
+  /* Keep test isolation even if cartridge descriptor handling regresses. */
+  memcpy( memory_map_ram, saved, sizeof( memory_map_ram ) );
+  libspectrum_free( saved );
+  utils_file_free( &file );
+  if( machine_select( old_machine ) ) r++;
+  if( r ) printf( "dck_home_rom_ram_slots_test failed\n" );
+  return r;
+}
+
 static int
 utils_open_loaded_microdrive_test( void )
 {
@@ -3219,6 +3470,10 @@ unittests_run( void )
   r += utils_open_loaded_if2_test();
   r += utils_open_loaded_dck_test();
   r += dck_sparse_banks_test();
+  r += dck_independent_pages_test();
+  r += dck_lifecycle_test();
+  r += dck_malformed_test();
+  r += dck_home_rom_ram_slots_test();
   r += utils_open_loaded_microdrive_test();
   r += utils_open_loaded_disk_test();
   r += utils_open_loaded_compressed_disk_test();
