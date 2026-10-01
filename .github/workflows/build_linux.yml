@@ -45,7 +45,7 @@ jobs:
     with:
       name: "NULL UI"
       dependencies: "libaudiofile-dev libgcrypt-dev libpng-dev"
-      configure_params: "--with-null-ui"
+      configure_params: "--with-null-ui --enable-automation"
       verify_ui: "null"
       run_check: true
 
