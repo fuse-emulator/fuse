@@ -2768,6 +2768,84 @@ utils_open_loaded_dck_test( void )
   return r;
 }
 
+/* Exercise the sparse DCK bank IDs, not just an empty DOCK block (#532). */
+static int
+dck_sparse_banks_test( void )
+{
+  static const libspectrum_dck_bank banks[] = {
+    LIBSPECTRUM_DCK_BANK_DOCK, LIBSPECTRUM_DCK_BANK_EXROM,
+    LIBSPECTRUM_DCK_BANK_HOME
+  };
+  libspectrum_machine old_machine = machine_current->machine;
+  utils_file file;
+  int bank, page, offset, ram, r = 0;
+  size_t block_length = 9 + 8 * 0x2000;
+  size_t position;
+
+  utils_file_init( &file, "synthetic-banks.dck" );
+  file.length = 3 * block_length;
+  file.buffer = libspectrum_new0( unsigned char, file.length );
+
+  if( machine_select( LIBSPECTRUM_MACHINE_TC2068 ) ) {
+    r++;
+    goto cleanup;
+  }
+
+  for( ram = 0; ram < 2; ram++ ) {
+    position = 0;
+    for( bank = 0; bank < 3; bank++ ) {
+      unsigned char *block = file.buffer + position;
+      int pages = !ram && bank == 2 ? 2 : 8;
+
+      memset( block, 0, 9 );
+      block[ 0 ] = banks[ bank ];
+      for( page = 0; page < pages; page++ ) {
+        block[ 1 + page ] = ram ? LIBSPECTRUM_DCK_PAGE_RAM :
+                                 LIBSPECTRUM_DCK_PAGE_ROM;
+        memset( block + 9 + page * 0x2000,
+                0x40 + bank * 8 + page, 0x2000 );
+      }
+      position += 9 + pages * 0x2000;
+    }
+    file.length = position;
+
+    if( dck_insert_loaded( &file ) || !dck_active ) {
+      printf( "dck_sparse_banks_test: %s cartridge rejected\n",
+              ram ? "RAM" : "ROM" );
+      r++;
+      break;
+    }
+
+    for( bank = 0; bank < 3; bank++ ) {
+      writeport_internal( 0x00ff, bank == 1 ? 0x80 : 0 );
+      writeport_internal( 0x00f4, bank == 2 ? 0 : 0xff );
+      /* HOME ROM replaces only the two ROM slots, as in Emulator.dck. */
+      for( page = 0; page < ( !ram && bank == 2 ? 2 : 8 ); page++ ) {
+        libspectrum_byte expected = 0x40 + bank * 8 + page;
+        for( offset = 0; offset < 0x2000; offset++ ) {
+          if( readbyte_internal( page * 0x2000 + offset ) != expected ) {
+            printf( "dck_sparse_banks_test: bank %d page %d contents\n",
+                    banks[ bank ], page );
+            r++;
+            break;
+          }
+        }
+        writebyte_internal( page * 0x2000, expected ^ 0xff );
+        if( readbyte_internal( page * 0x2000 ) !=
+            ( ram ? ( expected ^ 0xff ) : expected ) ) r++;
+      }
+    }
+    dck_eject();
+  }
+
+cleanup:
+  if( dck_active ) dck_eject();
+  if( machine_select( old_machine ) ) r++;
+  utils_file_free( &file );
+  if( r ) printf( "dck_sparse_banks_test failed\n" );
+  return r;
+}
+
 static int
 utils_open_loaded_microdrive_test( void )
 {
@@ -3140,6 +3218,7 @@ unittests_run( void )
   r += utils_open_loaded_file_test();
   r += utils_open_loaded_if2_test();
   r += utils_open_loaded_dck_test();
+  r += dck_sparse_banks_test();
   r += utils_open_loaded_microdrive_test();
   r += utils_open_loaded_disk_test();
   r += utils_open_loaded_compressed_disk_test();
