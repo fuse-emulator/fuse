@@ -1112,6 +1112,43 @@ snapshot_missing_rom_file_uses_snapshot_rom_test( void )
 }
 
 static int
+snapshot_write_read_roundtrip_test( void )
+{
+  char temporary_path[] = "/tmp/fuse-snapshot-roundtrip-XXXXXX";
+  char filename[ PATH_MAX ];
+  libspectrum_machine old_machine = machine_current->machine;
+  int fd, r = 0;
+
+  /* mkdtemp is not provided by MinGW; use mkstemp to obtain a unique
+     filename prefix, as in the disk round-trip test */
+  fd = mkstemp( temporary_path );
+  if( fd < 0 ) return 1;
+  close( fd );
+  unlink( temporary_path );
+  snprintf( filename, sizeof( filename ), "%s.szx", temporary_path );
+
+  if( machine_select( LIBSPECTRUM_MACHINE_48 ) ) r++;
+
+  /* Write a snapshot of the selected machine to a real file */
+  if( !r && snapshot_write( filename ) ) r++;
+
+  /* Select a different machine first, so loading the snapshot has to
+     restore the written snapshot's own machine */
+  if( !r && machine_select( LIBSPECTRUM_MACHINE_128 ) ) r++;
+
+  if( !r && snapshot_read( filename ) ) r++;
+
+  if( !r && machine_current->machine != LIBSPECTRUM_MACHINE_48 ) r++;
+
+  if( machine_select( old_machine ) ) r++;
+
+  unlink( filename );
+
+  if( r ) printf( "snapshot_write_read_roundtrip_test failed\n" );
+  return r;
+}
+
+static int
 slt_is_cleared_by_reset_test( void )
 {
   libspectrum_snap *snap;
@@ -3075,6 +3112,7 @@ unittests_run( void )
   r += snapshot_custom_rom_is_replaced_by_soft_reset_test();
   r += snapshot_machine_rom_without_file_test();
   r += snapshot_missing_rom_file_uses_snapshot_rom_test();
+  r += snapshot_write_read_roundtrip_test();
   r += slt_is_cleared_by_reset_test();
   r += slt_screen_is_cleared_by_reset_test();
   r += spec_se_dock_ram_reset_test();
