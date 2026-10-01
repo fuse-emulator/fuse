@@ -107,6 +107,101 @@ Fuse not displaying correctly. (Enabled by default, but you can use
 to disable).
 .RE
 .PP
+.B \-\-automation\-capture\-audio
+.RS
+Development option, available when Fuse is configured with the
+\(lq\-\-enable\-automation\(rq development flag. Requests that the final mixed
+PCM of a development automation scenario is written as a WAV file in the
+output directory. Overrides --no\-sound because sound synthesis must run for
+capture, but it never opens a host sound device.
+.RE
+.PP
+.B \-\-automation\-capture\-screen
+.RS
+Development option, available when Fuse is configured with the
+\(lq\-\-enable\-automation\(rq development flag. Requests that the final
+screen of a development automation scenario is written as a PNG file in the
+output directory.
+.RE
+.PP
+.B \-\-automation\-disk\-idle\-frames
+.I count
+.RS
+Development option, available when Fuse is configured with the
+\(lq\-\-enable\-automation\(rq development flag. Sets the number of completed
+machine frames of observed disk motor inactivity required before a
+--automation\-until\-disk\-idle scenario completes; defaults to 50.
+.RE
+.PP
+.B \-\-automation\-failure\-pc
+.I address
+.RS
+Development option, available when Fuse is configured with the
+\(lq\-\-enable\-automation\(rq development flag. Stops a development
+automation scenario unsuccessfully when the program counter reaches the given
+address. Requires --automation\-success\-pc.
+.RE
+.PP
+.B \-\-automation\-failure\-pc\-ignore
+.I n
+.RS
+Development option, available when Fuse is configured with the
+\(lq\-\-enable\-automation\(rq development flag. Ignores the first n hits of
+the --automation\-failure\-pc address before it becomes fatal.
+.RE
+.PP
+.B \-\-automation\-frames
+.I count
+.RS
+Development option, available when Fuse is configured with the
+\(lq\-\-enable\-automation\(rq development flag. Requests a one-shot
+development automation scenario that stops after the given count of completed
+machine frames.
+.RE
+.PP
+.B \-\-automation\-max\-frames
+.I count
+.RS
+Development option, available when Fuse is configured with the
+\(lq\-\-enable\-automation\(rq development flag. Supplies the frame deadline
+for a PC-condition, RZX completion or disk idle run.
+.RE
+.PP
+.B \-\-automation\-output
+.I directory
+.RS
+Development option, available when Fuse is configured with the
+\(lq\-\-enable\-automation\(rq development flag. Selects an existing directory
+in which the one-shot result artifacts of a development automation scenario
+are written. Fuse does not create the directory.
+.RE
+.PP
+.B \-\-automation\-success\-pc
+.I address
+.RS
+Development option, available when Fuse is configured with the
+\(lq\-\-enable\-automation\(rq development flag. Stops a development
+automation scenario successfully when the program counter reaches the given
+address. Required by every PC-condition run.
+.RE
+.PP
+.B \-\-automation\-until\-disk\-idle
+.RS
+Development option, available when Fuse is configured with the
+\(lq\-\-enable\-automation\(rq development flag. Requests that the automation
+scenario stops after observed disk motor activity becomes idle. Must be paired
+with --automation\-max\-frames and can be refined with
+--automation\-disk\-idle\-frames.
+.RE
+.PP
+.B \-\-automation\-until\-rzx\-end
+.RS
+Development option, available when Fuse is configured with the
+\(lq\-\-enable\-automation\(rq development flag. Requests that the automation
+scenario stops when RZX playback completes or fails. Must be paired with
+--automation\-max\-frames.
+.RE
+.PP
 .B \-\-autosave\-settings
 .RS
 Specify whether Fuse's current settings should be automatically saved
