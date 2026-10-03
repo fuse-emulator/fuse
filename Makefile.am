@@ -156,6 +156,7 @@ noinst_HEADERS = bitmap.h \
 
 EXTRA_DIST = AUTHORS \
              .github/scripts/test_sfifo.sh \
+             .github/scripts/test_coreaudio.sh \
 	     INSTALL \
 	     PORTING \
 	     README \
@@ -201,7 +202,7 @@ metrics:
 check-metrics:
 	python3 $(srcdir)/tools/test_metrics.py
 
-.PHONY: metrics check-metrics
+.PHONY: metrics check-metrics check-sfifo check-coreaudio
 
 
 ## Resources for Windows executables
@@ -248,7 +249,7 @@ include unittests/Makefile.am
 include z80/Makefile.am
 
 if UI_NULL
-check-local: fuse unittests/displaytest unittests/sdl2displaytest unittests/sdl2scalerstatetest unittests/sdl2joysticktest unittests/sdl2mousetest unittests/palcompositetest unittests/scalerexpandtest z80/coretest
+check-local: $(AUDIO_CHECK_TARGETS) fuse unittests/displaytest unittests/sdl2displaytest unittests/sdl2scalerstatetest unittests/sdl2joysticktest unittests/sdl2mousetest unittests/palcompositetest unittests/scalerexpandtest z80/coretest
 	@test -e $(top_builddir)/roms || ln -sf "$(abs_top_srcdir)/roms" $(top_builddir)/roms
 	FUSE_TEST_SRCDIR="$(abs_top_srcdir)" $(top_builddir)/fuse --unittests
 	$(top_builddir)/unittests/displaytest
@@ -264,6 +265,6 @@ endif
 	$(top_builddir)/z80/coretest $(srcdir)/z80/tests/tests.in > $(top_builddir)/z80/tests.actual
 	cmp $(top_builddir)/z80/tests.actual $(srcdir)/z80/tests/tests.expected
 else
-check-local:
+check-local: $(AUDIO_CHECK_TARGETS)
 	@echo "SKIP: internal unit tests require a null-UI build"
 endif

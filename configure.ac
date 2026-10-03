@@ -597,6 +597,9 @@ AC_CHECK_HEADER(
   [audio_driver_list="$audio_driver_list coreaudio"],,
 )
 
+AM_CONDITIONAL(HAVE_COREAUDIO,
+  test "$ac_cv_header_AudioToolbox_AudioToolbox_h" = yes)
+
 dnl Nintendo Wii
 if test "$wii" = yes; then
   audio_driver_list="$audio_driver_list wii"

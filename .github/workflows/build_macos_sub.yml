@@ -119,6 +119,14 @@ jobs:
         if: ${{ inputs.run_check }}
         run: make check
 
+      - name: Optimized Core Audio callback tests
+        if: ${{ inputs.run_check }}
+        run: sh .github/scripts/test_coreaudio.sh optimized
+
+      - name: Thread Sanitizer Core Audio callback tests
+        if: ${{ inputs.run_check }}
+        run: sh .github/scripts/test_coreaudio.sh tsan
+
       - name: (12) Finish
         run: |
           echo "🍏 Finishing with status ${{ job.status }}."

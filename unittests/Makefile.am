@@ -32,11 +32,27 @@ unittests_sfifotest_CPPFLAGS += -DSFIFO_TEST_THREADS
 unittests_sfifotest_LDADD += $(PTHREAD_LIBS)
 endif
 
-.PHONY: check-sfifo
 check-sfifo: unittests/sfifotest
 	$(top_builddir)/unittests/sfifotest
 
-check-local: check-sfifo
+AUDIO_CHECK_TARGETS = check-sfifo
+
+if HAVE_COREAUDIO
+noinst_PROGRAMS += unittests/coreaudiofilltest
+unittests_coreaudiofilltest_SOURCES = unittests/coreaudiofilltest.c sound/sfifo.c
+unittests_coreaudiofilltest_CPPFLAGS = $(AM_CPPFLAGS)
+unittests_coreaudiofilltest_LDFLAGS = -framework CoreAudio -framework AudioUnit
+unittests_coreaudiofilltest_LDADD =
+if HAVE_PTHREAD
+unittests_coreaudiofilltest_CPPFLAGS += -DCOREAUDIO_TEST_THREADS
+unittests_coreaudiofilltest_LDADD += $(PTHREAD_LIBS)
+endif
+
+check-coreaudio: unittests/coreaudiofilltest
+	$(top_builddir)/unittests/coreaudiofilltest
+
+AUDIO_CHECK_TARGETS += check-coreaudio
+endif
 
 if UI_NULL
 
