@@ -23,6 +23,21 @@
 fuse_SOURCES += unittests/helpers.c
 noinst_HEADERS += unittests/helpers.h
 
+noinst_PROGRAMS += unittests/sfifotest
+unittests_sfifotest_SOURCES = unittests/sfifotest.c sound/sfifo.c
+unittests_sfifotest_LDADD =
+unittests_sfifotest_CPPFLAGS = $(AM_CPPFLAGS)
+if HAVE_PTHREAD
+unittests_sfifotest_CPPFLAGS += -DSFIFO_TEST_THREADS
+unittests_sfifotest_LDADD += $(PTHREAD_LIBS)
+endif
+
+.PHONY: check-sfifo
+check-sfifo: unittests/sfifotest
+	$(top_builddir)/unittests/sfifotest
+
+check-local: check-sfifo
+
 if UI_NULL
 
 fuse_SOURCES += unittests/unittests.c

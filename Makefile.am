@@ -155,6 +155,7 @@ noinst_HEADERS = bitmap.h \
 	profile.h
 
 EXTRA_DIST = AUTHORS \
+             .github/scripts/test_sfifo.sh \
 	     INSTALL \
 	     PORTING \
 	     README \

@@ -155,7 +155,7 @@ timer_frame_callback_sound( libspectrum_dword last_tstates )
   for(;;) {
 
     /* Sleep while fifo is full */
-    if( sfifo_space( &sound_fifo ) < sound_framesiz ) {
+    if( sfifo_producer_space( &sound_fifo ) < sound_framesiz ) {
       timer_sleep( TEN_MS );
     } else {
       break;

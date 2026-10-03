@@ -153,7 +153,7 @@ void
 sound_lowlevel_end( void )
 {
   SDL_PauseAudio( 1 );
-  SDL_LockAudio();
+  /* Closing joins the callback before the FIFO is released. */
   SDL_CloseAudio();
   SDL_QuitSubSystem( SDL_INIT_AUDIO );
   sfifo_flush( &sound_fifo );
@@ -201,7 +201,7 @@ sdlwrite( void *userdata, Uint8 *stream, int len )
   int f;
 
   /* Try to only read an even number of bytes so as not to fragment a sample */
-  len = MIN( len, sfifo_used( &sound_fifo ) );
+  len = MIN( len, sfifo_consumer_used( &sound_fifo ) );
   len &= sound_stereo_ay ? 0xfffc : 0xfffe;
 
   /* Read input_size bytes from fifo into sound stream */

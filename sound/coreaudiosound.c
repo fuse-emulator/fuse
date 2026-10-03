@@ -24,7 +24,15 @@
 
 #include <AssertMacros.h>
 
+#include <AvailabilityMacros.h>
 #include <AudioToolbox/AudioToolbox.h>
+
+/* The element was renamed in the macOS 12 SDK; both names have value zero. */
+#if MAC_OS_X_VERSION_MAX_ALLOWED >= 120000
+#define COREAUDIO_PROPERTY_ELEMENT_MAIN kAudioObjectPropertyElementMain
+#else
+#define COREAUDIO_PROPERTY_ELEMENT_MAIN kAudioObjectPropertyElementMaster
+#endif
 
 #include "settings.h"
 #include "sfifo.h"
@@ -53,6 +61,8 @@ static AudioUnit gOutputUnit;
 
 /* Records sound writer status information */
 static int audio_output_started;
+/* A failed teardown must not permit reinitialization of live FIFO storage. */
+static int audio_teardown_failed;
 
 /* get the default output device for the HAL */
 static int
@@ -64,7 +74,7 @@ get_default_output_device(AudioDeviceID* device)
   AudioObjectPropertyAddress property_address = { 
     kAudioHardwarePropertyDefaultOutputDevice, 
     kAudioObjectPropertyScopeGlobal,
-    kAudioObjectPropertyElementMaster
+    COREAUDIO_PROPERTY_ELEMENT_MAIN
   }; 
 
   /* get the default output device for the HAL */
@@ -91,7 +101,7 @@ get_default_sample_rate( AudioDeviceID device, Float64 *rate )
   AudioObjectPropertyAddress property_address = { 
     kAudioDevicePropertyNominalSampleRate,
     kAudioObjectPropertyScopeGlobal,
-    kAudioObjectPropertyElementMaster
+    COREAUDIO_PROPERTY_ELEMENT_MAIN
   }; 
 
   /* get the default output device for the HAL */
@@ -116,6 +126,11 @@ sound_lowlevel_init( const char *dev, int *freqptr, int *stereoptr )
   int error;
   float hz;
   int sound_framesiz;
+
+  if( audio_teardown_failed ) {
+    ui_error( UI_ERROR_ERROR, "Previous audio output could not be stopped" );
+    return 1;
+  }
 
   if( get_default_output_device(&device) ) return 1;
   if( get_default_sample_rate( device, &deviceFormat.mSampleRate ) ) return 1;
@@ -225,8 +240,16 @@ sound_lowlevel_end( void )
 {
   OSStatus err;
 
-  if( audio_output_started )
-    __Verify_noErr( AudioOutputUnitStop( gOutputUnit ) );
+  if( audio_output_started ) {
+    err = AudioOutputUnitStop( gOutputUnit );
+    if( err ) {
+      ui_error( UI_ERROR_ERROR, "AudioOutputUnitStop=%ld", (long)err );
+      /* Do not free storage that a running callback could still access. */
+      audio_teardown_failed = 1;
+      return;
+    }
+    audio_output_started = 0;
+  }
 
   err = AudioUnitUninitialize( gOutputUnit );
   if( err ) {
@@ -236,6 +259,8 @@ sound_lowlevel_end( void )
   err = AudioComponentInstanceDispose( gOutputUnit );
   if( err ) {
     ui_error( UI_ERROR_ERROR, "AudioComponentInstanceDispose=%ld", (long)err );
+    audio_teardown_failed = 1;
+    return;
   }
 
   sfifo_flush( &sound_fifo );
@@ -297,7 +322,7 @@ OSStatus coreaudiowrite( void *inRefCon,
   uint8_t* out = ioData->mBuffers[0].mData;
 
   /* Try to only read an even number of bytes so as not to fragment a sample */
-  len = MIN( len, sfifo_used( &sound_fifo ) );
+  len = MIN( len, sfifo_consumer_used( &sound_fifo ) );
   len &= sound_stereo_ay != SOUND_STEREO_AY_NONE ? 0xfffc : 0xfffe;
 
   /* Read input_size bytes from fifo into sound stream */

@@ -105,6 +105,14 @@ jobs:
         if: ${{ inputs.run_check }}
         run: make check
 
+      - name: Optimized FIFO concurrency tests
+        if: ${{ inputs.run_check }}
+        run: sh .github/scripts/test_sfifo.sh optimized
+
+      - name: Thread Sanitizer FIFO concurrency tests
+        if: ${{ inputs.run_check }}
+        run: sh .github/scripts/test_sfifo.sh tsan
+
       - name: (11) Finish
         run: |
           echo "🍏 Finishing with status ${{ job.status }}."

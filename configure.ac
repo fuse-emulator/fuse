@@ -693,6 +693,28 @@ case $audio_driver in
 esac
 
 if test "$sound_fifo" = yes; then
+  AC_MSG_CHECKING([whether C11 FIFO atomics are usable])
+  AC_LINK_IFELSE([
+    AC_LANG_PROGRAM([[
+      #include <stdatomic.h>
+      #ifdef __STDC_NO_ATOMICS__
+      #error "C11 atomics are required"
+      #endif
+      #if ATOMIC_INT_LOCK_FREE == 0
+      #error "FIFO positions must support lock-free atomics"
+      #endif
+    ]], [[
+      _Atomic unsigned int position;
+      atomic_init( &position, 0 );
+      atomic_store_explicit( &position, 1, memory_order_release );
+      atomic_fetch_add_explicit( &position, 1, memory_order_relaxed );
+      return !atomic_is_lock_free( &position ) ||
+        atomic_load_explicit( &position, memory_order_acquire ) != 2;
+    ]])
+  ], [AC_MSG_RESULT([yes])], [
+    AC_MSG_RESULT([no])
+    AC_MSG_ERROR([C11 atomic unsigned int support is required by the audio FIFO])
+  ])
   dnl Strange construct used here as += doesn't seem to work on OS X
   SOUND_LIBADD="$SOUND_LIBADD"' sound/sfifo.$(OBJEXT)'
   AC_DEFINE([SOUND_FIFO], 1, [Defined if the sound code uses a fifo])
@@ -844,6 +866,7 @@ else
   build_spectranet=no
 fi
 AM_CONDITIONAL(BUILD_SPECTRANET, test "$build_spectranet" = yes)
+AM_CONDITIONAL(HAVE_PTHREAD, test "$pthread" = yes)
 
 dnl See if Linux TAP devices are supported
 AC_MSG_CHECKING(whether Linux TAP devices are supported)

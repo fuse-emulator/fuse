@@ -39,7 +39,6 @@
 #include <alsa/asoundlib.h>
 
 #include "settings.h"
-#include "sfifo.h"
 #include "sound.h"
 #include "spectrum.h"
 #include "ui/ui.h"
