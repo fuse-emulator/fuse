@@ -19,9 +19,11 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "libspectrum.h"
 
+#include "compat.h"
 #include "event.h"
 #include "machine.h"
 #include "memory_pages.h"
@@ -29,6 +31,7 @@
 #include "settings.h"
 #include "tape.h"
 #include "tape_internals.h"
+#include "utils.h"
 #include "z80/z80.h"
 #include "z80/z80_macros.h"
 
@@ -535,6 +538,169 @@ done:
   return error;
 }
 
+static int
+tape_select_rewind_write_unittest( void )
+{
+  char filename[ PATH_MAX ];
+  libspectrum_tape *saved_tape = tape;
+  libspectrum_tape *test_tape = NULL, *read_back = NULL;
+  libspectrum_tape_block *rom = NULL, *pause = NULL;
+  libspectrum_tape_block *block;
+  libspectrum_tape_iterator iterator;
+  libspectrum_byte *data = NULL;
+  utils_file file;
+  int saved_modified = tape_modified;
+  int saved_blocked = tape_autoplay_blocked;
+  int saved_resume = trap_resume_pending;
+  int saved_autoload = settings_current.auto_load;
+  int fd, length;
+  int file_created = 0;
+  int r = 0;
+
+  memset( &file, 0, sizeof( file ) );
+
+  /* Selecting the machine resets the memory map, so the autoload decision
+     below is deterministic */
+  if( machine_select( LIBSPECTRUM_MACHINE_48 ) ) return 1;
+
+  /* A tape without blocks cannot be navigated */
+  test_tape = libspectrum_tape_alloc();
+  if( !test_tape ) return 1;
+  tape = test_tape;
+  r |= tape_get_current_block() != -1;
+  r |= tape_rewind() != 0;
+  r |= tape_get_current_block() != -1;
+  r |= tape_select_block( 0 ) == 0;
+  libspectrum_tape_free( test_tape );
+  test_tape = NULL;
+  tape = saved_tape;
+
+  /* Build a two-block tape */
+  test_tape = libspectrum_tape_alloc();
+  rom = libspectrum_tape_block_alloc( LIBSPECTRUM_TAPE_BLOCK_ROM );
+  pause = libspectrum_tape_block_alloc( LIBSPECTRUM_TAPE_BLOCK_PAUSE );
+  data = libspectrum_new( libspectrum_byte, 2 );
+  if( !test_tape || !rom || !pause || !data ) {
+    libspectrum_free( data );
+    libspectrum_tape_block_free( rom );
+    libspectrum_tape_block_free( pause );
+    if( test_tape ) libspectrum_tape_free( test_tape );
+    test_tape = NULL;
+    tape = saved_tape;
+    return 1;
+  }
+  data[0] = data[1] = 0x80;
+  libspectrum_tape_block_set_data_length( rom, 2 );
+  libspectrum_tape_block_set_data( rom, data );
+  libspectrum_tape_block_set_pause_tstates( rom, 3500000 );
+  libspectrum_tape_block_set_pause_tstates( pause, 1 );
+  if( libspectrum_tape_append_block( test_tape, rom ) ) {
+    libspectrum_tape_block_free( rom );
+    libspectrum_tape_block_free( pause );
+    libspectrum_tape_free( test_tape );
+    test_tape = NULL;
+    tape = saved_tape;
+    return 1;
+  }
+  if( libspectrum_tape_append_block( test_tape, pause ) ) {
+    libspectrum_tape_block_free( pause );
+    libspectrum_tape_free( test_tape );
+    test_tape = NULL;
+    tape = saved_tape;
+    return 1;
+  }
+  tape = test_tape;
+
+  /* The first block is selected as soon as the tape has one */
+  r |= tape_get_current_block() != 0;
+
+  /* Rewinding reselects the first block */
+  r |= tape_rewind() != 0;
+  r |= tape_get_current_block() != 0;
+
+  /* Selecting a block clears the autoplay block and any pending trap
+     resume; selecting without the browser update keeps the autoplay
+     block */
+  tape_autoplay_blocked = 1;
+  trap_resume_pending = 1;
+  r |= tape_select_block( 1 ) != 0;
+  r |= tape_get_current_block() != 1 ||
+       tape_autoplay_blocked || trap_resume_pending;
+
+  tape_autoplay_blocked = 1;
+  r |= tape_select_block_no_update( 0 ) != 0;
+  r |= tape_get_current_block() != 0 || !tape_autoplay_blocked ||
+       trap_resume_pending;
+
+  /* Selecting past the end of the tape fails and leaves the position */
+  r |= tape_select_block( 5 ) == 0;
+  r |= tape_get_current_block() != 0;
+
+  /* Autoload follows the auto-load setting */
+  settings_current.auto_load = 1;
+  r |= tape_can_autoload() == 0;
+  settings_current.auto_load = 0;
+  r |= tape_can_autoload() != 0;
+  settings_current.auto_load = saved_autoload;
+
+  /* Write the tape out to a tape file (the filename has no tape extension,
+     so tape_write defaults to TZX) and read it back */
+  length = snprintf( filename, sizeof( filename ),
+                     "%s%sfuse-tape-write-test-XXXXXX",
+                     compat_get_temp_path(), FUSE_DIR_SEP_STR );
+  if( length < 0 || (size_t)length >= sizeof( filename ) ) {
+    r = 1;
+    goto done;
+  }
+  fd = mkstemp( filename );
+  if( fd < 0 ) {
+    r = 1;
+    goto done;
+  }
+  file_created = 1;
+  if( close( fd ) || tape_write( filename ) ) {
+    r = 1;
+    goto done;
+  }
+  r |= tape_modified != 0;
+  if( utils_read_file( filename, &file ) ) {
+    r = 1;
+    goto done;
+  }
+  read_back = libspectrum_tape_alloc();
+  if( !read_back ||
+      libspectrum_tape_read( read_back, file.buffer, file.length,
+                             LIBSPECTRUM_ID_UNKNOWN, NULL ) ) {
+    r = 1;
+    goto done;
+  }
+
+  r |= libspectrum_tape_count( read_back ) != 2;
+
+  block = libspectrum_tape_iterator_init( &iterator, read_back );
+  r |= !block ||
+       libspectrum_tape_block_type( block ) != LIBSPECTRUM_TAPE_BLOCK_ROM ||
+       libspectrum_tape_block_data_length( block ) != 2 ||
+       libspectrum_tape_block_data( block )[0] != 0x80 ||
+       libspectrum_tape_block_data( block )[1] != 0x80;
+
+  block = libspectrum_tape_iterator_next( &iterator );
+  r |= !block ||
+       libspectrum_tape_block_type( block ) != LIBSPECTRUM_TAPE_BLOCK_PAUSE;
+
+done:
+  if( file_created && unlink( filename ) ) r = 1;
+  if( read_back ) libspectrum_tape_free( read_back );
+  utils_file_free( &file );
+  if( test_tape ) libspectrum_tape_free( test_tape );
+  tape = saved_tape;
+  tape_modified = saved_modified;
+  tape_autoplay_blocked = saved_blocked;
+  trap_resume_pending = saved_resume;
+  settings_current.auto_load = saved_autoload;
+  return r;
+}
+
 int
 tape_unittest( void )
 {
@@ -555,6 +721,7 @@ tape_unittest( void )
   if( !error ) error = trap_load_unittest();
   if( !error ) error = tape_record_unittest();
   if( !error ) error = tape_edge_unittest();
+  if( !error ) error = tape_select_rewind_write_unittest();
 
   tape_test_cleanup( &fixture );
   if( error ) printf( "tape_unittest failed\n" );
