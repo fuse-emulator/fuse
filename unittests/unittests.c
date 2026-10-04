@@ -29,6 +29,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "libspectrum.h"
@@ -86,6 +87,10 @@
 #include "utils.h"
 #include "z80/z80.h"
 #include "z80/z80_macros.h"
+
+#ifdef ENABLE_AUTOMATION
+#include "automation/artifacts.h"
+#endif /* ENABLE_AUTOMATION */
 
 static int
 rzx_automatic_snapshot_count( libspectrum_snap **automatic_snap )
@@ -3417,6 +3422,108 @@ compat_file_vtable_test( void )
   return r;
 }
 
+#ifdef ENABLE_AUTOMATION
+
+/* Little-endian writers used to build the expected audio.wav contents */
+static void
+automation_audio_test_put_le16( libspectrum_byte *p, unsigned value )
+{
+  p[ 0 ] = value;
+  p[ 1 ] = value >> 8;
+}
+
+static void
+automation_audio_test_put_le32( libspectrum_byte *p, unsigned long value )
+{
+  p[ 0 ] = value;
+  p[ 1 ] = value >> 8;
+  p[ 2 ] = value >> 16;
+  p[ 3 ] = value >> 24;
+}
+
+/* Round-trip the automation artifacts' WAV writer: capture a short PCM
+   buffer, write audio.wav into a temporary directory and check the
+   resulting RIFF header field by field and the s16le payload byte for
+   byte */
+static int
+automation_audio_artifacts_test( void )
+{
+  static const libspectrum_signed_word samples[] = {
+    -32768, -16000, -3200, -400, 0, 400, 3200, 16000
+  };
+  const size_t sample_count = ARRAY_SIZE( samples );
+  const size_t byte_count = 2 * sample_count;
+  const unsigned int rate = 44100, channels = 1;
+  char dir_template[] = "/tmp/fuse-automation-audio-XXXXXX";
+  char wav_path[ PATH_MAX ];
+  libspectrum_byte expected[ 44 + 2 * ARRAY_SIZE( samples ) ];
+  libspectrum_byte *payload;
+  utils_file file;
+  size_t i;
+  int fd, r = 0;
+
+  memset( &file, 0, sizeof( file ) );
+
+  fd = mkstemp( dir_template );
+  if( fd < 0 ) return 1;
+  close( fd );
+  unlink( dir_template );
+  if( mkdir( dir_template, 0700 ) ) {
+    printf( "automation_audio_artifacts_test: failed to create directory\n" );
+    return 1;
+  }
+  snprintf( wav_path, sizeof( wav_path ), "%s" FUSE_DIR_SEP_STR "audio.wav",
+            dir_template );
+
+  automation_artifacts_audio_initialized( (int) rate, (int) channels );
+  automation_artifacts_capture_pcm( samples, (int) sample_count,
+                                    (int) rate, (int) channels );
+
+  if( automation_artifacts_write( dir_template, 0, 1 ) ||
+      utils_read_file( wav_path, &file ) ||
+      file.length != 44 + byte_count ) {
+    printf( "automation_audio_artifacts_test: failed to write or read "
+            "audio.wav\n" );
+    r++;
+    goto cleanup;
+  }
+
+  /* The header must describe exactly what was captured */
+  memset( expected, 0, sizeof( expected ) );
+  memcpy( expected, "RIFF", 4 );
+  automation_audio_test_put_le32( expected + 4, 36 + byte_count );
+  memcpy( expected + 8, "WAVEfmt ", 8 );
+  automation_audio_test_put_le32( expected + 16, 16 );
+  automation_audio_test_put_le16( expected + 20, 1 );	/* PCM */
+  automation_audio_test_put_le16( expected + 22, channels );
+  automation_audio_test_put_le32( expected + 24, rate );
+  automation_audio_test_put_le32( expected + 28, rate * channels * 2 );
+  automation_audio_test_put_le16( expected + 32, channels * 2 );
+  automation_audio_test_put_le16( expected + 34, 16 );	/* bits per sample */
+  memcpy( expected + 36, "data", 4 );
+  automation_audio_test_put_le32( expected + 40, byte_count );
+
+  payload = expected + 44;
+  for( i = 0; i < sample_count; i++ )
+    automation_audio_test_put_le16( payload + 2 * i,
+                                    (unsigned short) samples[ i ] );
+
+  if( memcmp( file.buffer, expected, sizeof( expected ) ) ) {
+    printf( "automation_audio_artifacts_test: wrong audio.wav contents\n" );
+    r++;
+  }
+
+cleanup:
+  utils_close_file( &file );
+  unlink( wav_path );
+  rmdir( dir_template );
+  automation_artifacts_end();
+  if( r ) printf( "automation_audio_artifacts_test failed\n" );
+  return r;
+}
+
+#endif /* ENABLE_AUTOMATION */
+
 int
 unittests_run( void )
 {
@@ -3480,6 +3587,9 @@ unittests_run( void )
   r += utils_open_loaded_disk_merge_test();
   r += disk_write_blank_disk_cpc_save_test();
   r += disk_write_open_udi_roundtrip_test();
+#ifdef ENABLE_AUTOMATION
+  r += automation_audio_artifacts_test();
+#endif /* ENABLE_AUTOMATION */
 
   printf("Final return value: %d (should be 0)\n", r);
 
