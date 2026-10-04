@@ -140,6 +140,32 @@ setup_fifo( unsigned int channels, int capacity )
   CHECK( sfifo_init( &sound_fifo, capacity ) == 0 );
 }
 
+/* Timer reserves a maximum batch, not a channel-dependent byte count. */
+static void
+timer_capacity_tests( void )
+{
+  const int framesiz = 960;
+  unsigned char data[8192] = { 0 };
+  int channels, available_frames, available_bytes, reserve_bytes;
+
+  for( channels = 1; channels <= 2; channels++ ) {
+    setup_fifo( channels, 2048 * channels * 2 - 1 );
+    reserve_bytes = framesiz * channels *
+                    (int)sizeof( libspectrum_signed_word );
+    for( available_frames = 0; available_frames <= 2047; available_frames++ ) {
+      sfifo_flush( &sound_fifo );
+      CHECK( sfifo_write( &sound_fifo, data,
+                         ( 2047 - available_frames ) * channels * 2 ) ==
+             ( 2047 - available_frames ) * channels * 2 );
+      available_bytes = sfifo_producer_space( &sound_fifo );
+      CHECK( available_bytes / ( channels * 2 ) == available_frames );
+      CHECK( ( available_bytes < reserve_bytes ) ==
+             ( available_frames < framesiz ) );
+    }
+    sfifo_close( &sound_fifo );
+  }
+}
+
 static void
 fill_tests( unsigned int channels )
 {
@@ -406,6 +432,7 @@ snapshot_test( void )
 int
 main( void )
 {
+  timer_capacity_tests();
   fill_tests( 1 );
   fill_tests( 2 );
   invalid_tests();
