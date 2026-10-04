@@ -1296,6 +1296,37 @@ spec_se_dock_ram_reset_test( void )
 }
 
 static int
+spec_se_dock_active_machine_switch_test( void )
+{
+  libspectrum_machine old_machine = machine_current->machine;
+  libspectrum_snap *snap;
+  int r = 0;
+
+  if( machine_select( LIBSPECTRUM_MACHINE_SE ) ) return 1;
+
+  /* The dock is always active on the SE */
+  if( !dck_active ) r++;
+
+  /* Switching to a machine without Timex-style video support drops the
+     dock state, so snapshots saved there claim no dock carts */
+  if( machine_select( LIBSPECTRUM_MACHINE_48 ) ) r++;
+  else {
+    if( dck_active ) r++;
+
+    snap = libspectrum_snap_alloc();
+    if( !snap ) return 1;
+    if( snapshot_copy_to( snap ) || libspectrum_snap_dock_active( snap ) ||
+        libspectrum_snap_dock_cart( snap, 0 ) ||
+        libspectrum_snap_exrom_cart( snap, 0 ) ) r++;
+    if( libspectrum_snap_free( snap ) ) r++;
+  }
+
+  if( machine_select( old_machine ) ) r++;
+
+  return r;
+}
+
+static int
 keyboard_read_test( void )
 {
   /* No keys pressed: all half-rows are 0xff, keyboard_read returns 0xff
@@ -3612,6 +3643,7 @@ unittests_run( void )
   r += slt_screen_is_cleared_by_reset_test();
   r += snapshot_dock_carts_cleared_by_hard_reset_test();
   r += spec_se_dock_ram_reset_test();
+  r += spec_se_dock_active_machine_switch_test();
   r += keyboard_read_test();
   r += keyboard_synthetic_test();
   r += keyboard_simulate_keypress_test();
