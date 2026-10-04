@@ -153,6 +153,27 @@ scld_reset( int hard_reset )
     for( bank_type = 0; bank_type < 2; bank_type++ )
       for( page_num = 0; page_num < 8; page_num++ )
         memory_rom_bank_clear( &scld_snapshot_banks[ bank_type ][ page_num ] );
+
+    /* Machines without Timex support never repopulate the DOCK and EXROM
+       page mappings in their reset routines, so mappings loaded from a
+       snapshot with dock cartridges (see scld_from_snapshot()) would
+       survive this reset still pointing into the banks just dropped, and
+       a later save would read the freed data. Clear all of the mappings
+       here; Timex machines always replace the mappings in their own reset
+       routines, which run before this module reset. */
+    if( !( machine_current->capabilities &
+           LIBSPECTRUM_MACHINE_CAPABILITY_TIMEX_VIDEO ) ) {
+      for( size_t i = 0; i < MEMORY_PAGES_IN_64K; i++ ) {
+        timex_dock[ i ].page = NULL;
+        timex_dock[ i ].writable = 0;
+        timex_dock[ i ].save_to_snapshot = 0;
+        timex_dock[ i ].contended = 0;
+        timex_exrom[ i ].page = NULL;
+        timex_exrom[ i ].writable = 0;
+        timex_exrom[ i ].save_to_snapshot = 0;
+        timex_exrom[ i ].contended = 0;
+      }
+    }
   }
 
   scld_last_dec.byte = 0;

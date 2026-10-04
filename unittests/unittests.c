@@ -1220,6 +1220,65 @@ slt_screen_is_cleared_by_reset_test( void )
 }
 
 static int
+snapshot_dock_carts_cleared_by_hard_reset_test( void )
+{
+  libspectrum_machine old_machine = machine_current->machine;
+  libspectrum_snap *snap;
+  libspectrum_snap *result;
+  libspectrum_byte *cart;
+  int r = 0;
+
+  if( machine_select( LIBSPECTRUM_MACHINE_48 ) ) return 1;
+
+  snap = libspectrum_snap_alloc();
+  result = libspectrum_snap_alloc();
+  if( !snap || !result ) {
+    if( snap ) libspectrum_snap_free( snap );
+    if( result ) libspectrum_snap_free( result );
+    return 1;
+  }
+
+  libspectrum_snap_set_machine( snap, machine_current->machine );
+  libspectrum_snap_set_dock_active( snap, 1 );
+  cart = libspectrum_new( libspectrum_byte, 0x2000 );
+  memset( cart, 0xa5, 0x2000 );
+  libspectrum_snap_set_dock_cart( snap, 0, cart );
+  libspectrum_snap_set_dock_ram( snap, 0, 1 );
+
+  /* Loading a snapshot carrying a DOCK cartridge on a machine without dock
+     support still maps the cartridge: scld_from_snapshot() copies it into a
+     scld snapshot bank and points the DOCK page mappings at it. */
+  if( snapshot_copy_from( snap ) ) r++;
+  TEST_ASSERT( timex_dock[ 0 ].page != NULL );
+  TEST_ASSERT( timex_dock[ 0 ].page[ 0 ] == 0xa5 );
+
+  /* A hard reset drops the bank data; the mappings must be dropped with
+     it rather than left pointing into the freed bank. */
+  if( machine_reset( 1 ) ) r++;
+  TEST_ASSERT( timex_dock[ 0 ].page == NULL );
+  TEST_ASSERT( timex_exrom[ 0 ].page == NULL );
+  TEST_ASSERT( !timex_dock[ 0 ].save_to_snapshot );
+  TEST_ASSERT( !timex_dock[ 0 ].writable );
+  TEST_ASSERT( !timex_exrom[ 0 ].save_to_snapshot );
+  TEST_ASSERT( !timex_exrom[ 0 ].writable );
+
+  /* Saving a snapshot afterwards must not resurrect cartridges out of
+     the freed bank. */
+  if( snapshot_copy_to( result ) ) r++;
+  TEST_ASSERT( libspectrum_snap_dock_cart( result, 0 ) == NULL );
+  TEST_ASSERT( libspectrum_snap_exrom_cart( result, 0 ) == NULL );
+  TEST_ASSERT( !libspectrum_snap_dock_ram( result, 0 ) );
+  TEST_ASSERT( !libspectrum_snap_exrom_ram( result, 0 ) );
+
+  if( libspectrum_snap_free( snap ) ) r++;
+  if( libspectrum_snap_free( result ) ) r++;
+
+  if( machine_select( old_machine ) ) r++;
+
+  return r;
+}
+
+static int
 spec_se_dock_ram_reset_test( void )
 {
   libspectrum_machine old_machine = machine_current->machine;
@@ -3551,6 +3610,7 @@ unittests_run( void )
   r += snapshot_write_read_roundtrip_test();
   r += slt_is_cleared_by_reset_test();
   r += slt_screen_is_cleared_by_reset_test();
+  r += snapshot_dock_carts_cleared_by_hard_reset_test();
   r += spec_se_dock_ram_reset_test();
   r += keyboard_read_test();
   r += keyboard_synthetic_test();
