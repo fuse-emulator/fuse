@@ -45,6 +45,9 @@ libspectrum_dword tstates;
 static int test_stereo, test_route, test_sources, test_frame;
 static sfifo_t fifo;
 static int speaker, selected_stereo, deny_admission, legacy;
+static int pacing_queued, pacing_wait;
+static uint64_t pacing_wait_state;
+static uint64_t state( void );
 static unsigned int width, reserved, reserve_calls, output_calls, movie_calls;
 static libspectrum_dword preview_elapsed;
 static int scheduled_test;
@@ -116,11 +119,27 @@ int sound_lowlevel_reserve( unsigned int frames )
     if( preview > remaining ) preview = remaining;
     CHECK( frames == preview );
   }
+  if( pacing_wait ) {
+    blip_sample_t consumed[2];
+    CHECK( pcm_fifo_producer_can_write( &fifo, width, frames ) == 0 );
+    CHECK( state() == pacing_wait_state );
+    /* Deterministic consumer progress while the producer is in admission. */
+    CHECK( pcm_fifo_read( &fifo, width, consumed, 1 ) == 1 );
+    pacing_queued--;
+    CHECK( state() == pacing_wait_state );
+    pacing_wait = 0;
+  }
   if( deny_admission ) {
     CHECK( pcm_fifo_producer_can_write( &fifo, width, frames ) == 0 );
     return -EAGAIN;
   }
   CHECK( pcm_fifo_producer_can_write( &fifo, width, frames ) == 1 );
+  /* Test transport: discard the older queued fixture only AFTER admission. */
+  if( pacing_queued ) {
+    blip_sample_t queued[16384];
+    CHECK( pcm_fifo_read( &fifo, width, queued, pacing_queued ) == pacing_queued );
+    pacing_queued = 0;
+  }
   reserved = frames;
   reserve_calls++;
   return 0;
@@ -367,6 +386,55 @@ initialise( void )
   }
 }
 
+/* Actual sound_advance_to with physical space smaller than sound_framesiz.
+   Consumer progress is deterministic; production cannot touch protected state
+   while the exact request is unfunded. The backend polling loops are covered
+   independently by the real Core Audio and SDL2 backend tests. */
+static void
+test_physical_pacing( void )
+{
+  static const unsigned int endpoints[] = { 35000, 65000, 69888 };
+  blip_sample_t queued[16384] = { 0 };
+  test_sources = 7;
+  test_route = 2;
+  speaker = SOUND_SPEAKER_TYPE_TV;
+  selected_stereo = SOUND_STEREO_AY_ABC;
+  test_machine.capabilities |= LIBSPECTRUM_MACHINE_CAPABILITY_AY;
+  legacy = test_frame = 0;
+  for( unsigned int i = 0; i < ARRAY_SIZE( endpoints ); i++ ) {
+    for( int blocked = 0; blocked < 2; blocked++ ) {
+      initialise();
+      device_count = movie_calls = movie_count = 0;
+      reserve_calls = output_calls = reserved = 0;
+      sources_at( 0 );
+      preview_elapsed = endpoints[i];
+      unsigned int batch = blip_buffer_samples_after( left_buf, preview_elapsed );
+      if( batch > (unsigned int)sound_framesiz ) batch = sound_framesiz;
+      int capacity = pcm_fifo_capacity( &fifo, width );
+      pacing_queued = capacity - batch + blocked;
+      CHECK( pcm_fifo_write( &fifo, width, queued, pacing_queued ) == pacing_queued );
+      uint64_t before = state();
+      if( blocked ) {
+        deny_admission = 1;
+        CHECK( sound_advance_to( endpoints[i] ) < 0 );
+        deny_admission = 0;
+        CHECK( state() == before && !output_calls && !reserve_calls );
+        CHECK( pcm_fifo_consumer_used( &fifo, width ) == pacing_queued );
+        CHECK( pcm_fifo_read( &fifo, width, queued, 1 ) == 1 );
+        pacing_queued--;
+      }
+      CHECK( pcm_fifo_producer_space( &fifo, width ) == (int)batch );
+      if( !i ) CHECK( batch < (unsigned int)sound_framesiz );
+      CHECK( sound_advance_to( endpoints[i] ) == 0 );
+      CHECK( audio_position == endpoints[i] && device_count == (int)batch * sound_channels );
+      CHECK( reserve_calls == 1 && output_calls == 1 && !pacing_queued );
+      sp0256_end();
+      sound_end();
+    }
+  }
+  puts( "physical pacing: exact fit, blocked/retry, overshoot and frame remainder passed" );
+}
+
 /* Discontinuities are not compared with an unreset frame. Both runs reset
    at the same committed endpoint, then vary only the partitioning around it. */
 static void
@@ -526,8 +594,19 @@ test_scheduler( void )
   tstates = 600;
   event_do_events();
   CHECK( audio_position == 600 && edge_count == 4 );
+  /* Delayed event service creates a batch nearly a full frame long. Admit
+     at exact B, not a cadence-derived bound, with protected state unchanged
+     until one consumer frame makes the whole batch physically retainable. */
+  unsigned int delayed_batch = blip_buffer_samples_after( left_buf, 69200 );
+  CHECK( delayed_batch > (unsigned int)sound_framesiz / 2 );
+  blip_sample_t queued[16384] = { 0 };
+  pacing_queued = pcm_fifo_capacity( &fifo, width ) - delayed_batch + 1;
+  CHECK( pcm_fifo_write( &fifo, width, queued, pacing_queued ) == pacing_queued );
+  pacing_wait_state = state();
+  pacing_wait = 1;
   tstates = 69800;
   event_do_events();
+  CHECK( !pacing_wait && !pacing_queued );
   CHECK( audio_position == 69800 && event_next_event == event_no_events );
   /* Overtaken near-frame cut must not advance beyond F. */
   event_add( 69850, audio_event );
@@ -731,6 +810,7 @@ main( int argc, char **argv )
     }
   }
   test_discontinuities();
+  test_physical_pacing();
   printf( "Partition equivalence at %d Hz: %lu frames, %lu cuts, "
           "%lu zero-sample cuts, %lu PCM frames; PCM/raw/movie/state identical\n",
           settings_current.sound_freq, total_frames, total_intervals,
