@@ -52,8 +52,10 @@ int option_enumerate_sound_stereo_ay( void ) { return selected_stereo; }
 int option_enumerate_sound_speaker_type( void ) { return speaker; }
 int timer_fastloading_active( void ) { return 0; }
 int tape_is_playing( void ) { return 0; }
-void sp0256_do_frame( void )
+void sp0256_end_frame( void ) {}
+void sp0256_advance_to( libspectrum_dword endpoint )
 {
+  (void)endpoint;
   speech_frames++;
   if( settings_current.sound ) CHECK( reserved );
 }

@@ -9,7 +9,8 @@
 int ay_engine_init( int volume, int stereo );
 void ay_engine_end( void );
 void ay_engine_set_outputs( Blip_Buffer *left, Blip_Buffer *right, int stereo );
-void ay_engine_render( libspectrum_dword tstates_per_frame );
+/* Ordered frame-relative endpoints; end_frame alone resets the tick lattice. */
+void ay_engine_render( libspectrum_dword endpoint );
 void ay_engine_end_frame( void );
 void ay_engine_write( int reg, int val, libspectrum_dword now );
 void ay_engine_reset( void );
