@@ -78,8 +78,19 @@ check-sound-partition: unittests/soundpartitiontest
 	$(top_builddir)/unittests/soundpartitiontest 44100
 	$(top_builddir)/unittests/soundpartitiontest 96000
 
+noinst_PROGRAMS += unittests/audiopacingtest
+unittests_audiopacingtest_SOURCES = unittests/audiopacingtest.c sound/sfifo.c
+unittests_audiopacingtest_CPPFLAGS = $(AM_CPPFLAGS)
+unittests_audiopacingtest_LDADD =
+if HAVE_PTHREAD
+unittests_audiopacingtest_CPPFLAGS += -DHAVE_PTHREAD
+unittests_audiopacingtest_LDADD += $(PTHREAD_LIBS)
+endif
+check-audio-pacing: unittests/audiopacingtest
+	$(top_builddir)/unittests/audiopacingtest
+
 AUDIO_CHECK_TARGETS = check-sfifo check-pcm-fifo check-blip-preview \
-                     check-sound-partition
+                     check-sound-partition check-audio-pacing
 
 if HAVE_PCM_ADMISSION
 noinst_PROGRAMS += unittests/soundadmissiontest

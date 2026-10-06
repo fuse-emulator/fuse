@@ -61,6 +61,22 @@ def snapshot(path, ay, ay_only=False):
         path.write_bytes(header + ram + extension)
 
 
+def delayed_prefix_fixture(snapshot_path, output):
+    data = bytearray(snapshot_path.read_bytes())
+    # Start normally, then cross several scheduler cuts in the legal prefix
+    # workload. Keep the SNA entry stack outside the prefix/program payload.
+    lead = bytes.fromhex("f3 01 ff ff 0b 78 b1 20 fb")
+    loop = 0x8001 + len(lead) + 12000
+    code = bytes.fromhex(
+        "f3 3e 10 d3 fe 06 ff 10 fe af d3 fe 06 ff 10 fe c3")
+    payload = lead + bytes([0xdd]) * 12000 + code + struct.pack("<H", loop)
+    data[27 + 16384:27 + 16384 + len(payload)] = payload
+    data[23:25] = struct.pack("<H", 0xf000)
+    data[27 + 0xb000:27 + 0xb002] = struct.pack("<H", 0x8000)
+    output.write_bytes(data)
+    return loop - 1, 0x8000 + len(payload)
+
+
 def rzx_fixture(snapshot_path, output):
     # Uncompressed RZX 0.12 snapshot and input blocks, no input-port reads.
     data = snapshot_path.read_bytes()
@@ -139,6 +155,9 @@ def main():
                 rzx = root / "fallback.rzx"
                 rzx_fixture(fixture, rzx)
                 fixtures.append(("rzx-fallback", rzx, None))
+                prefix = root / "delayed-prefix.sna"
+                prefix_pc = delayed_prefix_fixture(fixture, prefix)
+                fixtures.append(("delayed-prefix", prefix, None))
                 tape_snap = root / "tape.sna"
                 data = bytearray(fixture.read_bytes())
                 data[11:13] = struct.pack("<H", 1)  # DE byte count
@@ -154,6 +173,9 @@ def main():
                 for separation in ("none", "ACB"):
                     base_dir = root / (label + separation + "base")
                     base = capture(baseline, media, base_dir, machine, separation, tape=tape)
+                    if label == "delayed-prefix" and not (
+                            prefix_pc[0] <= base["state"]["cpu"]["pc"] < prefix_pc[1]):
+                        raise SystemExit("prefix fixture did not reach its final loop")
                     if tape and not base["state"]["machine"]["tape_playing"]:
                         raise SystemExit("tape fixture did not start playback")
                     if separation != "none" and base["artifacts"]["audio"]["channels"] != 2:

@@ -542,6 +542,91 @@ scheduler_frame_end( libspectrum_dword at, int type GCC_UNUSED,
 }
 
 static void
+test_scheduler_speed_limit( void )
+{
+  static const unsigned int speeds[] = { 400, 500 };
+  unsigned int i, pass;
+  libspectrum_dword maximum_interval;
+
+  event_reset();
+  settings_current.emulation_speed = MAX_SPEED_PERCENTAGE;
+  initialise();
+  maximum_interval = sound_audio_interval_tstates(
+                       sound_get_effective_processor_speed() );
+  CHECK( maximum_interval == 175 * MAX_SPEED_PERCENTAGE );
+  sound_end();
+
+  /* The cutoff is inclusive: the next percentage must not start a backend,
+     generate PCM, or arm audio events even with a retained nonzero interval. */
+  settings_current.emulation_speed = MAX_SPEED_PERCENTAGE + 1;
+  audio_cut_interval = maximum_interval;
+  device_count = 0;
+  sound_unpause();
+  CHECK( !sound_enabled && !fifo.buffer && settings_current.sound );
+  CHECK( !sound_can_produce_subframe() );
+  sound_schedule_audio();
+  sound_frame();
+  CHECK( !device_count && event_next_event == event_no_events );
+
+  /* On non-Win32 these are real, sound-enabled configurations. Win32's lower
+     cutoff makes frame-sized cadence unreachable; do not synthesize it there. */
+  for( i = 0; i < sizeof( speeds ) / sizeof( speeds[0] ); i++ ) {
+    if( speeds[i] > MAX_SPEED_PERCENTAGE ) continue;
+    settings_current.emulation_speed = speeds[i];
+    for( pass = 0; pass < 2; pass++ ) {
+      event_reset();
+      edge_count = 0;
+      tstates = 0;
+      audio_cut_interval = 0;
+      initialise();
+      if( pass ) {
+        audio_cut_interval = sound_audio_interval_tstates(
+                               sound_get_effective_processor_speed() );
+        CHECK( audio_cut_interval == 175 * speeds[i] );
+        CHECK( audio_cut_interval >= test_machine.timings.tstates_per_frame );
+      }
+      audio_frame_suspended = 0;
+      scheduled_advances = 0;
+      for( test_frame = 0; test_frame < FRAMES; test_frame++ ) {
+        unsigned int outputs_before = output_calls;
+        unsigned int reserves_before = reserve_calls;
+        device_count = 0;
+        sound_schedule_audio();
+        CHECK( event_next_event == event_no_events );
+        event_add( 110, scheduler_source );
+        event_add( 60001, scheduler_source );
+        event_add( 69888, scheduler_frame );
+        scheduled_test = 1;
+        tstates = 69920;
+        event_do_events();
+        CHECK( tstates == 32 && audio_position == 0 && !scheduled_advances );
+        CHECK( output_calls == outputs_before + 1 &&
+               reserve_calls == reserves_before + 1 && device_count > 0 );
+        CHECK( event_next_event == event_no_events );
+        if( !pass ) {
+          expected_count[test_frame] = device_count;
+          memcpy( expected_pcm[test_frame], device_pcm,
+                  device_count * sizeof( *device_pcm ) );
+          expected_state[test_frame] = state();
+        } else {
+          CHECK( device_count == expected_count[test_frame] );
+          CHECK( !memcmp( device_pcm, expected_pcm[test_frame],
+                           device_count * sizeof( *device_pcm ) ) );
+          CHECK( state() == expected_state[test_frame] );
+        }
+      }
+      scheduled_test = 0;
+      sound_end();
+    }
+  }
+  settings_current.emulation_speed = 100;
+  audio_cut_interval = 0;
+  printf( "scheduler speed cutoff: %u%% inclusive, maximum cadence %u; "
+          "disabled gating and reachable frame-only PCM/state passed\n",
+          MAX_SPEED_PERCENTAGE, maximum_interval );
+}
+
+static void
 test_scheduler( void )
 {
   CHECK( utils_safe_strdup( NULL ) == NULL );
@@ -695,6 +780,7 @@ test_scheduler( void )
                        all_advances, all_maximum_batch );
   }
   audio_cut_interval = 0;
+  test_scheduler_speed_limit();
   movie_recording = 1;
   event_end();
   printf( "scheduler: tape/overshoot/ties/frame/rearm/RZX/reinit passed\n" );

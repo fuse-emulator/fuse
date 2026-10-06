@@ -32,6 +32,7 @@ static Uint8 channels;
 static SDL_AudioFormat format;
 static SDL_AudioCallback callback;
 static int release_bytes, waits;
+static Uint16 demand_override;
 static void
 mock_delay( Uint32 milliseconds )
 {
@@ -52,6 +53,7 @@ mock_open( const char *name, int capture, const SDL_AudioSpec *want,
   *have = *want;
   have->channels = channels;
   have->format = format;
+  if( demand_override ) have->samples = demand_override;
   callback = want->callback;
   paused = live = 1;
   if( dummy ) return SDL_OpenAudioDevice( name, capture, want, have, flags );
@@ -84,6 +86,7 @@ fuse_machine_info *machine_current = &test_machine;
 settings_info settings_current;
 libspectrum_dword sound_get_effective_processor_speed( void )
 { return 3500000; }
+int sound_normal_producer_context( void ) { return 1; }
 int ui_error( ui_error_level level, const char *message, ... )
 { (void)level; (void)message; return 0; }
 
@@ -128,6 +131,43 @@ transfers( unsigned int width )
   callback( NULL, output, ( capacity + 1 ) * width );
   CHECK( !memcmp( output, input, capacity * width ) );
   sfifo_close( &sound_fifo );
+}
+
+static void
+pacing_tests( void )
+{
+  int freq = 48000, stereo = 0;
+  unsigned int i;
+  libspectrum_signed_word samples[2048] = { 0 }, output[512];
+  channels = 1; format = AUDIO_S16SYS; demand_override = 512;
+  CHECK( !sound_lowlevel_init( NULL, &freq, &stereo ) );
+  CHECK( pacing.controller.target == 2047 && pacing.demand == 512 );
+  CHECK( !sound_lowlevel_reserve( 960 ) );
+  sound_lowlevel_frame( samples, 960 );
+  for( i = 0; i < 20000; i++ ) {
+    CHECK( !audio_pacing_pending( &pacing, &sound_fifo, 2, 240, true, true ) );
+    if( !audio_pacing_can_admit( &pacing, &sound_fifo, 2, 240 ) )
+      callback( NULL, (Uint8 *)output, sizeof( output ) );
+    CHECK( !sound_lowlevel_reserve( 240 ) );
+    sound_lowlevel_frame( samples, 240 );
+    if( pacing.controller.accepted == 1328 && !pacing.controller.candidate ) break;
+  }
+  CHECK( i < 20000 && pacing.controller.funded && !pacing.controller.excess );
+  sfifo_flush( &sound_fifo );
+  CHECK( pcm_fifo_write( &sound_fifo, 2, samples, 1261 ) == 1261 );
+  callback( NULL, (Uint8 *)output, sizeof( output ) );
+  callback( NULL, (Uint8 *)output, sizeof( output ) );
+  CHECK( !sound_lowlevel_reserve( 238 ) );
+  sound_lowlevel_frame( samples, 238 );
+  CHECK( pacing.controller.target == 1667 && pacing.controller.excess == 339 );
+  CHECK( pacing.controller.floor == 915 );
+  CHECK( !sound_lowlevel_reserve( 240 ) );
+  sound_lowlevel_frame( samples, 240 );
+  CHECK( pacing.controller.state == ADAPTIVE_HOLD );
+  CHECK( pacing.controller.target == 2047 && pacing.controller.excess == 339 );
+  CHECK( !atomic_load( &pacing.missing ) );
+  sound_lowlevel_end();
+  CHECK( !pacing.ready ); demand_override = 0;
 }
 
 int main( int argc, char **argv )
@@ -187,6 +227,7 @@ int main( int argc, char **argv )
   CHECK( !live && !sound_fifo.buffer );
   sound_lowlevel_end();
   CHECK( closes == 6 );
+  pacing_tests();
   puts( "SDL2 audio tests passed" );
   return 0;
 }

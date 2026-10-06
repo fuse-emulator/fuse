@@ -69,15 +69,12 @@ Blip_Buffer *right_buf = NULL;
 blip_sample_t *samples = NULL;
 static int sound_tv_route = -1;
 static libspectrum_dword audio_position;
-/*
- * Advance audio roughly twice per Spectrum frame. Keep this separate from
- * FIFO latency policy; finer advancement is not useful with the current
- * conservative producer pacing.
- */
+/* Advance audio at the ordinary time cadence, independently of FIFO latency
+   policy. Test builds may override the interval in CPU T-states. */
 #ifdef FUSE_SOUND_TEST_INTERVAL
 static libspectrum_dword audio_cut_interval = FUSE_SOUND_TEST_INTERVAL;
 #else
-static const libspectrum_dword audio_cut_interval = 35000;
+static libspectrum_dword audio_cut_interval;
 #endif
 static int audio_event = -1;
 static int audio_frame_suspended;
@@ -177,6 +174,10 @@ sound_init( const char *device )
   audio_position = 0;
   frame_sample_count = 0;
   audio_frame_suspended = 1;
+#ifndef FUSE_SOUND_TEST_INTERVAL
+  audio_cut_interval = sound_audio_interval_tstates(
+                         sound_get_effective_processor_speed() );
+#endif
   if( audio_cut_interval && audio_event < 0 )
     audio_event = event_register( sound_audio_event, "Audio cut" );
   ay_engine_init( settings_current.volume_ay, sound_stereo_ay );
@@ -400,6 +401,12 @@ sound_can_produce_subframe( void )
   return audio_cut_interval && sound_enabled && !audio_frame_suspended &&
          !rzx_playback && !movie_recording &&
          debugger_mode == DEBUGGER_MODE_INACTIVE;
+}
+
+int
+sound_normal_producer_context( void )
+{
+  return sound_can_produce_subframe();
 }
 
 static void
