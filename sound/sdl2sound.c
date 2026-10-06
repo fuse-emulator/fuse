@@ -142,6 +142,16 @@ sound_lowlevel_end( void )
   audio_channels = bytes_per_frame = 0;
 }
 
+int
+sound_lowlevel_reserve( unsigned int frames )
+{
+  int admitted;
+  while( !( admitted = pcm_fifo_producer_can_write(
+              &sound_fifo, bytes_per_frame, frames ) ) )
+    SDL_Delay( 10 );
+  return admitted < 0 ? admitted : 0;
+}
+
 void
 sound_lowlevel_frame( libspectrum_signed_word *data, int len )
 {

@@ -54,6 +54,30 @@ pcm_fifo_producer_space( const sfifo_t *fifo, unsigned int bytes_per_frame )
   return bytes < 0 ? bytes : bytes / (int)bytes_per_frame;
 }
 
+/* Sole-producer physical fit query: 1 if frames fit now, 0 if a valid
+   request needs more space, negative errno if invalid or larger than total
+   PCM-frame capacity. This is an SPSC geometry query, not a reservation
+   object or latency/pacing policy; it neither waits nor changes FIFO state.
+
+   Storage and geometry must remain unchanged through subsequent publication,
+   with only the checked batch written by the sole producer. A stale consumer
+   position can only understate free space. After a successful B-frame fit
+   check, concurrent consumption can only increase space. Once the same
+   producer has published k frames of that batch, at least B-k frames remain
+   physically fundable; split whole-frame writes are therefore safe. */
+static inline int
+pcm_fifo_producer_can_write( const sfifo_t *fifo, unsigned int bytes_per_frame,
+                             unsigned int frames )
+{
+  int capacity, space;
+  if( !fifo ) return -EINVAL;
+  capacity = pcm_fifo_capacity( fifo, bytes_per_frame );
+  if( capacity < 0 ) return capacity;
+  if( frames > (unsigned int)capacity ) return -EINVAL;
+  space = pcm_fifo_producer_space( fifo, bytes_per_frame );
+  return space < 0 ? space : (unsigned int)space >= frames;
+}
+
 static inline int
 pcm_fifo_consumer_used( const sfifo_t *fifo, unsigned int bytes_per_frame )
 {

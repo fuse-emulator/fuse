@@ -46,7 +46,28 @@ endif
 check-pcm-fifo: unittests/pcm_fifotest
 	$(top_builddir)/unittests/pcm_fifotest
 
-AUDIO_CHECK_TARGETS = check-sfifo check-pcm-fifo
+noinst_PROGRAMS += unittests/blippreviewtest
+unittests_blippreviewtest_SOURCES = unittests/blippreviewtest.c sound/blipbuffer.c
+unittests_blippreviewtest_CPPFLAGS = $(AM_CPPFLAGS)
+unittests_blippreviewtest_LDADD = -lm
+check-blip-preview: unittests/blippreviewtest
+	$(top_builddir)/unittests/blippreviewtest
+
+AUDIO_CHECK_TARGETS = check-sfifo check-pcm-fifo check-blip-preview
+
+if HAVE_PCM_ADMISSION
+noinst_PROGRAMS += unittests/soundadmissiontest
+unittests_soundadmissiontest_SOURCES = unittests/soundadmissiontest.c \
+        sound/sfifo.c sound/blipbuffer.c sound/ay_engine.c \
+        sound/source_synths.c sound/output_mixer.c sound/dc_filter.c \
+        sound/speaker_filter.c sound/tv_filter.c sound/ula_filter.c
+unittests_soundadmissiontest_CPPFLAGS = $(AM_CPPFLAGS)
+unittests_soundadmissiontest_LDADD = $(LIBSPECTRUM_LIBS) -lm
+check-sound-admission: unittests/soundadmissiontest
+	$(top_builddir)/unittests/soundadmissiontest
+
+AUDIO_CHECK_TARGETS += check-sound-admission
+endif
 
 if USE_SDL2
 noinst_PROGRAMS += unittests/sdl2soundtest

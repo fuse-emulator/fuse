@@ -635,6 +635,8 @@ dnl
 case $audio_driver in
   sdl)
     SOUND_LIBADD='sound/sdl2sound.$(OBJEXT)' SOUND_LIBS='' sound_fifo=yes
+    AC_DEFINE([SOUND_PCM_ADMISSION], 1,
+              [Defined for exact callback PCM production admission])
     use_sdl=$sdl_available
     ;;
   directsound)
@@ -661,6 +663,8 @@ case $audio_driver in
     ;;
   coreaudio)
     SOUND_LIBADD='sound/coreaudiosound.$(OBJEXT)' SOUND_LIBS='-framework CoreAudio -framework AudioUnit' sound_fifo=yes
+    AC_DEFINE([SOUND_PCM_ADMISSION], 1,
+              [Defined for exact callback PCM production admission])
     ;;
   wii)
     SOUND_LIBADD='sound/wiisound.$(OBJEXT)' SOUND_LIBS='' sound_fifo=yes
@@ -673,6 +677,9 @@ case $audio_driver in
     AC_DEFINE([NO_SOUND], 1, [Defined if no sound code is present])
     ;;
 esac
+
+AM_CONDITIONAL(HAVE_PCM_ADMISSION,
+  test "$audio_driver" = sdl || test "$audio_driver" = coreaudio)
 
 if test "$sound_fifo" = yes; then
   AC_MSG_CHECKING([whether C11 FIFO atomics are usable])

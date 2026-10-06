@@ -1,5 +1,19 @@
-/* Exercise the actual SDL2 backend, with mocked device lifecycle.
-   GPL version 2 or later. */
+/* sdl2soundtest.c: exercise the SDL2 backend with mocked device lifecycle
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License along
+   with this program; if not, write to the Free Software Foundation, Inc.,
+   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+*/
 #include "config.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +31,17 @@ static int paused, live, starts, closes, dummy;
 static Uint8 channels;
 static SDL_AudioFormat format;
 static SDL_AudioCallback callback;
+static int release_bytes, waits;
+static void
+mock_delay( Uint32 milliseconds )
+{
+  Uint8 output[128];
+  if( dummy ) { SDL_Delay( milliseconds ); return; }
+  CHECK( milliseconds == 10 && release_bytes > 0 );
+  waits++;
+  callback( NULL, output, release_bytes );
+  release_bytes = 0;
+}
 static SDL_AudioDeviceID
 mock_open( const char *name, int capture, const SDL_AudioSpec *want,
            SDL_AudioSpec *have, int flags )
@@ -46,6 +71,7 @@ static void mock_lock( SDL_AudioDeviceID id )
 { CHECK( paused ); if( dummy ) SDL_LockAudioDevice( id ); }
 static void mock_unlock( SDL_AudioDeviceID id )
 { CHECK( paused ); if( dummy ) SDL_UnlockAudioDevice( id ); }
+#define SDL_Delay mock_delay
 #define SDL_OpenAudioDevice mock_open
 #define SDL_PauseAudioDevice mock_pause
 #define SDL_CloseAudioDevice mock_close
@@ -87,6 +113,14 @@ transfers( unsigned int width )
   }
   CHECK( pcm_fifo_write( &sound_fifo, width, input, capacity + 1 ) == capacity );
   CHECK( pcm_fifo_producer_space( &sound_fifo, width ) == 0 );
+  CHECK( !sound_lowlevel_reserve( 0 ) );
+  CHECK( sound_lowlevel_reserve( capacity + 1 ) == -EINVAL );
+  release_bytes = 2 * width;
+  waits = 0;
+  CHECK( !sound_lowlevel_reserve( 2 ) && waits == 1 );
+  CHECK( pcm_fifo_write( &sound_fifo, width, input, 2 ) == 2 );
+  callback( NULL, output, capacity * width );
+  CHECK( pcm_fifo_write( &sound_fifo, width, input, capacity ) == capacity );
   memset( output, 0xa5, sizeof( output ) );
   callback( NULL, output, width + 1 );
   for( i = 0; i < width + 1; i++ ) CHECK( output[i] == 0 );
@@ -124,6 +158,8 @@ int main( int argc, char **argv )
     {
       libspectrum_signed_word samples[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
       Uint8 output[16];
+      CHECK( !sound_lowlevel_reserve( 8 / c ) );
+      CHECK( paused && starts == old_starts );
       sound_lowlevel_frame( samples, 8 );
       CHECK( starts == old_starts + 1 && !paused );
       callback( NULL, output, sizeof( output ) );

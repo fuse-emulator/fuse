@@ -358,6 +358,16 @@ fail:
   return 1;
 }
 
+int
+sound_lowlevel_reserve( unsigned int frames )
+{
+  int admitted;
+  while( !( admitted = pcm_fifo_producer_can_write(
+              &sound_fifo, device_format.mBytesPerFrame, frames ) ) )
+    usleep( 10000 );
+  return admitted < 0 ? admitted : 0;
+}
+
 /* Copy the frame-batched sound data to the FIFO. */
 void
 sound_lowlevel_frame( libspectrum_signed_word *data, int sample_count )
