@@ -80,10 +80,6 @@ fuse_LDADD = \
              $(X_LIBS) \
              $(XML_LIBS)
 
-if USE_SDL1
-fuse_LDADD += $(SDL1_LIBS)
-endif
-
 if USE_SDL2
 fuse_LDADD += $(SDL2_LIBS)
 endif
@@ -110,10 +106,6 @@ AM_CPPFLAGS = \
               $(XML_CFLAGS) \
               -DFUSEDATADIR="\"${pkgdatadir}\"" \
               $(PNG_CFLAGS)
-
-if USE_SDL1
-AM_CPPFLAGS += $(SDL1_CFLAGS)
-endif
 
 if USE_SDL2
 AM_CPPFLAGS += $(SDL2_CFLAGS)
@@ -166,7 +158,6 @@ EXTRA_DIST = AUTHORS \
 	     m4/ax_pthread.m4 \
 	     m4/ax_string_strcasecmp.m4 \
 	     m4/pkg.m4 \
-	     m4/sdl.m4 \
 	     menu_data.dat \
 	     menu_data.pl \
 	     settings.dat \
@@ -239,7 +230,6 @@ include ui/fb/Makefile.am
 include ui/gtk3/Makefile.am
 include ui/null/Makefile.am
 include ui/scaler/Makefile.am
-include ui/sdl/Makefile.am
 include ui/sdl2/Makefile.am
 include ui/widget/Makefile.am
 include ui/wii/Makefile.am
