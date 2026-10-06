@@ -857,6 +857,7 @@ ay_render_grid_continuity_test( void )
     offset = ay_engine_next_tick_offset();
     last_tick = offset + 32 * ( ( frame - 1 - offset ) / 32 );
     ay_engine_render( frame );
+    ay_engine_end_frame();
     expected = frames * frame + last_tick + 32;
     seen = ( frames + 1 ) * frame + ay_engine_next_tick_offset();
     if( seen != expected ) r++;
@@ -884,6 +885,7 @@ ay_tail_write_survives_frame_boundary_test( void )
        first tick at or after its tstate. */
     ay_engine_write( 6, 0x31, 100 );
     ay_engine_render( frame );
+    ay_engine_end_frame();
     if( ay_engine_register_value( 6 ) != 0x31 ) r++;
 
     /* A write queued after the last rendering tick has no eligible tick
@@ -891,8 +893,10 @@ ay_tail_write_survives_frame_boundary_test( void )
        instead of being dropped. */
     ay_engine_write( 9, 0x55, frame - 8 );
     ay_engine_render( frame );
+    ay_engine_end_frame();
     if( ay_engine_register_value( 9 ) != 0 ) r++;
     ay_engine_render( frame );
+    ay_engine_end_frame();
     if( ay_engine_register_value( 9 ) != 0x55 ) r++;
   }
 

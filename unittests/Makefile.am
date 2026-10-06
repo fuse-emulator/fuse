@@ -61,7 +61,19 @@ unittests_blippreviewtest_LDADD = -lm
 check-blip-preview: unittests/blippreviewtest
 	$(top_builddir)/unittests/blippreviewtest
 
-AUDIO_CHECK_TARGETS = check-sfifo check-pcm-fifo check-blip-preview
+noinst_PROGRAMS += unittests/soundpartitiontest
+unittests_soundpartitiontest_SOURCES = unittests/soundpartitiontest.c \
+        sound/sfifo.c sound/blipbuffer.c sound/dc_filter.c \
+        sound/speaker_filter.c sound/tv_filter.c sound/ula_filter.c
+unittests_soundpartitiontest_CPPFLAGS = $(AM_CPPFLAGS)
+unittests_soundpartitiontest_LDADD = $(LIBSPECTRUM_LIBS) -lm
+check-sound-partition: unittests/soundpartitiontest
+	$(top_builddir)/unittests/soundpartitiontest
+	$(top_builddir)/unittests/soundpartitiontest 44100
+	$(top_builddir)/unittests/soundpartitiontest 96000
+
+AUDIO_CHECK_TARGETS = check-sfifo check-pcm-fifo check-blip-preview \
+                     check-sound-partition
 
 if HAVE_PCM_ADMISSION
 noinst_PROGRAMS += unittests/soundadmissiontest

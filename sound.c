@@ -28,6 +28,8 @@
 
 #include "config.h"
 
+#include <string.h>
+
 #include "fuse.h"
 #include "infrastructure/startup_manager.h"
 #include "machine.h"
@@ -40,6 +42,7 @@
 #include "ui/ui.h"
 #include "peripherals/sound/sp0256.h"
 #include "sound/ay_engine.h"
+#include "sound/audio_timeline.h"
 #include "sound/blipbuffer.h"
 #include "sound/output_mixer.h"
 #include "sound/source_synths.h"
@@ -62,6 +65,9 @@ Blip_Buffer *left_buf = NULL;
 Blip_Buffer *right_buf = NULL;
 blip_sample_t *samples = NULL;
 static int sound_tv_route = -1;
+static libspectrum_dword audio_position;
+static blip_sample_t *frame_samples;
+static long frame_sample_count;
 
 static void sound_update_source_routes( void );
 
@@ -150,12 +156,16 @@ sound_init( const char *device )
     return;
   }
 
+  audio_position = 0;
+  frame_sample_count = 0;
   ay_engine_init( settings_current.volume_ay, sound_stereo_ay );
   source_synths_init( left_buf, right_buf, sound_channels == 2,
                       settings_current.volume_specdrum,
                       settings_current.volume_covox,
                       settings_current.volume_uspeech );
   samples = libspectrum_new0( blip_sample_t, sound_framesiz * sound_channels );
+  frame_samples = libspectrum_new0( blip_sample_t,
+                                    sound_framesiz * sound_channels );
 
   sound_enabled = sound_enabled_ever = 1;
   sound_tv_route = -1;
@@ -192,6 +202,9 @@ sound_end( void )
 
     if( settings_current.sound ) sound_lowlevel_end();
     libspectrum_free( samples );
+    libspectrum_free( frame_samples );
+    audio_position = 0;
+    frame_sample_count = 0;
     sound_enabled = 0;
   }
 }
@@ -207,6 +220,7 @@ sound_register_startup( void )
 void
 sound_ay_write( int reg, int val, libspectrum_dword now )
 {
+  sound_interval_time( now );
   ay_engine_write( reg, val, now );
 }
 
@@ -214,7 +228,7 @@ void
 sound_ay_reset( void )
 {
   ay_engine_reset();
-  output_mixer_reset();
+  output_mixer_reset( audio_position ? left_buf->offset_ : 0 );
   sound_tv_route = -1;
 }
 
@@ -273,57 +287,101 @@ sound_update_source_routes( void )
   sound_tv_route = tv_route;
 }
 
-void
-sound_frame( void )
+libspectrum_dword
+sound_audio_position( void )
 {
-  long count;
+  return audio_position;
+}
 
-  if( !sound_enabled )
-    return;
+libspectrum_dword
+sound_interval_time( libspectrum_dword frame_time )
+{
+  /* Future events may overshoot the machine frame, but consumed time cannot
+     be written again. Never hide a caller error by clamping or wrapping. */
+  if( frame_time < audio_position ) {
+    ui_error( UI_ERROR_ERROR, "Audio event precedes extracted timeline" );
+    fuse_abort();
+  }
+  return frame_time - audio_position;
+}
+
+/* Endpoints are machine tstates in this frame, ordered in [0, F]. Equal
+   endpoints are no-ops; backwards or beyond-F endpoints fail before mutation.
+   Call only at a safe machine-time boundary: ULA/DAC events must not already
+   have been delivered beyond the endpoint. Route/settings changes and source
+   resets are discontinuities, not partitions of an otherwise identical frame.
+   There is deliberately no scheduler here. A future scheduler must choose a
+   safe endpoint under CPU/event semantics, not assume bounded overshoot.
+   Blip retains its fractional offset and impulse tail across every interval. */
+static int
+sound_advance_to( libspectrum_dword endpoint )
+{
+  if( endpoint < audio_position ||
+      endpoint > machine_current->timings.tstates_per_frame ) return -1;
+  if( !sound_enabled || endpoint == audio_position ) return 0;
+
+  const libspectrum_dword elapsed = endpoint - audio_position;
+  long frames = blip_buffer_samples_after( left_buf, elapsed );
+  if( frames < 0 ) return -1;
+  /* Preserve the legacy extraction limit for the whole machine frame, not
+     separately for each interval. Rounded Blip rates can leave unread samples
+     even at F; those samples and fractional residue belong to the next read. */
+  const long remaining = sound_framesiz - frame_sample_count / sound_channels;
+  if( frames > remaining ) frames = remaining;
 
 #ifdef SOUND_PCM_ADMISSION
-  if( settings_current.sound ) {
-    long frames = blip_buffer_samples_after(
-                    left_buf, machine_current->timings.tstates_per_frame );
-    if( frames > sound_framesiz ) frames = sound_framesiz;
-    /* Source events already accumulated during emulation change amplitudes,
-       not this timeline. Admit before frame-end rendering or extraction. */
-    if( frames < 0 || sound_lowlevel_reserve( frames ) < 0 ) {
-      ui_error( UI_ERROR_ERROR, "Cannot admit audio production batch" );
-      fuse_abort();
-    }
-  }
+  /* Source events alter amplitudes, not sample geometry. Physical admission
+     precedes route/source/filter/Blip mutation, including zero-sample cuts. */
+  if( settings_current.sound && frames && sound_lowlevel_reserve( frames ) < 0 )
+    return -1;
 #endif
 
   sound_update_source_routes();
-  sp0256_do_frame();
+  sp0256_advance_to( endpoint );
+  ay_engine_render( endpoint );
 
-  /* overlay AY sound */
-  ay_engine_render( machine_current->timings.tstates_per_frame );
+  blip_buffer_end_frame( left_buf, elapsed );
 
-  blip_buffer_end_frame( left_buf, machine_current->timings.tstates_per_frame );
-
+  long count;
   if( sound_stereo_ay != SOUND_STEREO_AY_NONE ) {
-    blip_buffer_end_frame( right_buf,
-                           machine_current->timings.tstates_per_frame );
+    blip_buffer_end_frame( right_buf, elapsed );
 
     /* Read left channel into even samples, right channel into odd samples:
        LRLRLRLRLR... */
-    count = blip_buffer_read_samples( left_buf, samples, sound_framesiz, 1 );
+    count = blip_buffer_read_samples( left_buf, samples, frames, 1 );
     blip_buffer_read_samples( right_buf, samples + 1, count, 1 );
     count <<= 1;
   } else {
-    count = blip_buffer_read_samples( left_buf, samples, sound_framesiz,
+    count = blip_buffer_read_samples( left_buf, samples, frames,
                                       BLIP_BUFFER_DEF_STEREO );
   }
 
-  output_mixer_end_frame( machine_current->timings.tstates_per_frame,
-                          samples, count );
+  if( count != frames * sound_channels ) fuse_abort();
+  output_mixer_advance( elapsed, samples, count );
+  memcpy( frame_samples + frame_sample_count, samples,
+          count * sizeof( *samples ) );
+  frame_sample_count += count;
+  audio_position = endpoint;
 
-  if( settings_current.sound )
+  if( settings_current.sound && count )
     sound_lowlevel_frame( samples, count );
+  return 0;
+}
 
-  if( movie_recording )
-      movie_add_sound( samples, count );
+void
+sound_frame( void )
+{
+  if( !sound_enabled ) return;
+  if( sound_advance_to( machine_current->timings.tstates_per_frame ) ) {
+    ui_error( UI_ERROR_ERROR, "Cannot admit audio production batch" );
+    fuse_abort();
+  }
+
+  output_mixer_end_frame();
+  if( movie_recording ) movie_add_sound( frame_samples, frame_sample_count );
+  ay_engine_end_frame();
+  sp0256_end_frame();
+  audio_position = 0;
+  frame_sample_count = 0;
 }
 
