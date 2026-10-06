@@ -35,7 +35,18 @@ endif
 check-sfifo: unittests/sfifotest
 	$(top_builddir)/unittests/sfifotest
 
-AUDIO_CHECK_TARGETS = check-sfifo
+noinst_PROGRAMS += unittests/pcm_fifotest
+unittests_pcm_fifotest_SOURCES = unittests/pcm_fifotest.c sound/sfifo.c
+unittests_pcm_fifotest_CPPFLAGS = $(AM_CPPFLAGS)
+unittests_pcm_fifotest_LDADD =
+if HAVE_PTHREAD
+unittests_pcm_fifotest_LDADD += $(PTHREAD_LIBS)
+endif
+
+check-pcm-fifo: unittests/pcm_fifotest
+	$(top_builddir)/unittests/pcm_fifotest
+
+AUDIO_CHECK_TARGETS = check-sfifo check-pcm-fifo
 
 if HAVE_COREAUDIO
 noinst_PROGRAMS += unittests/coreaudiofilltest

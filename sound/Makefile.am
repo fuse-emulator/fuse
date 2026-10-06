@@ -45,6 +45,7 @@ noinst_HEADERS += \
                   sound/blipbuffer.h \
                   sound/dc_filter.h \
                   sound/output_mixer.h \
+                  sound/pcm_fifo.h \
                   sound/speaker_filter.h \
                   sound/sfifo.h \
                   sound/source_synths.h \
