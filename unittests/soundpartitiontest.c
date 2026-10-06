@@ -11,11 +11,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <limits.h>
 /* Exercise physical admission even in a build using a non-FIFO backend. */
 #ifndef SOUND_PCM_ADMISSION
 #define SOUND_PCM_ADMISSION 1
 #endif
+#define FUSE_SOUND_TEST_INTERVAL 0
 #include "sound.c"
+#include "event.c"
+int rzx_playback;
+enum debugger_mode_t debugger_mode = DEBUGGER_MODE_INACTIVE;
 /* Include the implementations to inspect private synthesis/filter state and
    retain the preceding AY loop as an independent frame-only oracle. No test
    entry points, scheduler, or state-observation hooks enter production. */
@@ -42,6 +47,11 @@ static sfifo_t fifo;
 static int speaker, selected_stereo, deny_admission, legacy;
 static unsigned int width, reserved, reserve_calls, output_calls, movie_calls;
 static libspectrum_dword preview_elapsed;
+static int scheduled_test;
+static unsigned long scheduled_advances, maximum_batch;
+static int characterize;
+static unsigned long all_advances, all_maximum_batch;
+static libspectrum_dword last_boundary, minimum_interval, maximum_interval;
 static blip_sample_t device_pcm[CAPACITY], movie_pcm[CAPACITY];
 static int device_count, movie_count;
 static blip_sample_t expected_pcm[FRAMES][CAPACITY];
@@ -87,6 +97,19 @@ void sound_lowlevel_end( void ) { sfifo_close( &fifo ); }
 int sound_lowlevel_reserve( unsigned int frames )
 {
   CHECK( frames > 0 );
+  if( scheduled_test ) {
+    libspectrum_dword interval = tstates - last_boundary;
+    preview_elapsed = tstates - audio_position;
+    if( interval < minimum_interval ) minimum_interval = interval;
+    if( interval > maximum_interval ) maximum_interval = interval;
+    last_boundary = tstates;
+    scheduled_advances++;
+    if( frames > maximum_batch ) maximum_batch = frames;
+  }
+  if( characterize ) {
+    all_advances++;
+    if( frames > all_maximum_batch ) all_maximum_batch = frames;
+  }
   {
     long preview = blip_buffer_samples_after( left_buf, preview_elapsed );
     long remaining = sound_framesiz - frame_sample_count / sound_channels;
@@ -406,6 +429,196 @@ test_discontinuities( void )
   }
 }
 
+/* Adapted from sound_latency's actual event.c scheduler exercise. */
+static int scheduler_source, scheduler_frame, edge_count;
+static unsigned long overtaken_cuts, coalesced_cuts;
+
+static void
+observe_pending_cut( gpointer data, gpointer unused GCC_UNUSED )
+{
+  event_t *event = data;
+  if( event->type == audio_event && event->tstates < tstates &&
+      audio_cut_interval ) {
+    overtaken_cuts++;
+    coalesced_cuts += tstates / audio_cut_interval -
+                      event->tstates / audio_cut_interval;
+  }
+}
+
+static void
+scheduler_edge( libspectrum_dword at, int type GCC_UNUSED,
+                void *data GCC_UNUSED )
+{
+  CHECK( audio_position <= at );
+  sound_ula( at, edge_count & 1, !( edge_count & 1 ) );
+  sound_ay_write( 8, edge_count & 15, at );
+  edge_count++;
+  /* Tape callbacks may schedule another edge already behind CPU progress. */
+  if( at == 110 ) event_add( 120, scheduler_source );
+}
+
+static void
+scheduler_frame_end( libspectrum_dword at, int type GCC_UNUSED,
+                     void *data GCC_UNUSED )
+{
+  CHECK( audio_position <= at && tstates >= at );
+  event_frame( at );
+  tstates -= at;
+  scheduled_test = 0;
+  preview_elapsed = at - audio_position;
+  sound_frame();
+  scheduled_test = 1;
+  last_boundary = 0;
+}
+
+static void
+test_scheduler( void )
+{
+  CHECK( utils_safe_strdup( NULL ) == NULL );
+  char *empty = utils_safe_strdup( "" );
+  CHECK( empty && !*empty );
+  libspectrum_free( empty );
+  char source[] = "Audio cut";
+  char *copy = utils_safe_strdup( source );
+  CHECK( copy && copy != source && !strcmp( copy, source ) );
+  source[0] = 'X';
+  CHECK( copy[0] == 'A' );
+  libspectrum_free( copy );
+
+  event_init( NULL );
+  scheduler_source = event_register( scheduler_edge, "Test tape" );
+  scheduler_frame = event_register( scheduler_frame_end, "Test frame" );
+  test_sources = 3;
+  speaker = SOUND_SPEAKER_TYPE_TV;
+  selected_stereo = SOUND_STEREO_AY_ABC;
+  test_machine.capabilities = LIBSPECTRUM_MACHINE_CAPABILITY_AY;
+  legacy = 0;
+  movie_recording = 0;
+  audio_cut_interval = 100;
+  initialise();
+  tstates = 0;
+  audio_frame_suspended = 0;
+  sound_schedule_audio();
+  event_add( 110, scheduler_source );
+  scheduled_test = 1;
+  minimum_interval = UINT_MAX;
+  last_boundary = 0;
+  device_count = movie_count = movie_calls = 0;
+  /* Regression: neither nominal cut nor actual 140 may consume tape 110. */
+  tstates = 140;
+  event_do_events();
+  CHECK( edge_count == 2 && audio_position == 140 && event_next_event == 200 );
+  tstates = 200;
+  event_do_events();
+  CHECK( audio_position == 200 );
+  /* Several nominal cuts overtaken: only one actual advancement. */
+  unsigned long before = scheduled_advances;
+  tstates = 540;
+  event_do_events();
+  CHECK( audio_position == 540 && event_next_event == 600 );
+  CHECK( scheduled_advances == before + 1 ); /* Coalesced 300/400/500. */
+  /* Equal-time sources on either side of the audio type are half-open. */
+  int late_source = event_register( scheduler_edge, "Late source" );
+  event_add( 600, scheduler_source );
+  event_add( 600, late_source );
+  tstates = 600;
+  event_do_events();
+  CHECK( audio_position == 600 && edge_count == 4 );
+  tstates = 69800;
+  event_do_events();
+  CHECK( audio_position == 69800 && event_next_event == event_no_events );
+  /* Overtaken near-frame cut must not advance beyond F. */
+  event_add( 69850, audio_event );
+  event_add( 69870, scheduler_source );
+  event_add( 69887, scheduler_source );
+  event_add( 69888, scheduler_frame );
+  tstates = 69920;
+  event_do_events();
+  CHECK( tstates == 32 && audio_position == 0 && event_next_event == 100 );
+  CHECK( edge_count == 6 );
+  device_count = 0;
+  tstates = 140;
+  event_do_events();
+  CHECK( audio_position == 140 );
+  sound_ay_reset();
+  CHECK( audio_position == 0 && audio_frame_suspended );
+  /* RZX forces nominal events without permitting interior advancement. */
+  rzx_playback = 1;
+  event_add( 200, audio_event );
+  event_add( 210, scheduler_source );
+  event_force_events();
+  CHECK( audio_position == 0 && edge_count == 7 );
+  rzx_playback = 0;
+  scheduled_test = 0;
+  sound_end();
+  event_reset();
+  initialise();
+  CHECK( audio_frame_suspended && event_next_event == event_no_events );
+  sound_end();
+  audio_cut_interval = 0;
+  /* Compare real event dispatch with frame-only production over consecutive
+   * frames, preserving all fractional/filter/source state between frames. */
+  static const unsigned int intervals[] = { 0, 35000, 17500, 8750, 997, 1, 100 };
+  for( unsigned int pass = 0; pass < sizeof( intervals ) / sizeof( *intervals );
+       pass++ ) {
+    event_reset();
+    edge_count = 0;
+    tstates = 0;
+    audio_cut_interval = 100;
+    initialise();
+    audio_cut_interval = intervals[pass];
+    scheduled_advances = maximum_batch = 0;
+    all_advances = all_maximum_batch = 0;
+    characterize = 1;
+    overtaken_cuts = coalesced_cuts = 0;
+    minimum_interval = UINT_MAX;
+    maximum_interval = last_boundary = 0;
+    for( test_frame = 0; test_frame < FRAMES; test_frame++ ) {
+      device_count = 0;
+      event_add( 31, scheduler_source );
+      event_add( 110, scheduler_source );
+      event_add( 997, scheduler_source );
+      event_add( 60001, scheduler_source );
+      event_add( 69888, scheduler_frame );
+      scheduled_test = 1;
+      while( event_next_event <= 69888 ) {
+        /* Instruction endpoint overshoot, not nominal event progress. */
+        tstates = ( event_next_event / 23 + 1 ) * 23;
+        event_foreach( observe_pending_cut, NULL );
+        event_do_events();
+        if( tstates < 23 ) break;
+      }
+      CHECK( audio_position == 0 );
+      if( !pass ) {
+        expected_count[test_frame] = device_count;
+        memcpy( expected_pcm[test_frame], device_pcm,
+                device_count * sizeof( *device_pcm ) );
+        expected_state[test_frame] = state();
+      } else {
+        CHECK( expected_count[test_frame] == device_count );
+        CHECK( !memcmp( expected_pcm[test_frame], device_pcm,
+                         device_count * sizeof( *device_pcm ) ) );
+        CHECK( expected_state[test_frame] == state() );
+      }
+    }
+    scheduled_test = 0;
+    characterize = 0;
+    sound_end();
+    if( pass ) printf( "scheduled %u: %lu interior nonzero batches, "
+                       "intervals %u..%u, max exact B %lu, "
+                       "overtaken %lu, coalesced %lu, "
+                       "all batches %lu/max B %lu; PCM/state identical\n",
+                       intervals[pass], scheduled_advances, minimum_interval,
+                       maximum_interval, maximum_batch,
+                       overtaken_cuts, coalesced_cuts,
+                       all_advances, all_maximum_batch );
+  }
+  audio_cut_interval = 0;
+  movie_recording = 1;
+  event_end();
+  printf( "scheduler: tape/overshoot/ties/frame/rearm/RZX/reinit passed\n" );
+}
+
 int
 main( int argc, char **argv )
 {
@@ -422,6 +635,8 @@ main( int argc, char **argv )
   settings_current.volume_beeper = settings_current.volume_ay = 70;
   settings_current.volume_specdrum = settings_current.volume_covox = 50;
   settings_current.volume_uspeech = 50;
+  test_scheduler();
+  if( argc > 2 && !strcmp( argv[2], "--scheduler-only" ) ) return 0;
   /* Passes: preceding frame-only oracle, new one-shot path, halves,
      irregular event-adjacent cuts, 79-tstate cuts ending explicitly at F,
      and dense one-tstate cuts. Repeated frames exercise residue and rebase.

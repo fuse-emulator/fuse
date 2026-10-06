@@ -31,6 +31,9 @@
 #include <string.h>
 
 #include "fuse.h"
+#include "event.h"
+#include "debugger/debugger.h"
+#include "rzx.h"
 #include "infrastructure/startup_manager.h"
 #include "machine.h"
 #include "movie.h"
@@ -66,6 +69,21 @@ Blip_Buffer *right_buf = NULL;
 blip_sample_t *samples = NULL;
 static int sound_tv_route = -1;
 static libspectrum_dword audio_position;
+/*
+ * Advance audio roughly twice per Spectrum frame. Keep this separate from
+ * FIFO latency policy; finer advancement is not useful with the current
+ * conservative producer pacing.
+ */
+#ifdef FUSE_SOUND_TEST_INTERVAL
+static libspectrum_dword audio_cut_interval = FUSE_SOUND_TEST_INTERVAL;
+#else
+static const libspectrum_dword audio_cut_interval = 35000;
+#endif
+static int audio_event = -1;
+static int audio_frame_suspended;
+static void sound_schedule_audio( void );
+static void sound_audio_event( libspectrum_dword last_tstates, int type,
+                               void *user_data );
 static blip_sample_t *frame_samples;
 static long frame_sample_count;
 
@@ -158,6 +176,9 @@ sound_init( const char *device )
 
   audio_position = 0;
   frame_sample_count = 0;
+  audio_frame_suspended = 1;
+  if( audio_cut_interval && audio_event < 0 )
+    audio_event = event_register( sound_audio_event, "Audio cut" );
   ay_engine_init( settings_current.volume_ay, sound_stereo_ay );
   source_synths_init( left_buf, right_buf, sound_channels == 2,
                       settings_current.volume_specdrum,
@@ -193,6 +214,7 @@ sound_unpause( void )
 void
 sound_end( void )
 {
+  if( audio_event >= 0 ) event_remove_type( audio_event );
   if( sound_enabled ) {
     ay_engine_end();
     source_synths_end();
@@ -212,7 +234,9 @@ sound_end( void )
 void
 sound_register_startup( void )
 {
-  startup_manager_module dependencies[] = { STARTUP_MANAGER_MODULE_SETUID };
+  startup_manager_module dependencies[] = {
+    STARTUP_MANAGER_MODULE_EVENT, STARTUP_MANAGER_MODULE_SETUID
+  };
   startup_manager_register( STARTUP_MANAGER_MODULE_SOUND, dependencies,
                             ARRAY_SIZE( dependencies ), NULL, NULL, sound_end );
 }
@@ -227,6 +251,8 @@ sound_ay_write( int reg, int val, libspectrum_dword now )
 void
 sound_ay_reset( void )
 {
+  /* A source reset is not a timestamped write in the current audio timeline. */
+  sound_suspend_subframe();
   ay_engine_reset();
   output_mixer_reset( audio_position ? left_buf->offset_ : 0 );
   sound_tv_route = -1;
@@ -310,8 +336,8 @@ sound_interval_time( libspectrum_dword frame_time )
    Call only at a safe machine-time boundary: ULA/DAC events must not already
    have been delivered beyond the endpoint. Route/settings changes and source
    resets are discontinuities, not partitions of an otherwise identical frame.
-   There is deliberately no scheduler here. A future scheduler must choose a
-   safe endpoint under CPU/event semantics, not assume bounded overshoot.
+   The subframe scheduler retries at actual CPU progress only after
+   strictly older queued source events have drained.
    Blip retains its fractional offset and impulse tail across every interval. */
 static int
 sound_advance_to( libspectrum_dword endpoint )
@@ -368,6 +394,74 @@ sound_advance_to( libspectrum_dword endpoint )
   return 0;
 }
 
+static int
+sound_can_produce_subframe( void )
+{
+  return audio_cut_interval && sound_enabled && !audio_frame_suspended &&
+         !rzx_playback && !movie_recording &&
+         debugger_mode == DEBUGGER_MODE_INACTIVE;
+}
+
+static void
+sound_schedule_audio( void )
+{
+  libspectrum_dword next;
+  libspectrum_dword frame_end = machine_current->timings.tstates_per_frame;
+
+  if( !sound_can_produce_subframe() || audio_cut_interval >= frame_end ||
+      tstates >= frame_end ) return;
+
+  /* Skip overtaken lattice cuts rather than producing catch-up batches. */
+  next = ( tstates / audio_cut_interval + 1 ) * audio_cut_interval;
+  if( next < frame_end ) event_add( next, audio_event );
+}
+
+static void
+sound_audio_event( libspectrum_dword last_tstates, int type GCC_UNUSED,
+                   void *user_data GCC_UNUSED )
+{
+  libspectrum_dword frame_end = machine_current->timings.tstates_per_frame;
+
+  if( !sound_can_produce_subframe() || tstates >= frame_end ) return;
+  if( tstates < audio_position ) {
+    /* A discontinuous clock change invalidates the committed audio cursor. */
+    sound_suspend_subframe();
+    return;
+  }
+  /* Port writes may already extend past the nominal cut, while older tape
+   * callbacks are still queued. Retry at actual instruction progress after
+   * strictly older events (including newly scheduled overdue tape edges).
+   * Equal-time impulses belong to the following half-open interval; do not
+   * depend on event-type tie ordering. Frame crossing belongs to sound_frame.
+   */
+  if( last_tstates != tstates || event_next_event < tstates ) {
+    event_add( tstates, audio_event );
+    return;
+  }
+  if( sound_advance_to( tstates ) ) {
+    ui_error( UI_ERROR_ERROR, "Cannot admit audio production batch" );
+    fuse_abort();
+  }
+  sound_schedule_audio();
+}
+
+void
+sound_suspend_subframe( void )
+{
+  if( !audio_cut_interval || !sound_enabled ) return;
+
+  if( audio_event >= 0 ) event_remove_type( audio_event );
+  audio_frame_suspended = 1;
+  /* Clock/source discontinuities cannot retract PCM already published. Drop
+   * the partial frame's synthesis history through the existing teardown path;
+   * finish this frame without interior cuts, then resume from a frame boundary.
+   */
+  if( audio_position ) {
+    sound_end();
+    sound_unpause();
+  }
+}
+
 void
 sound_frame( void )
 {
@@ -383,5 +477,7 @@ sound_frame( void )
   sp0256_end_frame();
   audio_position = 0;
   frame_sample_count = 0;
+  audio_frame_suspended = 0;
+  sound_schedule_audio();
 }
 

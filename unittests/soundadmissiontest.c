@@ -19,7 +19,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <setjmp.h>
+#define FUSE_SOUND_TEST_INTERVAL 0
 #include "sound.c"
+#include "event.c"
+int rzx_playback;
+enum debugger_mode_t debugger_mode = DEBUGGER_MODE_INACTIVE;
 #include "sound/pcm_fifo.h"
 #include "periph.h"
 

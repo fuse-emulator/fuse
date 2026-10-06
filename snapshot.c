@@ -33,6 +33,7 @@
 #include "module.h"
 #include "settings.h"
 #include "snapshot.h"
+#include "sound.h"
 #include "ui/ui.h"
 #include "utils.h"
 
@@ -86,6 +87,8 @@ snapshot_copy_from( libspectrum_snap *snap )
   int error;
   libspectrum_machine machine;
 
+  /* Restored source state/time is not a continuation of consumed audio. */
+  sound_suspend_subframe();
   periph_disable_optional();
   module_snapshot_enabled( snap );
 
