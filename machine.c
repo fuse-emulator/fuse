@@ -231,6 +231,8 @@ machine_select_machine( fuse_machine_info *machine, libspectrum_snap *snap )
 
   settings_set_string( &settings_current.start_machine, machine->id );
   
+  /* Replacing the frame clock/event queue invalidates pending audio cuts. */
+  sound_suspend_subframe();
   tstates = 0;
 
   /* Reset the event stack */

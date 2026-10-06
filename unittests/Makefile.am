@@ -63,10 +63,16 @@ check-blip-preview: unittests/blippreviewtest
 
 noinst_PROGRAMS += unittests/soundpartitiontest
 unittests_soundpartitiontest_SOURCES = unittests/soundpartitiontest.c \
+        utils_string.c \
         sound/sfifo.c sound/blipbuffer.c sound/dc_filter.c \
         sound/speaker_filter.c sound/tv_filter.c sound/ula_filter.c
 unittests_soundpartitiontest_CPPFLAGS = $(AM_CPPFLAGS)
 unittests_soundpartitiontest_LDADD = $(LIBSPECTRUM_LIBS) -lm
+EXTRA_DIST += unittests/audio-frame-equivalence.py
+
+check-sound-scheduler: unittests/soundpartitiontest
+	$(top_builddir)/unittests/soundpartitiontest 48000 --scheduler-only
+
 check-sound-partition: unittests/soundpartitiontest
 	$(top_builddir)/unittests/soundpartitiontest
 	$(top_builddir)/unittests/soundpartitiontest 44100
@@ -78,6 +84,7 @@ AUDIO_CHECK_TARGETS = check-sfifo check-pcm-fifo check-blip-preview \
 if HAVE_PCM_ADMISSION
 noinst_PROGRAMS += unittests/soundadmissiontest
 unittests_soundadmissiontest_SOURCES = unittests/soundadmissiontest.c \
+        utils_string.c \
         sound/sfifo.c sound/blipbuffer.c sound/ay_engine.c \
         sound/source_synths.c sound/output_mixer.c sound/dc_filter.c \
         sound/speaker_filter.c sound/tv_filter.c sound/ula_filter.c
@@ -131,6 +138,27 @@ noinst_PROGRAMS += unittests/sdl2mousetest
 noinst_PROGRAMS += unittests/palcompositetest
 noinst_PROGRAMS += unittests/scalerexpandtest
 if ENABLE_AUTOMATION
+# Compile-time interval variants share the real execution/event engine. These
+# executables are test artifacts, not installed runtime configuration paths.
+AUDIO_TEST_INTERVALS = 0 35000 17500 8750 997 1
+AUDIO_TEST_BINARIES = $(addprefix unittests/fuse-audio-,$(AUDIO_TEST_INTERVALS))
+AUDIO_TEST_OBJECTS = $(addsuffix .$(OBJEXT),$(addprefix unittests/audio-cut-,$(AUDIO_TEST_INTERVALS)))
+CLEANFILES += $(AUDIO_TEST_BINARIES) $(AUDIO_TEST_OBJECTS)
+.SECONDARY: $(AUDIO_TEST_OBJECTS)
+
+unittests/audio-cut-%.$(OBJEXT): $(srcdir)/sound.c $(fuse_OBJECTS)
+	$(AM_V_CC)$(COMPILE) -DFUSE_SOUND_TEST_INTERVAL=$* -c -o $@ $(srcdir)/sound.c
+
+unittests/fuse-audio-%: unittests/audio-cut-%.$(OBJEXT) $(fuse_OBJECTS) $(fuse_DEPENDENCIES)
+	$(AM_V_CCLD)$(fuse_LINK) $(filter-out sound.$(OBJEXT),$(fuse_OBJECTS)) unittests/audio-cut-$*.$(OBJEXT) $(fuse_LDADD) $(LIBS)
+
+check-sound-engine-equivalence: fuse$(EXEEXT) $(AUDIO_TEST_BINARIES)
+	python3 $(srcdir)/unittests/audio-frame-equivalence.py \
+	  ./unittests/fuse-audio-0 ./fuse$(EXEEXT) --interval-builds \
+	  ./unittests/fuse-audio-35000 ./unittests/fuse-audio-17500 \
+	  ./unittests/fuse-audio-8750 ./unittests/fuse-audio-997 \
+	  ./unittests/fuse-audio-1
+
 noinst_PROGRAMS += unittests/automation_json_test
 unittests_automation_json_test_SOURCES = \
 	unittests/automation_json.c \
