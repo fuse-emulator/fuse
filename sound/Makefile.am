@@ -42,6 +42,8 @@ EXTRA_fuse_SOURCES += \
 noinst_HEADERS += \
                   sound/ay_engine.h \
                   sound/audio_timeline.h \
+                  sound/audio_controller.h \
+                  sound/audio_pacing.h \
                   sound/blipbuffer.h \
                   sound/dc_filter.h \
                   sound/output_mixer.h \

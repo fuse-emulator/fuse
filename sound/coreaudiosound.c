@@ -29,6 +29,7 @@
 
 #include "machine.h"
 #include "pcm_fifo.h"
+#include "audio_pacing.h"
 #include "sound.h"
 #include "ui/ui.h"
 
@@ -46,6 +47,8 @@ sfifo_t sound_fifo;
 
 /* Signed 16-bit interleaved format supplied to the output unit. */
 static AudioStreamBasicDescription device_format;
+static struct audio_pacing pacing;
+static int audio_output_started;
 
 /* Unsigned modular counters, observed with relaxed loads outside the callback.
    Snapshots need not be mutually consistent. Wider totals can be accumulated
@@ -82,8 +85,9 @@ init_audio_stats( void )
 static int
 write_audio_frames( const void *data, unsigned int frames )
 {
-  int written = pcm_fifo_write( &sound_fifo, device_format.mBytesPerFrame,
-                                data, frames );
+  int written = audio_pacing_write( &pacing, &sound_fifo,
+                                    device_format.mBytesPerFrame,
+                                    data, frames, audio_output_started );
   return written < 0 ? written :
     written * (int)device_format.mBytesPerFrame;
 }
@@ -130,6 +134,7 @@ coreaudiowrite( void *in_ref_con, AudioUnitRenderActionFlags *action_flags,
   (void)timestamp;
   (void)bus_number;
 
+  audio_pacing_callback_begin( &pacing );
   atomic_fetch_add_explicit( &audio_stats.demand_frames, requested_frames,
                             memory_order_relaxed );
   /* Check capacity by division, without overflowing a frame-to-byte product.
@@ -149,6 +154,7 @@ coreaudiowrite( void *in_ref_con, AudioUnitRenderActionFlags *action_flags,
     }
     atomic_fetch_add_explicit( &audio_stats.invalid_callbacks, 1,
                               memory_order_relaxed );
+    audio_pacing_callback_end( &pacing, 0, 0, true );
     return kAudio_ParamError;
   }
 
@@ -163,13 +169,13 @@ coreaudiowrite( void *in_ref_con, AudioUnitRenderActionFlags *action_flags,
                               requested_frames - delivered_frames,
                               memory_order_relaxed );
   }
+  audio_pacing_callback_end( &pacing, requested_frames, delivered_frames,
+                             false );
   return noErr;
 }
 
 /* The default output unit converts our PCM to the device's output format. */
 static AudioUnit output_unit;
-/* Records whether rendering has started. */
-static int audio_output_started;
 static int audio_unit_initialized;
 /* A failed teardown must not permit reinitialization of live FIFO storage. */
 static int audio_teardown_failed;
@@ -244,6 +250,7 @@ sound_lowlevel_end( void )
     audio_unit_initialized = 0;
   }
   if( sound_fifo.buffer ) sfifo_close( &sound_fifo );
+  pacing.ready = false;
 }
 
 int
@@ -259,6 +266,12 @@ sound_lowlevel_init( const char *dev, int *freqptr, int *stereoptr )
   AURenderCallbackStruct input = { coreaudiowrite, NULL };
   double emulation_hz, audio_frames_per_batch;
   unsigned int capacity_frames;
+  UInt32 demand = 0, property_size;
+  int envelope_ok = 0;
+  AudioObjectPropertyAddress buffer_address = {
+    kAudioDevicePropertyBufferFrameSize, kAudioObjectPropertyScopeGlobal,
+    COREAUDIO_PROPERTY_ELEMENT_MAIN
+  };
   int error;
   (void)dev;
 
@@ -288,7 +301,7 @@ sound_lowlevel_init( const char *dev, int *freqptr, int *stereoptr )
 
   /* Adjust relative processor speed to deal with sound generation frequency
      against emulation speed (more flexible than adjusting sample rate).
-     Keep the existing frame-batched scheduling. */
+     Preserve the existing physical allocation geometry. */
   emulation_hz = (double)sound_get_effective_processor_speed() /
                 machine_current->timings.tstates_per_frame;
   if( !isfinite( emulation_hz ) || emulation_hz <= 0 ) {
@@ -343,16 +356,53 @@ sound_lowlevel_init( const char *dev, int *freqptr, int *stereoptr )
     ui_error( UI_ERROR_ERROR, "AudioUnitSetProperty-SF=%ld", (long)err );
     goto fail;
   }
+  /* Bound each client input pull (QA1533), not merely the largest request
+     observed so far. Read back before and after initialization. */
+  property_size = sizeof( demand );
+  err = AudioObjectGetPropertyData( device, &buffer_address, 0, NULL,
+                                    &property_size, &demand );
+  if( !err && property_size == sizeof( demand ) && demand ) {
+    err = AudioUnitSetProperty( output_unit,
+            kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global,
+            0, &demand, sizeof( demand ) );
+    if( !err ) {
+      property_size = sizeof( demand );
+      err = AudioUnitGetProperty( output_unit,
+              kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global,
+              0, &demand, &property_size );
+      envelope_ok = !err && property_size == sizeof( demand ) && demand;
+    }
+  }
   err = AudioUnitInitialize( output_unit );
   if( err ) {
     ui_error( UI_ERROR_ERROR, "AudioUnitInitialize=%ld", (long)err );
     goto fail;
   }
   audio_unit_initialized = 1;
+  if( envelope_ok ) {
+    property_size = sizeof( demand );
+    err = AudioUnitGetProperty( output_unit,
+            kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global,
+            0, &demand, &property_size );
+    envelope_ok = !err && property_size == sizeof( demand ) && demand &&
+                 demand <= INT_MAX / device_format.mBytesPerFrame;
+  }
+  if( !envelope_ok ) {
+    demand = 0;
+    ui_error( UI_ERROR_WARNING,
+              "Core Audio callback envelope unavailable; using FIFO capacity" );
+  }
+  if( audio_pacing_init_rate( &pacing, &sound_fifo,
+        device_format.mBytesPerFrame, *freqptr,
+        sound_get_effective_processor_speed(),
+        machine_current->timings.tstates_per_frame, demand ) )
+    goto pacing_fail;
   /* Wait to run sound until we have some sound to play. */
   audio_output_started = 0;
   return 0;
 
+pacing_fail:
+  ui_error( UI_ERROR_ERROR, "Cannot initialize Core Audio pacing geometry" );
 fail:
   sound_lowlevel_end();
   return 1;
@@ -361,10 +411,14 @@ fail:
 int
 sound_lowlevel_reserve( unsigned int frames )
 {
-  int admitted;
-  while( !( admitted = pcm_fifo_producer_can_write(
-              &sound_fifo, device_format.mBytesPerFrame, frames ) ) )
+  int admitted = audio_pacing_pending( &pacing, &sound_fifo,
+                    device_format.mBytesPerFrame, frames,
+                    sound_normal_producer_context(), audio_output_started );
+  if( admitted < 0 ) return admitted;
+  while( !( admitted = audio_pacing_can_admit( &pacing, &sound_fifo,
+                          device_format.mBytesPerFrame, frames ) ) )
     usleep( 10000 );
+  if( admitted > 0 && frames && pacing.ready ) pacing.reserved = true;
   return admitted < 0 ? admitted : 0;
 }
 

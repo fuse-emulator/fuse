@@ -17,6 +17,7 @@
 
 #include "settings.h"
 #include "pcm_fifo.h"
+#include "audio_pacing.h"
 #include "sound.h"
 #include "ui/ui.h"
 
@@ -29,6 +30,7 @@ sfifo_t sound_fifo;
 
 static SDL_AudioDeviceID audio_device;
 static int audio_output_started;
+static struct audio_pacing pacing;
 /* Immutable while the device is open; obtained callback PCM geometry. */
 static unsigned int audio_channels, bytes_per_frame;
 
@@ -94,7 +96,7 @@ sound_lowlevel_init( const char *device, int *freqptr, int *stereoptr )
      interleaved mono or stereo. Do not infer stereo from arbitrary channels. */
   if( received.format != AUDIO_S16SYS ||
       ( received.channels != 1 && received.channels != 2 ) ||
-      received.freq <= 0 ) {
+      received.freq <= 0 || !received.samples ) {
     SDL_CloseAudioDevice( audio_device );
     audio_device = 0;
     settings_current.sound = 0;
@@ -119,6 +121,15 @@ sound_lowlevel_init( const char *device, int *freqptr, int *stereoptr )
     return 1;
   }
 
+  /* SDL's obtained samples bound the fixed callback client request. A later
+     larger request invalidates qualification rather than silently learning D. */
+  if( audio_pacing_init_rate( &pacing, &sound_fifo, bytes_per_frame,
+        *freqptr, sound_get_effective_processor_speed(),
+        machine_current->timings.tstates_per_frame, received.samples ) ) {
+    sound_lowlevel_end();
+    ui_error( UI_ERROR_ERROR, "Cannot qualify SDL audio pacing geometry" );
+    return 1;
+  }
   audio_output_started = 0;
 
   return 0;
@@ -140,15 +151,20 @@ sound_lowlevel_end( void )
   sfifo_close( &sound_fifo );
   audio_output_started = 0;
   audio_channels = bytes_per_frame = 0;
+  pacing.ready = false;
 }
 
 int
 sound_lowlevel_reserve( unsigned int frames )
 {
-  int admitted;
-  while( !( admitted = pcm_fifo_producer_can_write(
-              &sound_fifo, bytes_per_frame, frames ) ) )
+  int admitted = audio_pacing_pending( &pacing, &sound_fifo, bytes_per_frame,
+                    frames, sound_normal_producer_context(),
+                    audio_output_started );
+  if( admitted < 0 ) return admitted;
+  while( !( admitted = audio_pacing_can_admit( &pacing, &sound_fifo,
+                          bytes_per_frame, frames ) ) )
     SDL_Delay( 10 );
+  if( admitted > 0 && frames && pacing.ready ) pacing.reserved = true;
   return admitted < 0 ? admitted : 0;
 }
 
@@ -165,7 +181,8 @@ sound_lowlevel_frame( libspectrum_signed_word *data, int len )
   len /= audio_channels;
 
   while( len ) {
-    if( ( i = pcm_fifo_write( &sound_fifo, bytes_per_frame, bytes, len ) ) < 0 ) {
+    if( ( i = audio_pacing_write( &pacing, &sound_fifo, bytes_per_frame,
+                                   bytes, len, audio_output_started ) ) < 0 ) {
       break;
     } else if( !i ) {
       SDL_Delay( 10 );
@@ -192,16 +209,20 @@ sdl2write( void *userdata GCC_UNUSED, Uint8 *stream, int len )
   int delivered;
 
   if( len <= 0 || !stream ) return;
+  audio_pacing_callback_begin( &pacing );
   /* SDL promises writable len-byte storage. A malformed frame request must
      neither consume queued PCM nor leave stale bytes in that storage. */
   if( !bytes_per_frame || len % bytes_per_frame ) {
     memset( stream, 0, len );
+    audio_pacing_callback_end( &pacing, 0, 0, true );
     return;
   }
 
   delivered = pcm_fifo_read( &sound_fifo, bytes_per_frame, stream,
                              len / bytes_per_frame );
   if( delivered < 0 ) delivered = 0;
-  delivered *= bytes_per_frame;
-  memset( stream + delivered, 0, len - delivered );
+  memset( stream + delivered * bytes_per_frame, 0,
+          len - delivered * bytes_per_frame );
+  audio_pacing_callback_end( &pacing, len / bytes_per_frame, delivered,
+                             false );
 }

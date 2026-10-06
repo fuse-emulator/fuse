@@ -35,6 +35,8 @@ mock_property( AudioObjectID object, const AudioObjectPropertyAddress *address,
   if( ++call_stage == failure_stage ) return -1;
   if( address->mSelector == kAudioHardwarePropertyDefaultOutputDevice )
     *(AudioDeviceID *)data = device_missing ? kAudioObjectUnknown : 1;
+  else if( address->mSelector == kAudioDevicePropertyBufferFrameSize )
+    *(UInt32 *)data = 512;
   else
     *(Float64 *)data = sample_rate;
   return noErr;
@@ -62,6 +64,16 @@ mock_set( AudioUnit unit, AudioUnitPropertyID property, AudioUnitScope scope,
           AudioUnitElement element, const void *data, UInt32 size )
 {
   (void)unit; (void)property; (void)scope; (void)element; (void)data; (void)size;
+  return ++call_stage == failure_stage ? -1 : noErr;
+}
+
+static OSStatus
+mock_get( AudioUnit unit, AudioUnitPropertyID property, AudioUnitScope scope,
+          AudioUnitElement element, void *data, UInt32 *size )
+{
+  (void)unit; (void)scope; (void)element;
+  CHECK( property == kAudioUnitProperty_MaximumFramesPerSlice );
+  *(UInt32 *)data = 512; *size = sizeof( UInt32 );
   return ++call_stage == failure_stage ? -1 : noErr;
 }
 
@@ -106,6 +118,7 @@ mock_stop( AudioUnit unit )
 #define AudioComponentFindNext mock_find
 #define AudioComponentInstanceNew mock_new
 #define AudioUnitSetProperty mock_set
+#define AudioUnitGetProperty mock_get
 #define AudioUnitInitialize mock_initialize
 #define AudioUnitUninitialize mock_uninitialize
 #define AudioComponentInstanceDispose mock_dispose
@@ -139,6 +152,8 @@ sound_get_effective_processor_speed( void )
   return processor_speed;
 }
 
+int sound_normal_producer_context( void ) { return 1; }
+
 int
 ui_error( ui_error_level severity, const char *format, ... )
 {
@@ -151,6 +166,7 @@ ui_error( ui_error_level severity, const char *format, ... )
 static void
 setup_fifo( unsigned int channels, int capacity )
 {
+  pacing.ready = false;
   device_format.mChannelsPerFrame = channels;
   device_format.mBytesPerFrame = channels * 2;
   CHECK( init_audio_stats() == 0 );
@@ -336,10 +352,16 @@ initialization_tests( void )
 {
   int stage, freq = 48000, stereo = 1;
   test_machine.timings.tstates_per_frame = 70000;
-  for( stage = 1; stage <= 7; stage++ ) {
+  for( stage = 1; stage <= 11; stage++ ) {
     failure_stage = stage;
     call_stage = 0;
-    CHECK( sound_lowlevel_init( NULL, &freq, &stereo ) == 1 );
+    if( stage == 7 || stage == 8 || stage == 9 || stage == 11 ) {
+      CHECK( !sound_lowlevel_init( NULL, &freq, &stereo ) );
+      CHECK( pacing.controller.state == ADAPTIVE_INVALID );
+      CHECK( pacing.controller.target == pacing.controller.capacity );
+      CHECK( atomic_load( &pacing.invalid ) && !pacing.demand );
+      sound_lowlevel_end();
+    } else CHECK( sound_lowlevel_init( NULL, &freq, &stereo ) == 1 );
     CHECK( live_units == 0 && !output_unit && !sound_fifo.buffer );
   }
   failure_stage = 0;
@@ -392,6 +414,49 @@ initialization_tests( void )
   audio_teardown_failed = 0;
 }
 
+static void
+pacing_tests( void )
+{
+  int freq = 48000, stereo = 0;
+  unsigned int i;
+  libspectrum_signed_word samples[2048] = { 0 }, output[512];
+  AudioBufferList buffers;
+  CHECK( !sound_lowlevel_init( NULL, &freq, &stereo ) );
+  CHECK( pacing.controller.target == 2047 && pacing.demand == 512 );
+  buffers.mNumberBuffers = 1;
+  buffers.mBuffers[0].mNumberChannels = 1;
+  buffers.mBuffers[0].mDataByteSize = sizeof( output );
+  buffers.mBuffers[0].mData = output;
+  CHECK( !sound_lowlevel_reserve( 960 ) );
+  sound_lowlevel_frame( samples, 960 );
+  for( i = 0; i < 20000; i++ ) {
+    CHECK( !audio_pacing_pending( &pacing, &sound_fifo, 2, 240, true, true ) );
+    if( !audio_pacing_can_admit( &pacing, &sound_fifo, 2, 240 ) )
+      CHECK( coreaudiowrite( NULL, NULL, NULL, 0, 512, &buffers ) == noErr );
+    CHECK( !sound_lowlevel_reserve( 240 ) );
+    sound_lowlevel_frame( samples, 240 );
+    if( pacing.controller.accepted == 1328 && !pacing.controller.candidate ) break;
+  }
+  CHECK( i < 20000 && pacing.controller.funded && !pacing.controller.excess );
+  CHECK( COUNTER( missing_frames ) == 0 );
+  /* Measured successful absence: two actual callbacks, then real publications. */
+  sfifo_flush( &sound_fifo );
+  CHECK( pcm_fifo_write( &sound_fifo, 2, samples, 1261 ) == 1261 );
+  CHECK( coreaudiowrite( NULL, NULL, NULL, 0, 512, &buffers ) == noErr );
+  CHECK( coreaudiowrite( NULL, NULL, NULL, 0, 512, &buffers ) == noErr );
+  CHECK( !sound_lowlevel_reserve( 238 ) );
+  sound_lowlevel_frame( samples, 238 );
+  CHECK( pacing.controller.target == 1667 && pacing.controller.excess == 339 );
+  CHECK( pacing.controller.floor == 915 );
+  CHECK( !sound_lowlevel_reserve( 240 ) );
+  sound_lowlevel_frame( samples, 240 );
+  CHECK( pacing.controller.state == ADAPTIVE_HOLD );
+  CHECK( pacing.controller.target == 2047 && pacing.controller.excess == 339 );
+  CHECK( COUNTER( missing_frames ) == 0 );
+  sound_lowlevel_end();
+  CHECK( !pacing.ready );
+}
+
 #ifdef COREAUDIO_TEST_THREADS
 static _Atomic unsigned int reader_done;
 static void *
@@ -423,6 +488,9 @@ frame_producer( void *unused )
     frame[1] = ( pos / 251 ) % 251 + 1;
     frame[2] = 0x31;
     frame[3] = 0x73;
+    CHECK( !audio_pacing_pending( &pacing, &sound_fifo, 4, 1, true, false ) );
+    if( !audio_pacing_can_admit( &pacing, &sound_fifo, 4, 1 ) ) continue;
+    pacing.reserved = true;
     written = write_audio_frames( frame, 1 );
     CHECK( written == 0 || written == 4 );
     if( written ) pos++;
@@ -438,6 +506,7 @@ frame_concurrency_test( void )
   AudioBufferList buffers = { 1, { { 2, sizeof( output ), output } } };
   unsigned int pos = 0, before, delivered, i;
   setup_fifo( 2, 31 );
+  CHECK( !audio_pacing_init( &pacing, 7, 1, 3, 2 ) );
   CHECK( pthread_create( &producer, NULL, frame_producer, NULL ) == 0 );
   while( pos < CONCURRENT_FRAMES ) {
     before = COUNTER( delivered_frames );
@@ -456,6 +525,7 @@ frame_concurrency_test( void )
   CHECK( pthread_join( producer, NULL ) == 0 );
   CHECK( sfifo_consumer_used( &sound_fifo ) == 0 );
   sfifo_close( &sound_fifo );
+  pacing.ready = false;
 }
 
 static void
@@ -487,6 +557,7 @@ main( void )
   fill_tests( 2 );
   invalid_tests();
   initialization_tests();
+  pacing_tests();
 #ifdef COREAUDIO_TEST_THREADS
   frame_concurrency_test();
   snapshot_test();

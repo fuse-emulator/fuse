@@ -27,6 +27,17 @@
 
 #include "libspectrum.h"
 
+/* Internal normal production cadence, not a user preference. */
+#define SOUND_AUDIO_CADENCE_MS 5
+
+/* Round down to whole CPU T-states. Widen before multiplying so the clock
+   conversion cannot overflow; the interval is at most the supplied clock. */
+static inline libspectrum_dword
+sound_audio_interval_tstates( libspectrum_dword processor_speed )
+{
+  return (libspectrum_qword)processor_speed * SOUND_AUDIO_CADENCE_MS / 1000;
+}
+
 enum sound_speaker_type {
   SOUND_SPEAKER_TYPE_AUTOMATIC,
   SOUND_SPEAKER_TYPE_TV,
@@ -107,9 +118,11 @@ int sound_lowlevel_init( const char *device, int *freqptr, int *stereoptr );
 void sound_lowlevel_end( void );
 void sound_lowlevel_frame( libspectrum_signed_word *data, int len );
 #ifdef SOUND_PCM_ADMISSION
-/* Sole producer: wait for a complete batch before frame-end synthesis.
+/* Sole producer: wait for a complete batch before synthesis mutation.
    Negative errno on failure; no producer writes may intervene before publish. */
 int sound_lowlevel_reserve( unsigned int frames );
 #endif
+/* Ordinary subframe context; frame-only/RZX/discontinuities use capacity. */
+int sound_normal_producer_context( void );
 
 #endif				/* #ifndef FUSE_SOUND_H */
