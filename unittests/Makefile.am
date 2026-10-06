@@ -48,6 +48,16 @@ check-pcm-fifo: unittests/pcm_fifotest
 
 AUDIO_CHECK_TARGETS = check-sfifo check-pcm-fifo
 
+if USE_SDL2
+noinst_PROGRAMS += unittests/sdl2soundtest
+unittests_sdl2soundtest_SOURCES = unittests/sdl2soundtest.c sound/sfifo.c
+unittests_sdl2soundtest_CPPFLAGS = $(AM_CPPFLAGS)
+unittests_sdl2soundtest_LDADD = $(SDL2_LIBS)
+check-sdl2sound: unittests/sdl2soundtest
+	$(top_builddir)/unittests/sdl2soundtest
+AUDIO_CHECK_TARGETS += check-sdl2sound
+endif
+
 if HAVE_COREAUDIO
 noinst_PROGRAMS += unittests/coreaudiofilltest
 unittests_coreaudiofilltest_SOURCES = unittests/coreaudiofilltest.c sound/sfifo.c
