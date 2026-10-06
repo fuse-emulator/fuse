@@ -180,9 +180,10 @@ admission_tests( void )
   }
 }
 
-/* Timer reserves a maximum batch, not a channel-dependent byte count. */
+/* Exact batch admission, independent of the removed frame-sized timer gate.
+   Exhaust every free-space boundary for mono and stereo PCM geometry. */
 static void
-timer_capacity_tests( void )
+batch_capacity_tests( void )
 {
   const int framesiz = 960;
   unsigned char data[8192] = { 0 };
@@ -201,6 +202,12 @@ timer_capacity_tests( void )
       CHECK( available_bytes / ( channels * 2 ) == available_frames );
       CHECK( ( available_bytes < reserve_bytes ) ==
              ( available_frames < framesiz ) );
+      CHECK( pcm_fifo_producer_can_write( &sound_fifo, channels * 2, 480 ) ==
+             ( available_frames >= 480 ) );
+      CHECK( pcm_fifo_producer_can_write( &sound_fifo, channels * 2, 1500 ) ==
+             ( available_frames >= 1500 ) );
+      if( available_frames >= 480 && available_frames < framesiz )
+        CHECK( available_bytes < reserve_bytes );
     }
     sfifo_close( &sound_fifo );
   }
@@ -475,7 +482,7 @@ int
 main( void )
 {
   admission_tests();
-  timer_capacity_tests();
+  batch_capacity_tests();
   fill_tests( 1 );
   fill_tests( 2 );
   invalid_tests();
