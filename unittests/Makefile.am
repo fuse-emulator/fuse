@@ -99,19 +99,40 @@ check-sound-admission: unittests/soundadmissiontest
 AUDIO_CHECK_TARGETS += check-sound-admission
 endif
 
+noinst_HEADERS += unittests/audio-wakeup-cases.h
+
 if USE_SDL2
 noinst_PROGRAMS += unittests/sdl2soundtest
-unittests_sdl2soundtest_SOURCES = unittests/sdl2soundtest.c sound/sfifo.c
+unittests_sdl2soundtest_SOURCES = unittests/sdl2soundtest.c sound/sfifo.c \
+                                $(COMPAT_WAIT_SOURCES)
 unittests_sdl2soundtest_CPPFLAGS = $(AM_CPPFLAGS)
 unittests_sdl2soundtest_LDADD = $(SDL2_LIBS)
+if HAVE_PTHREAD
+unittests_sdl2soundtest_CPPFLAGS += -DSDL2_TEST_THREADS
+unittests_sdl2soundtest_LDADD += $(PTHREAD_LIBS)
+endif
 check-sdl2sound: unittests/sdl2soundtest
 	$(top_builddir)/unittests/sdl2soundtest
 AUDIO_CHECK_TARGETS += check-sdl2sound
+
+noinst_PROGRAMS += unittests/sdl2wakeuptest
+unittests_sdl2wakeuptest_SOURCES = unittests/sdl2wakeuptest.c sound/sfifo.c \
+                                 $(COMPAT_WAIT_SOURCES)
+unittests_sdl2wakeuptest_CPPFLAGS = $(AM_CPPFLAGS)
+unittests_sdl2wakeuptest_LDADD =
+if HAVE_PTHREAD
+unittests_sdl2wakeuptest_CPPFLAGS += -DSDL2_TEST_THREADS
+unittests_sdl2wakeuptest_LDADD += $(PTHREAD_LIBS)
+endif
+check-sdl2-wakeup: unittests/sdl2wakeuptest
+	$(top_builddir)/unittests/sdl2wakeuptest
+AUDIO_CHECK_TARGETS += check-sdl2-wakeup
 endif
 
 if HAVE_COREAUDIO
 noinst_PROGRAMS += unittests/coreaudiofilltest
-unittests_coreaudiofilltest_SOURCES = unittests/coreaudiofilltest.c sound/sfifo.c
+unittests_coreaudiofilltest_SOURCES = unittests/coreaudiofilltest.c sound/sfifo.c \
+                                   $(COMPAT_WAIT_SOURCES)
 unittests_coreaudiofilltest_CPPFLAGS = $(AM_CPPFLAGS)
 unittests_coreaudiofilltest_LDFLAGS = -framework CoreAudio -framework AudioUnit
 unittests_coreaudiofilltest_LDADD =

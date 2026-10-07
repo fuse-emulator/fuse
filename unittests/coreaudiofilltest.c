@@ -15,6 +15,7 @@
 
 #include "machine.h"
 #include "ui/ui.h"
+#include "sound/audio_progress.h"
 
 #define CHECK(x) do { if( !(x) ) { \
   fprintf( stderr, "coreaudiofilltest:%d: %s\n", __LINE__, #x ); exit( 1 ); \
@@ -125,22 +126,27 @@ mock_stop( AudioUnit unit )
 #define AudioOutputUnitStart mock_start
 #define AudioOutputUnitStop mock_stop
 static int release_frames, admission_waits;
-static int mock_sleep( useconds_t microseconds );
-#define usleep mock_sleep
+static int wake_before_wait( audio_progress_deadline );
+static int mock_progress_wait( struct audio_progress *, uint32_t,
+                               audio_progress_deadline );
+#define audio_progress_wait mock_progress_wait
 /* Include rather than duplicate the production callback and fill algorithm. */
 #include "sound/coreaudiosound.c"
-#undef usleep
+#undef audio_progress_wait
 
 static int
-mock_sleep( useconds_t microseconds )
+mock_progress_wait( struct audio_progress *p, uint32_t expected,
+                    audio_progress_deadline end )
 {
-  unsigned char output[128];
-  if( !release_frames ) return usleep( microseconds );
-  CHECK( microseconds == 10000 );
-  admission_waits++;
-  CHECK( fill_audio_frames( output, release_frames ) == release_frames );
-  release_frames = 0;
-  return 0;
+  unsigned char output[4096];
+  if( wake_before_wait( end ) ) return 0;
+  if( release_frames ) {
+    admission_waits++;
+    CHECK( fill_audio_frames( output, release_frames ) == release_frames );
+    audio_progress_publish( p );
+    release_frames = 0;
+  }
+  return audio_progress_wait( p, expected, end );
 }
 
 static fuse_machine_info test_machine;
@@ -170,6 +176,7 @@ setup_fifo( unsigned int channels, int capacity )
   device_format.mChannelsPerFrame = channels;
   device_format.mBytesPerFrame = channels * 2;
   CHECK( init_audio_stats() == 0 );
+  CHECK( !audio_progress_init( &progress ) );
   CHECK( sfifo_init( &sound_fifo, capacity ) == 0 );
 }
 
@@ -548,6 +555,20 @@ snapshot_test( void )
 }
 #endif
 
+static void wake_init( void ) { processor_speed = 3500000; }
+static void
+wake_consume( unsigned int frames )
+{
+  libspectrum_signed_word output[512];
+  AudioBufferList buffers = { 1, { { 1, frames * 2, output } } };
+  CHECK( frames <= 512 );
+  CHECK( coreaudiowrite( NULL, NULL, NULL, 0, frames, &buffers ) == noErr );
+}
+#ifdef COREAUDIO_TEST_THREADS
+#define AUDIO_WAKE_THREADS
+#endif
+#include "audio-wakeup-cases.h"
+
 int
 main( void )
 {
@@ -563,6 +584,10 @@ main( void )
   snapshot_test();
 #else
   puts( "SKIP: pthread counter snapshot test" );
+#endif
+  wake_regressions();
+#ifdef AUDIO_WAKE_THREADS
+  wake_threaded();
 #endif
   puts( "coreaudiofilltest: passed" );
   return 0;

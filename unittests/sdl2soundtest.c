@@ -19,9 +19,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <SDL.h>
+#ifdef SDL2_TEST_THREADS
+#include <pthread.h>
+#endif
 #include "machine.h"
 #include "settings.h"
 #include "ui/ui.h"
+#include "sound/audio_progress.h"
 
 #define CHECK(x) do { if( !(x) ) { \
   fprintf( stderr, "sdl2soundtest:%d: %s\n", __LINE__, #x ); exit( 1 ); \
@@ -33,15 +37,19 @@ static SDL_AudioFormat format;
 static SDL_AudioCallback callback;
 static int release_bytes, waits;
 static Uint16 demand_override;
-static void
-mock_delay( Uint32 milliseconds )
+static int wake_before_wait( audio_progress_deadline );
+static int
+mock_progress_wait( struct audio_progress *p, uint32_t expected,
+                    audio_progress_deadline end )
 {
-  Uint8 output[128];
-  if( dummy ) { SDL_Delay( milliseconds ); return; }
-  CHECK( milliseconds == 10 && release_bytes > 0 );
-  waits++;
-  callback( NULL, output, release_bytes );
-  release_bytes = 0;
+  Uint8 output[4096];
+  if( wake_before_wait( end ) ) return 0;
+  if( release_bytes ) {
+    waits++;
+    callback( NULL, output, release_bytes );
+    release_bytes = 0;
+  }
+  return audio_progress_wait( p, expected, end );
 }
 static SDL_AudioDeviceID
 mock_open( const char *name, int capture, const SDL_AudioSpec *want,
@@ -73,13 +81,14 @@ static void mock_lock( SDL_AudioDeviceID id )
 { CHECK( paused ); if( dummy ) SDL_LockAudioDevice( id ); }
 static void mock_unlock( SDL_AudioDeviceID id )
 { CHECK( paused ); if( dummy ) SDL_UnlockAudioDevice( id ); }
-#define SDL_Delay mock_delay
+#define audio_progress_wait mock_progress_wait
 #define SDL_OpenAudioDevice mock_open
 #define SDL_PauseAudioDevice mock_pause
 #define SDL_CloseAudioDevice mock_close
 #define SDL_LockAudioDevice mock_lock
 #define SDL_UnlockAudioDevice mock_unlock
 #include "sound/sdl2sound.c"
+#undef audio_progress_wait
 
 static fuse_machine_info test_machine;
 fuse_machine_info *machine_current = &test_machine;
@@ -96,6 +105,7 @@ transfers( unsigned int width )
   unsigned char input[128], output[160];
   int n, request, i, capacity;
   /* Small non-frame-aligned byte ring forces wrapping inside PCM frames. */
+  CHECK( !audio_progress_init( &progress ) );
   CHECK( !sfifo_init( &sound_fifo, 31 ) );
   bytes_per_frame = width;
   capacity = pcm_fifo_capacity( &sound_fifo, width );
@@ -131,6 +141,7 @@ transfers( unsigned int width )
   callback( NULL, output, ( capacity + 1 ) * width );
   CHECK( !memcmp( output, input, capacity * width ) );
   sfifo_close( &sound_fifo );
+  audio_progress_close( &progress );
 }
 
 static void
@@ -169,6 +180,19 @@ pacing_tests( void )
   sound_lowlevel_end();
   CHECK( !pacing.ready ); demand_override = 0;
 }
+
+static void wake_init( void )
+{ channels = 1; format = AUDIO_S16SYS; demand_override = 512; }
+static void wake_consume( unsigned int frames )
+{
+  Uint8 output[1024];
+  CHECK( frames <= 512 );
+  callback( NULL, output, frames * 2 );
+}
+#ifdef SDL2_TEST_THREADS
+#define AUDIO_WAKE_THREADS
+#endif
+#include "audio-wakeup-cases.h"
 
 int main( int argc, char **argv )
 {
@@ -228,6 +252,10 @@ int main( int argc, char **argv )
   sound_lowlevel_end();
   CHECK( closes == 6 );
   pacing_tests();
+  wake_regressions();
+#ifdef AUDIO_WAKE_THREADS
+  wake_threaded();
+#endif
   puts( "SDL2 audio tests passed" );
   return 0;
 }

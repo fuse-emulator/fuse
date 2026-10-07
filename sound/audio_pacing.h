@@ -1,5 +1,22 @@
-/* Shared callback audio pacing, GPL-2.0-or-later.
-   FIFO geometry/payload ordering remains in pcm_fifo. The callback publishes
+/* audio_pacing.h: shared callback audio pacing
+   Copyright (c) 2026 Fredrick Meunier
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License along
+   with this program; if not, write to the Free Software Foundation, Inc.,
+   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+*/
+
+/* FIFO geometry/payload ordering remains in pcm_fifo. The callback publishes
    only SC activity, progress and sticky faults; all policy is producer-owned. */
 #ifndef FUSE_AUDIO_PACING_H
 #define FUSE_AUDIO_PACING_H
@@ -9,6 +26,7 @@
 #include <stdatomic.h>
 #include "sound.h"
 #include "audio_controller.h"
+#include "audio_progress.h"
 #include "pcm_fifo.h"
 
 struct audio_cut { unsigned int active; uint32_t progress; };
@@ -46,16 +64,21 @@ audio_pacing_init( struct audio_pacing *p, unsigned int capacity,
     p->controller.state = ADAPTIVE_INVALID;
     adaptive_invalidate( &p->controller );
   }
-  atomic_init( &p->active, 0 ); atomic_init( &p->progress, 0 );
-  atomic_init( &p->missing, false ); atomic_init( &p->invalid, !demand );
+  atomic_init( &p->active, 0 );
+  atomic_init( &p->progress, 0 );
+  atomic_init( &p->missing, false );
+  atomic_init( &p->invalid, !demand );
   if( !atomic_is_lock_free( &p->active ) ||
       !atomic_is_lock_free( &p->progress ) ||
       !atomic_is_lock_free( &p->missing ) ||
       !atomic_is_lock_free( &p->invalid ) ) return -ENOTSUP;
-  p->demand = demand; p->startup_bound = startup_bound;
+  p->demand = demand;
+  p->startup_bound = startup_bound;
   p->quarantine = p->ready = true;
   return 0;
+
 }
+
 /* B_ord is a cadence policy allowance, not an instruction-production bound.
    Use the same whole-frame rounding as synthesis; delayed B may exceed it. */
 static inline int
@@ -79,24 +102,39 @@ audio_pacing_init_rate( struct audio_pacing *p, sfifo_t *fifo,
   return audio_pacing_init( p, capacity, (unsigned int)allowance + 1,
                            demand, (unsigned int)startup + 1 );
 }
+
 static inline void
 audio_pacing_callback_begin( struct audio_pacing *p )
 {
   if( p->ready ) atomic_store( &p->active, 1 );
 }
-static inline void
+
+static inline bool
 audio_pacing_callback_end( struct audio_pacing *p, unsigned int requested,
                            unsigned int delivered, bool invalid )
 {
   bool notify = delivered != 0;
-  if( !p->ready ) return;
+  if( !p->ready ) return notify;
   if( delivered < requested && !atomic_exchange( &p->missing, true ) )
     notify = true;
   if( (invalid || requested > p->demand) &&
       !atomic_exchange( &p->invalid, true ) ) notify = true;
   if( notify ) atomic_fetch_add( &p->progress, 1 );
   atomic_store( &p->active, 0 );
+  return notify;
 }
+
+/* Complete the observation before waking the producer. */
+static inline void
+audio_pacing_callback_finish( struct audio_pacing *p,
+                              struct audio_progress *progress,
+                              unsigned int requested, unsigned int delivered,
+                              bool invalid )
+{
+  if( audio_pacing_callback_end( p, requested, delivered, invalid ) )
+    audio_progress_publish( progress );
+}
+
 static inline struct audio_cut
 audio_pacing_cut( struct audio_pacing *p )
 {
@@ -106,6 +144,7 @@ audio_pacing_cut( struct audio_pacing *p )
   cut.progress = atomic_load( &p->progress );
   return cut;
 }
+
 static inline void
 audio_pacing_evidence( struct audio_pacing *p, struct audio_cut before,
                        unsigned int q, unsigned int written,
@@ -139,14 +178,16 @@ audio_pacing_evidence( struct audio_pacing *p, struct audio_cut before,
   else kind = PUBLICATION_NONE;
 
   if( kind == PUBLICATION_BASELINE || kind == PUBLICATION_CLEAN ) {
-    p->baseline = after.progress; p->quarantine = false;
+    p->baseline = after.progress;
+    p->quarantine = false;
   } else if( kind != PUBLICATION_NONE ) p->quarantine = true;
 
   /* Startup qualification uses the conservative whole-frame geometry, excludes
      its magnitudes, and requires started output plus actual consumer progress. */
   if( !p->normal && p->compatible && kind == PUBLICATION_BASELINE &&
       before.progress && complete ) {
-    p->normal = true; p->quarantine = true;
+    p->normal = true;
+    p->quarantine = true;
     adaptive_activity( s );
     return;
   }
@@ -219,6 +260,7 @@ audio_pacing_pending( struct audio_pacing *p, sfifo_t *fifo,
   p->transaction_epoch = p->controller.epoch;
   return 0;
 }
+
 static inline int
 audio_pacing_can_admit( struct audio_pacing *p, sfifo_t *fifo,
                         unsigned int width, unsigned int frames )
@@ -234,6 +276,45 @@ audio_pacing_can_admit( struct audio_pacing *p, sfifo_t *fifo,
   if( frames > limit ) return -EINVAL;
   return (unsigned int)q <= limit - frames;
 }
+
+/* A timeout is only a bounded return to the predicate, never permission to
+   write. Snapshot BEFORE the predicate: compare-and-park closes the race. */
+static inline int
+audio_pacing_wait( struct audio_pacing *p, struct audio_progress *progress,
+                   sfifo_t *fifo, unsigned int width, unsigned int frames,
+                   bool admission )
+{
+  audio_progress_deadline end = audio_progress_until();
+  int available, error;
+  uint32_t generation;
+  for(;;) {
+    generation = audio_progress_snapshot( progress );
+    available = admission ? audio_pacing_can_admit( p, fifo, width, frames ) :
+                            pcm_fifo_producer_space( fifo, width );
+    if( available < 0 ) return available;
+    if( admission ? available : (unsigned int)available >= frames ) return 0;
+    error = audio_progress_wait( progress, generation, end );
+    if( error == ETIMEDOUT ) return 0;
+    if( error && error != EINTR ) return -error;
+  }
+}
+
+static inline int
+audio_pacing_reserve( struct audio_pacing *p, struct audio_progress *progress,
+                      sfifo_t *fifo, unsigned int width, unsigned int frames,
+                      bool compatible, bool started )
+{
+  int admitted = audio_pacing_pending( p, fifo, width, frames,
+                                      compatible, started );
+  if( admitted < 0 ) return admitted;
+  while( !( admitted = audio_pacing_can_admit( p, fifo, width, frames ) ) ) {
+    int error = audio_pacing_wait( p, progress, fifo, width, frames, true );
+    if( error ) return error;
+  }
+  if( admitted > 0 && frames && p->ready ) p->reserved = true;
+  return admitted < 0 ? admitted : 0;
+}
+
 /* Whole production was physically reserved; sole consumer progress can only
    increase its available space. Thus publication is one indivisible PCM piece,
    unlike the experimental backend's legacy partial-write fallback. */
@@ -265,4 +346,5 @@ audio_pacing_write( struct audio_pacing *p, sfifo_t *fifo, unsigned int width,
   if( adaptive_probe( &p->controller ) ) p->quarantine = true;
   return written;
 }
+
 #endif

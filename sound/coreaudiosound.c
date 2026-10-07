@@ -30,6 +30,7 @@
 #include "machine.h"
 #include "pcm_fifo.h"
 #include "audio_pacing.h"
+#include "audio_progress.h"
 #include "sound.h"
 #include "ui/ui.h"
 
@@ -48,6 +49,11 @@ sfifo_t sound_fifo;
 /* Signed 16-bit interleaved format supplied to the output unit. */
 static AudioStreamBasicDescription device_format;
 static struct audio_pacing pacing;
+/* Static storage survives failed disposal. Owner-thread end/init cannot
+   overlap production; the callback is the only concurrent backend caller. */
+static struct audio_progress progress;
+_Static_assert( SFIFO_MAX_BUFFER_SIZE < UINT32_MAX - 2,
+                "FIFO must bound generation wrap during a producer wait" );
 static int audio_output_started;
 
 /* Unsigned modular counters, observed with relaxed loads outside the callback.
@@ -154,7 +160,7 @@ coreaudiowrite( void *in_ref_con, AudioUnitRenderActionFlags *action_flags,
     }
     atomic_fetch_add_explicit( &audio_stats.invalid_callbacks, 1,
                               memory_order_relaxed );
-    audio_pacing_callback_end( &pacing, 0, 0, true );
+    audio_pacing_callback_finish( &pacing, &progress, 0, 0, true );
     return kAudio_ParamError;
   }
 
@@ -169,8 +175,8 @@ coreaudiowrite( void *in_ref_con, AudioUnitRenderActionFlags *action_flags,
                               requested_frames - delivered_frames,
                               memory_order_relaxed );
   }
-  audio_pacing_callback_end( &pacing, requested_frames, delivered_frames,
-                             false );
+  audio_pacing_callback_finish( &pacing, &progress, requested_frames,
+                                delivered_frames, false );
   return noErr;
 }
 
@@ -249,6 +255,10 @@ sound_lowlevel_end( void )
     output_unit = NULL;
     audio_unit_initialized = 0;
   }
+  if( atomic_load( &progress.error ) )
+    ui_error( UI_ERROR_ERROR, "Core Audio progress wake: %s",
+              strerror( atomic_load( &progress.error ) ) );
+  audio_progress_close( &progress );
   if( sound_fifo.buffer ) sfifo_close( &sound_fifo );
   pacing.ready = false;
 }
@@ -321,7 +331,7 @@ sound_lowlevel_init( const char *dev, int *freqptr, int *stereoptr )
     return 1;
   }
   capacity_frames = NUM_EMULATION_FRAMES * (unsigned int)audio_frames_per_batch;
-  if( init_audio_stats() ) {
+  if( audio_progress_init( &progress ) || init_audio_stats() ) {
     ui_error( UI_ERROR_ERROR, "Core Audio counters must be lock-free" );
     return 1;
   }
@@ -411,15 +421,10 @@ fail:
 int
 sound_lowlevel_reserve( unsigned int frames )
 {
-  int admitted = audio_pacing_pending( &pacing, &sound_fifo,
-                    device_format.mBytesPerFrame, frames,
-                    sound_normal_producer_context(), audio_output_started );
-  if( admitted < 0 ) return admitted;
-  while( !( admitted = audio_pacing_can_admit( &pacing, &sound_fifo,
-                          device_format.mBytesPerFrame, frames ) ) )
-    usleep( 10000 );
-  if( admitted > 0 && frames && pacing.ready ) pacing.reserved = true;
-  return admitted < 0 ? admitted : 0;
+  return audio_pacing_reserve( &pacing, &progress, &sound_fifo,
+                              device_format.mBytesPerFrame, frames,
+                              sound_normal_producer_context(),
+                              audio_output_started );
 }
 
 /* Copy the frame-batched sound data to the FIFO. */
@@ -444,7 +449,15 @@ sound_lowlevel_frame( libspectrum_signed_word *data, int sample_count )
                 strerror( -written_bytes ) );
       return;
     }
-    if( !written_bytes ) usleep( 10000 );
+    if( !written_bytes ) {
+      int error = audio_pacing_wait( &pacing, &progress, &sound_fifo,
+                                     bytes_per_frame, 1, false );
+      if( error ) {
+        ui_error( UI_ERROR_ERROR, "Core Audio progress wait: %s",
+                  strerror( -error ) );
+        return;
+      }
+    }
     bytes += written_bytes;
     remaining_frames -= written_bytes / bytes_per_frame;
   }

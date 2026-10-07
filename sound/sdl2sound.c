@@ -18,6 +18,7 @@
 #include "settings.h"
 #include "pcm_fifo.h"
 #include "audio_pacing.h"
+#include "audio_progress.h"
 #include "sound.h"
 #include "ui/ui.h"
 
@@ -31,6 +32,10 @@ sfifo_t sound_fifo;
 static SDL_AudioDeviceID audio_device;
 static int audio_output_started;
 static struct audio_pacing pacing;
+static struct audio_progress progress;
+_Static_assert( SFIFO_MAX_BUFFER_SIZE < UINT32_MAX - 2,
+                "FIFO must bound generation wrap during a producer wait" );
+static int progress_initialized;
 /* Immutable while the device is open; obtained callback PCM geometry. */
 static unsigned int audio_channels, bytes_per_frame;
 
@@ -130,6 +135,12 @@ sound_lowlevel_init( const char *device, int *freqptr, int *stereoptr )
     ui_error( UI_ERROR_ERROR, "Cannot qualify SDL audio pacing geometry" );
     return 1;
   }
+  if( audio_progress_init( &progress ) ) {
+    sound_lowlevel_end();
+    ui_error( UI_ERROR_ERROR, "Cannot initialize SDL audio progress wake" );
+    return 1;
+  }
+  progress_initialized = 1;
   audio_output_started = 0;
 
   return 0;
@@ -148,6 +159,15 @@ sound_lowlevel_end( void )
 
   if( SDL_WasInit( SDL_INIT_AUDIO ) ) SDL_QuitSubSystem( SDL_INIT_AUDIO );
 
+  /* Lifecycle and production share the emulator thread. Close/join the
+     callback before destroying its notification or FIFO; no waiter remains. */
+  if( progress_initialized ) {
+    if( atomic_load( &progress.error ) )
+      ui_error( UI_ERROR_ERROR, "SDL audio progress wake: %s",
+                strerror( atomic_load( &progress.error ) ) );
+    audio_progress_close( &progress );
+    progress_initialized = 0;
+  }
   sfifo_close( &sound_fifo );
   audio_output_started = 0;
   audio_channels = bytes_per_frame = 0;
@@ -157,15 +177,10 @@ sound_lowlevel_end( void )
 int
 sound_lowlevel_reserve( unsigned int frames )
 {
-  int admitted = audio_pacing_pending( &pacing, &sound_fifo, bytes_per_frame,
-                    frames, sound_normal_producer_context(),
-                    audio_output_started );
-  if( admitted < 0 ) return admitted;
-  while( !( admitted = audio_pacing_can_admit( &pacing, &sound_fifo,
-                          bytes_per_frame, frames ) ) )
-    SDL_Delay( 10 );
-  if( admitted > 0 && frames && pacing.ready ) pacing.reserved = true;
-  return admitted < 0 ? admitted : 0;
+  return audio_pacing_reserve( &pacing, &progress, &sound_fifo,
+                              bytes_per_frame, frames,
+                              sound_normal_producer_context(),
+                              audio_output_started );
 }
 
 void
@@ -185,7 +200,12 @@ sound_lowlevel_frame( libspectrum_signed_word *data, int len )
                                    bytes, len, audio_output_started ) ) < 0 ) {
       break;
     } else if( !i ) {
-      SDL_Delay( 10 );
+      int error = audio_pacing_wait( &pacing, &progress, &sound_fifo,
+                                     bytes_per_frame, 1, false );
+      if( error ) {
+        i = error;
+        break;
+      }
     }
 
     bytes += i * bytes_per_frame;
@@ -214,7 +234,7 @@ sdl2write( void *userdata GCC_UNUSED, Uint8 *stream, int len )
      neither consume queued PCM nor leave stale bytes in that storage. */
   if( !bytes_per_frame || len % bytes_per_frame ) {
     memset( stream, 0, len );
-    audio_pacing_callback_end( &pacing, 0, 0, true );
+    audio_pacing_callback_finish( &pacing, &progress, 0, 0, true );
     return;
   }
 
@@ -223,6 +243,6 @@ sdl2write( void *userdata GCC_UNUSED, Uint8 *stream, int len )
   if( delivered < 0 ) delivered = 0;
   memset( stream + delivered * bytes_per_frame, 0,
           len - delivered * bytes_per_frame );
-  audio_pacing_callback_end( &pacing, len / bytes_per_frame, delivered,
-                             false );
+  audio_pacing_callback_finish( &pacing, &progress, len / bytes_per_frame,
+                                delivered, false );
 }
