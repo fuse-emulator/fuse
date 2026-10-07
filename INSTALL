@@ -45,8 +45,8 @@ Note that if you're using version of Fuse from Git rather than
 one of the released tarballs, you'll need to run `autogen.sh' before
 running 'configure' for the first time.
 
-Building the OS X version of Fuse
----------------------------------
+Building the macOS version of Fuse
+----------------------------------
 
 The native Cocoa port by Fredrick Meunier <fredm@spamcop.net> comes as
 a set of Xcode projects for libgcrypt, libspectrum and Fuse itself.

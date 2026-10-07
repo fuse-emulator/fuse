@@ -72,9 +72,8 @@ itself. See https://fuse-emulator.sourceforge.net/ for details.
 macOS
 
 * Either the native port by Fredrick Meunier, or the original version
-  will compile on macOS 10.3 (Panther) or later.
-* On macOS Lion you will need to use clang as gcc-llvm-4.2.1 fails to
-  correctly compile z80_ops.c.
+  will compile on macOS 14.4 (Panther) or later.
+* Use clang; historical gcc-llvm-4.2.1 fails to correctly compile z80_ops.c.
 
 Windows
 

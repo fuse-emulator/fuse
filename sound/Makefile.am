@@ -44,6 +44,7 @@ noinst_HEADERS += \
                   sound/audio_timeline.h \
                   sound/audio_controller.h \
                   sound/audio_pacing.h \
+                  sound/audio_progress.h \
                   sound/blipbuffer.h \
                   sound/dc_filter.h \
                   sound/output_mixer.h \

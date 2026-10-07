@@ -956,6 +956,38 @@ AM_CONDITIONAL(COMPAT_UNIX, test "$COMPAT_OSNAME" = 'unix')
 AM_CONDITIONAL(COMPAT_WII, test "$COMPAT_OSNAME" = 'wii')
 AM_CONDITIONAL(COMPAT_WIN32, test "$COMPAT_OSNAME" = 'win32')
 
+compat_darwin=no
+case "$host_os" in
+  darwin*) compat_darwin=yes ;;
+esac
+AM_CONDITIONAL(COMPAT_DARWIN, test "$compat_darwin" = yes)
+
+dnl Native notification support used by callback audio.
+if test "$audio_driver" = sdl || test "$audio_driver" = coreaudio; then
+  case "$host_os" in
+    darwin*)
+      AC_CHECK_HEADER([os/os_sync_wait_on_address.h], [],
+        [AC_MSG_FAILURE([Callback audio requires a macOS 14.4+ SDK])])
+      AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+        #include <AvailabilityMacros.h>
+        #if MAC_OS_X_VERSION_MIN_REQUIRED < 140400
+        #error "macOS 14.4 deployment target required"
+        #endif
+      ]], [[]])], [],
+        [AC_MSG_FAILURE([Callback audio requires a macOS 14.4+ deployment target; set compiler and linker flags accordingly])])
+      ;;
+    mingw*) ;;
+    *)
+      AC_SEARCH_LIBS([sem_init], [pthread rt], [],
+        [AC_MSG_FAILURE([SDL callback audio requires native POSIX semaphores])])
+      AC_CHECK_FUNCS([sem_timedwait], [],
+        [AC_MSG_FAILURE([SDL callback audio requires sem_timedwait])])
+      AC_SEARCH_LIBS([clock_gettime], [rt], [],
+        [AC_MSG_FAILURE([SDL callback audio requires clock_gettime])])
+      ;;
+  esac
+fi
+
 dnl Tell the Makefile whether SDL 2 flags are needed during the build
 AM_CONDITIONAL(SDL2_JOYSTICK, test "$stick" = yes && { test "$UI" = gtk3 || test "$UI" = xlib; })
 AM_CONDITIONAL(USE_SDL2, test "$use_sdl" = "2")
