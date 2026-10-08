@@ -61,6 +61,7 @@ jobs:
       libspectrum_key: fuse-app-gtk
       verify_ui: "gtk"
       verify_other: "Using GTK 3: yes"
+      run_check: true
 
   # SDL 2 UI + Sound
   sdl2-ui:
@@ -74,6 +75,7 @@ jobs:
       verify_ui: "sdl2"
       verify_audio: "sdl"
       verify_other: "Using SDL: 2"
+      run_check: true
 
 ##########################################
 ### DEPRECATED Linux UI configurations ###
