@@ -92,7 +92,7 @@ unittests_soundadmissiontest_SOURCES = unittests/soundadmissiontest.c \
         sound/source_synths.c sound/output_mixer.c sound/dc_filter.c \
         sound/speaker_filter.c sound/tv_filter.c sound/ula_filter.c
 unittests_soundadmissiontest_CPPFLAGS = $(AM_CPPFLAGS)
-unittests_soundadmissiontest_LDADD = $(LIBSPECTRUM_LIBS) -lm
+unittests_soundadmissiontest_LDADD = $(LIBSPECTRUM_LIBS) $(GLIB_LIBS) -lm
 check-sound-admission: unittests/soundadmissiontest
 	$(top_builddir)/unittests/soundadmissiontest
 
