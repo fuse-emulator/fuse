@@ -68,6 +68,7 @@
 #include "pokefinder/pokefinder.h"
 #include "settings.h"
 #include "sound.h"
+#include "sound/ay_engine.h"
 #include "sound/blipbuffer.h"
 #include "sound/dc_filter.h"
 #include "sound/source_synths.h"
@@ -832,6 +833,73 @@ source_volume_test( void )
   v = source_volume( 10000 ); TEST_ASSERT( v == 1.0 );
 
   return 0;
+}
+
+static int
+ay_render_grid_continuity_test( void )
+{
+  libspectrum_machine old_machine = machine_current->machine;
+  libspectrum_dword frame, offset, last_tick, expected, seen;
+  int frames, r = 0;
+
+  if( machine_select( LIBSPECTRUM_MACHINE_128 ) ) r++;
+
+  frame = machine_current->timings.tstates_per_frame;
+
+  /* AY rendering runs on a 32-tstate grid; 128K frames are 70908 tstates
+     long, so only a carried offset keeps the grid continuous. */
+  if( !r && frame != 70908 ) r++;
+
+  for( frames = 0; !r && frames < 9; frames++ ) {
+    /* The last tick of this frame is the largest grid position below the
+       frame end; the next tick must land exactly one grid step later in
+       machine time, whatever frame-relative offset that is. */
+    offset = ay_engine_next_tick_offset();
+    last_tick = offset + 32 * ( ( frame - 1 - offset ) / 32 );
+    ay_engine_render( frame );
+    expected = frames * frame + last_tick + 32;
+    seen = ( frames + 1 ) * frame + ay_engine_next_tick_offset();
+    if( seen != expected ) r++;
+  }
+
+  if( machine_select( old_machine ) ) r++;
+
+  if( r ) printf( "ay_render_grid_continuity_test failed\n" );
+  return r;
+}
+
+static int
+ay_tail_write_survives_frame_boundary_test( void )
+{
+  libspectrum_machine old_machine = machine_current->machine;
+  libspectrum_dword frame;
+  int r = 0;
+
+  if( machine_select( LIBSPECTRUM_MACHINE_128 ) ) r++;
+
+  frame = machine_current->timings.tstates_per_frame;
+
+  if( !r ) {
+    /* A write queued before the last tick is applied by this frame's
+       first tick at or after its tstate. */
+    ay_engine_write( 6, 0x31, 100 );
+    ay_engine_render( frame );
+    if( ay_engine_register_value( 6 ) != 0x31 ) r++;
+
+    /* A write queued after the last rendering tick has no eligible tick
+       left in this frame; it must wait for the next frame's first tick
+       instead of being dropped. */
+    ay_engine_write( 9, 0x55, frame - 8 );
+    ay_engine_render( frame );
+    if( ay_engine_register_value( 9 ) != 0 ) r++;
+    ay_engine_render( frame );
+    if( ay_engine_register_value( 9 ) != 0x55 ) r++;
+  }
+
+  if( machine_select( old_machine ) ) r++;
+
+  if( r ) printf( "ay_tail_write_survives_frame_boundary_test failed\n" );
+  return r;
 }
 
 static int
@@ -3717,6 +3785,8 @@ unittests_run( void )
   r += sound_source_routes_test();
   r += ula_sound_levels_test();
   r += source_volume_test();
+  r += ay_render_grid_continuity_test();
+  r += ay_tail_write_survives_frame_boundary_test();
   r += floating_bus_merge_test();
   r += snapshot_copy_from_releases_keyboard_test();
   r += snapshot_custom_rom_is_replaced_by_soft_reset_test();

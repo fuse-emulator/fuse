@@ -325,6 +325,5 @@ sound_frame( void )
 
   if( movie_recording )
       movie_add_sound( samples, count );
-  ay_engine_end_frame();
 }
 
