@@ -81,6 +81,7 @@
 #include "compat.h"
 #include "rzx.h"
 #include "spectrum.h"
+#include "screenshot.h"
 #include "ui/scaler/scaler.h"
 #include "helpers.h"
 #include "unittests.h"
@@ -3614,6 +3615,89 @@ cleanup:
 
 #endif /* ENABLE_AUTOMATION */
 
+static int
+screenshot_scr_roundtrip_test( void )
+{
+  static const char temp_prefix[] = "/tmp/fuse-scr-test-XXXXXX";
+  char temporary_path[ sizeof( temp_prefix ) ];
+  libspectrum_machine old_machine = machine_current->machine;
+  libspectrum_dword *saved_last_screen;
+  libspectrum_byte saved_screen[ DISPLAY_FILE_SIZE ];
+  libspectrum_byte *expected;
+  utils_file file;
+  int fd, x, y, r = 0;
+  size_t j, count;
+
+  /* mkdtemp is not provided by MinGW; use mkstemp to obtain a unique
+     filename prefix instead. */
+  strcpy( temporary_path, temp_prefix );
+  fd = mkstemp( temporary_path );
+  if( fd < 0 ) return 1;
+  close( fd );
+  unlink( temporary_path );
+
+  if( machine_select( LIBSPECTRUM_MACHINE_48 ) ) {
+    unlink( temporary_path );
+    return 1;
+  }
+
+  /* Save the display and screen state the test touches */
+  saved_last_screen = libspectrum_new( libspectrum_dword,
+    DISPLAY_SCREEN_WIDTH_COLS * DISPLAY_SCREEN_HEIGHT );
+  memcpy( saved_last_screen, display_last_screen,
+          sizeof( display_last_screen ) );
+  memcpy( saved_screen, RAM[ memory_current_screen ], DISPLAY_FILE_SIZE );
+
+  /* Fill the display's last-screen buffer with a distinctive pattern: the
+     low byte carries the pixel value and the high byte the attribute */
+  count = DISPLAY_SCREEN_WIDTH_COLS * DISPLAY_SCREEN_HEIGHT;
+  for( j = 0; j < count; j++ )
+    display_last_screen[ j ] = ( ( j % 256 ) << 8 ) | ( j / 256 );
+
+  /* Derive what the standard .scr writer must produce from the known .scr
+     layout rather than from screenshot.c itself */
+  expected = libspectrum_new( libspectrum_byte, DISPLAY_FILE_SIZE );
+  for( y = 0; y < DISPLAY_HEIGHT; y++ ) {
+    for( x = 0; x < DISPLAY_WIDTH_COLS; x++ ) {
+      libspectrum_dword cell;
+      int index = ( x + DISPLAY_BORDER_WIDTH_COLS ) +
+                  ( y + DISPLAY_BORDER_HEIGHT ) * DISPLAY_SCREEN_WIDTH_COLS;
+      cell = display_last_screen[ index ];
+      expected[ display_get_offset( x, y ) ] = cell & 0xff;
+      if( y % 8 == 0 )
+        expected[ DISPLAY_PIXEL_BYTES + x +
+                  ( y / 8 ) * DISPLAY_WIDTH_COLS ] = ( cell >> 8 ) & 0xff;
+    }
+  }
+
+  if( screenshot_scr_write( temporary_path ) ) r++;
+  if( utils_read_file( temporary_path, &file ) ) {
+    r++;
+  } else {
+    if( file.length != DISPLAY_FILE_SIZE ) r++;
+    else if( memcmp( file.buffer, expected, DISPLAY_FILE_SIZE ) ) r++;
+    utils_close_file( &file );
+  }
+
+  /* Reading the file back must place the same bytes in the screen page */
+  if( screenshot_scr_read( temporary_path ) ) r++;
+  if( memcmp( RAM[ memory_current_screen ], expected, DISPLAY_FILE_SIZE ) )
+    r++;
+
+  /* Restore the display and screen state */
+  memcpy( display_last_screen, saved_last_screen,
+          sizeof( display_last_screen ) );
+  memcpy( RAM[ memory_current_screen ], saved_screen, DISPLAY_FILE_SIZE );
+  libspectrum_free( saved_last_screen );
+  libspectrum_free( expected );
+
+  if( machine_select( old_machine ) ) r++;
+  unlink( temporary_path );
+
+  if( r ) printf( "screenshot_scr_roundtrip_test failed\n" );
+  return r;
+}
+
 int
 unittests_run( void )
 {
@@ -3679,6 +3763,7 @@ unittests_run( void )
   r += utils_open_loaded_disk_merge_test();
   r += disk_write_blank_disk_cpc_save_test();
   r += disk_write_open_udi_roundtrip_test();
+  r += screenshot_scr_roundtrip_test();
 #ifdef ENABLE_AUTOMATION
   r += automation_audio_artifacts_test();
 #endif /* ENABLE_AUTOMATION */
