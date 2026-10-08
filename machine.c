@@ -222,6 +222,9 @@ machine_select_machine( fuse_machine_info *machine, libspectrum_snap *snap )
   int width, height;
   int capabilities;
 
+  /* Preserve the pending tape interval in the old clock before clearing
+     events and replacing the machine. tape_play() rescales it on resume. */
+  if( machine_current ) tape_stop();
   machine_current = machine;
 
   settings_set_string( &settings_current.start_machine, machine->id );

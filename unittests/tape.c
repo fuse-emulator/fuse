@@ -473,6 +473,10 @@ tape_edge_unittest( void )
   libspectrum_tape_edge edge = { 0 };
   libspectrum_tape_block *rom, *pause;
   libspectrum_machine saved_machine = machine_current->machine;
+  libspectrum_dword saved_speed = machine_current->timings.processor_speed;
+  libspectrum_dword total, expected;
+  unsigned int i;
+  int saved_playing = tape_playing;
   int saved_pending = tape_stop_pending;
   int saved_blocked = tape_autoplay_blocked;
   int saved_autoplay = tape_autoplay;
@@ -519,6 +523,7 @@ tape_edge_unittest( void )
   error |= tape_microphone != LIBSPECTRUM_TAPE_SIGNAL_HIGH;
 
   event_remove_type( tape_edge_event );
+  machine_current->timings.processor_speed = 3500000;
   edge.tstates = 123;
   edge.flags = LIBSPECTRUM_TAPE_FLAGS_LENGTH_SHORT;
   edge_test_tstates = 0;
@@ -527,8 +532,60 @@ tape_edge_unittest( void )
   error |= edge_test_tstates != 1123;
   event_remove_type( tape_edge_event );
 
+  /* Conversion belongs at scheduling, for both ordinary and accelerated
+     edges. Carry fractions across block boundaries and zero-time edges. */
+  machine_current->timings.processor_speed = 3546900;
+  total = 0;
+  edge.tstates = 123;
+  for( i = 0; i < 10000; i++ ) {
+    tape_schedule_edge( total, &edge, i & 1 );
+    event_foreach( capture_tape_edge_event, NULL );
+    total = edge_test_tstates;
+    event_remove_type( tape_edge_event );
+  }
+  expected = (libspectrum_qword)123 * 10000 * 3546900 / 3500000;
+  error |= total != expected;
+  edge.tstates = 0;
+  tape_schedule_edge( total, &edge, 0 );
+  event_foreach( capture_tape_edge_event, NULL );
+  error |= edge_test_tstates != total;
+  event_remove_type( tape_edge_event );
+
+  /* A one-second pause has the same physical duration at either clock. */
+  machine_current->timings.processor_speed = 3500000;
+  edge.tstates = 3500000;
+  tape_schedule_edge( 1000, &edge, 0 );
+  event_foreach( capture_tape_edge_event, NULL );
+  error |= edge_test_tstates != 3501000;
+  event_remove_type( tape_edge_event );
+  machine_current->timings.processor_speed = 3546900;
+  tape_schedule_edge( 1000, &edge, 0 );
+  event_foreach( capture_tape_edge_event, NULL );
+  error |= edge_test_tstates != 3547900;
+
+  /* Stop/resume must not convert an already scheduled interval again. */
+  tape_playing = 1;
+  tape_stop();
+  tape_play( 0 );
+  event_foreach( capture_tape_edge_event, NULL );
+  error |= edge_test_tstates != 3547900;
+  tape_stop();
+  event_remove_type( tape_edge_event );
+
+  /* Changing clock while stopped rescales the saved partial interval. */
+  machine_current->timings.processor_speed = 3500000;
+  tape_play( 0 );
+  event_foreach( capture_tape_edge_event, NULL );
+  expected = tstates + (libspectrum_qword)(3547900 - tstates) *
+                       3500000 / 3546900;
+  error |= edge_test_tstates != expected;
+  tape_stop();
+  event_remove_type( tape_edge_event );
+
 done:
   machine_current->machine = saved_machine;
+  machine_current->timings.processor_speed = saved_speed;
+  tape_playing = saved_playing;
   tape_stop_pending = saved_pending;
   tape_autoplay_blocked = saved_blocked;
   tape_autoplay = saved_autoplay;
