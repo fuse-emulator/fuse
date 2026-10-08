@@ -38,7 +38,7 @@ jobs:
     with:
       name: "NULL UI"
       dependencies: ""
-      configure_params: "--with-null-ui --with-audio-driver=null"
+      configure_params: "--with-null-ui --with-audio-driver=null --enable-automation"
       verify_ui: "null"
       verify_audio: "null"
       run_check: true
