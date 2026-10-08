@@ -577,6 +577,7 @@ static void fuse_show_help( void )
    "\nDevelopment automation options:\n\n"
    "--automation-output <directory>       Write one-shot result artifacts here.\n"
    "--automation-frames <count>           Stop after completed machine frames.\n"
+   "--automation-sample-tstates <n>       Sample PC n T-states after the final frame (probe only).\n"
    "--automation-max-frames <count>       Deadline for a bounded run.\n"
    "--automation-until-rzx-end            Stop when RZX playback ends.\n"
    "--automation-success-pc <address>     Stop successfully at this PC.\n"

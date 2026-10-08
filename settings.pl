@@ -663,6 +663,7 @@ print hashline( __LINE__ ), << 'CODE';
     { "automation-capture-audio", 0, NULL, 1008 },
     { "automation-until-disk-idle", 0, NULL, 1009 },
     { "automation-disk-idle-frames", 1, NULL, 1010 },
+    { "automation-sample-tstates", 1, NULL, 1011 },
 #endif
     { "help", 0, NULL, 'h' },
     { "version", 0, NULL, 'V' },
@@ -745,6 +746,9 @@ print hashline( __LINE__ ), << 'CODE';
       break;
     case 1010:
       if( automation_set_disk_idle_frames( optarg ) ) return 1;
+      break;
+    case 1011:
+      if( automation_set_sample_tstates( optarg ) ) return 1;
       break;
 #endif
     case 'h': settings->show_help = 1; break;
