@@ -86,6 +86,24 @@ endif
 
 fuse_DEPENDENCIES =
 
+if EMSCRIPTEN
+fuse_LDFLAGS = -sUSE_SDL=2 -sASYNCIFY
+fuse_LDFLAGS += --preload-file emscripten-data@/
+fuse_DEPENDENCIES += emscripten-data.stamp
+
+emscripten-data.stamp: $(ROMS) $(lib_files) ui/widget/fuse.font
+	$(AM_V_GEN)rm -rf emscripten-data
+	$(AM_V_at)$(MKDIR_P) emscripten-data/roms emscripten-data/lib emscripten-data/ui/widget
+	$(AM_V_at)for file in $(ROMS) $(lib_files); do \
+	  $(INSTALL_DATA) $(srcdir)/$$file emscripten-data/$$file || exit 1; \
+	done
+	$(AM_V_at)$(INSTALL_DATA) ui/widget/fuse.font emscripten-data/ui/widget/fuse.font
+	$(AM_V_at)touch $@
+
+clean-local:
+	-rm -rf emscripten-data emscripten-data.stamp
+endif
+
 EXTRA_fuse_SOURCES =
 
 BUILT_SOURCES = options.h settings.c settings.h
@@ -160,6 +178,7 @@ EXTRA_DIST = AUTHORS \
 	     m4/pkg.m4 \
 	     menu_data.dat \
 	     menu_data.pl \
+	     hacking/emscripten.md \
 	     settings.dat \
 	     settings.pl \
 	     settings-header.pl \

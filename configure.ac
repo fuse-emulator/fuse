@@ -76,6 +76,25 @@ fi
 
 dnl Checks for programs.
 AC_PROG_CC
+AC_CACHE_CHECK([whether the compiler targets Emscripten],
+  [ac_cv_c_emscripten],
+  [AC_COMPILE_IFELSE(
+    [AC_LANG_PROGRAM([[
+#ifdef __EMSCRIPTEN__
+#else
+#error not Emscripten
+#endif
+    ]])],
+    [ac_cv_c_emscripten=yes],
+    [ac_cv_c_emscripten=no])])
+AS_IF([test "x$ac_cv_c_emscripten" = xyes], [
+  dnl Emscripten provides geteuid(), but its fixed root-like identity and
+  dnl setuid() stub do not implement meaningful Unix privilege semantics in
+  dnl the browser sandbox.
+  ac_cv_func_geteuid=no
+  EXEEXT=.html
+])
+AM_CONDITIONAL([EMSCRIPTEN], [test "x$ac_cv_c_emscripten" = xyes])
 AC_MSG_CHECKING([whether $CC supports C11])
 AC_COMPILE_IFELSE(
   [AC_LANG_SOURCE([[
@@ -904,6 +923,9 @@ AC_MSG_RESULT($missing_routines)
 dnl Work out which compatibility routines to use
 AC_MSG_CHECKING(which compatibility routines to use)
 case "$host_os" in
+  emscripten)
+    COMPAT_OSNAME='unix'
+    ;;
   amigaos)
     COMPAT_OSNAME='amiga'
     ;;
