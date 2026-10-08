@@ -650,7 +650,8 @@ tape_select_rewind_write_unittest( void )
   libspectrum_tape_block_set_data_length( rom, 2 );
   libspectrum_tape_block_set_data( rom, data );
   libspectrum_tape_block_set_pause_tstates( rom, 3500000 );
-  libspectrum_tape_block_set_pause_tstates( pause, 1 );
+  libspectrum_tape_block_set_pause( pause, 1 );
+  libspectrum_tape_block_set_level( pause, 0 );
   if( libspectrum_tape_append_block( test_tape, rom ) ) {
     libspectrum_tape_block_free( rom );
     libspectrum_tape_block_free( pause );
