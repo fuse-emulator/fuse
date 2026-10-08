@@ -67,7 +67,7 @@ unittests_soundpartitiontest_SOURCES = unittests/soundpartitiontest.c \
         sound/sfifo.c sound/blipbuffer.c sound/dc_filter.c \
         sound/speaker_filter.c sound/tv_filter.c sound/ula_filter.c
 unittests_soundpartitiontest_CPPFLAGS = $(AM_CPPFLAGS)
-unittests_soundpartitiontest_LDADD = $(LIBSPECTRUM_LIBS) -lm
+unittests_soundpartitiontest_LDADD = $(LIBSPECTRUM_LIBS) $(GLIB_LIBS) -lm
 EXTRA_DIST += unittests/audio-frame-equivalence.py
 
 check-sound-scheduler: unittests/soundpartitiontest
