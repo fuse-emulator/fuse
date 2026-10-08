@@ -121,6 +121,69 @@ The build produces these publication-ready files:
 build. It contains no demonstration tape and no special configuration file, so
 Fuse starts with its ordinary defaults.
 
+## Manually publishing to GitHub Pages
+
+`.github/workflows/build_emscripten_pages.yml` builds and publishes this target
+only when manually dispatched. There are no push, tag, or scheduled triggers.
+
+Before the first run:
+
+1. In the GitHub repository's **Settings → Pages**, select **GitHub Actions** as
+   the build/deployment source.
+2. Ensure repository rules allow the workflow's `GITHUB_TOKEN` to push to
+   `gh-pages`. The workflow requests `contents: write` for its build job.
+3. Ensure the `github-pages` environment permits deployments from the branch
+   on which you run the workflow. Run the workflow from the default branch
+   containing these scripts; the source selections are separate inputs.
+
+In **Actions → Build and publish Fuse for the web → Run workflow**, select:
+
+- `fuse_ref=master` and `libspectrum_ref=master` to replace the current
+  development build at `master/`.
+- Two explicit tags to add a release at
+  `releases/<fuse-tag>/<libspectrum-tag>/`. These are tags, not arbitrary branch
+  names or commit IDs. Mixing `master` with a tag is rejected. Tag names are
+  encoded as individual directory components if necessary.
+
+Fuse is checked out from the repository running the workflow; libspectrum is
+checked out from `fuse-emulator/libspectrum`. Both selected sources must already
+support the documented Emscripten build. This does not backfill older releases
+or apply compatibility patches. The SDK is pinned to Emscripten 6.0.9.
+
+The workflow maintains the entire published tree on `gh-pages`, then uploads
+that tree as a Pages artifact and deploys it. This branch is storage, not the
+Pages build source: keep Pages configured for GitHub Actions. Existing releases
+are preserved; publishing an already present tag pair fails rather than
+replacing it. Do not use this branch for unrelated site content. Workflows are
+serialized using the `emscripten-pages` concurrency group; any other publishers
+must use the same group. GitHub concurrency keeps at most one pending run, so
+queue additional manual requests only after earlier runs have started.
+
+The site's root index lists builds. Each build includes the four application
+files (with `fuse.html` copied to `index.html`), source commit SHAs, SDK version,
+build timestamp, and licence/ROM notices. Assets remain alongside their HTML
+file and use relative URLs, including under a repository Pages subpath.
+There are no browser file pickers or persistent settings added by publication.
+
+A successful history push followed by a failed Pages deployment can leave the
+stored tree newer than the live site. Re-run the failed deployment job, not the
+whole immutable release build. Pages storage and bandwidth limits still apply
+as the release archive grows. Review bundled ROM redistribution notices before
+making the site public.
+
+The shared build script can also build clean adjacent checkouts locally:
+
+```sh
+# With emsdk_env.sh already sourced, and SOURCE_ROOT containing fuse/ and libspectrum/:
+bash fuse/.github/scripts/build_emscripten.sh /absolute/path/to/SOURCE_ROOT
+```
+
+Offline publication tests (no SDK required):
+
+```sh
+python3 .github/scripts/test_publish_emscripten.py
+```
+
 ## Deliberately disabled facilities
 
 - POSIX threads and sockets: browser networking is outside this milestone, and
