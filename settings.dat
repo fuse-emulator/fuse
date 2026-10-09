@@ -28,6 +28,8 @@
 # <short option>,
 # <name on command line>, (defaults to <settings_info name> =~ s/_/-/g)
 # <name in config file>, (defaults to <command line> =~ s/-//g)
+# <deprecated name on command line>,
+# <deprecated name in config file>,
 
 emulation_speed, numeric, 100,, speed
 frame_rate, numeric, 1,, rate
