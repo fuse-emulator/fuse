@@ -1316,7 +1316,7 @@ snapshot_dock_carts_cleared_by_hard_reset_test( void )
 
   /* Loading a snapshot carrying a DOCK cartridge on a machine without dock
      support still maps the cartridge: scld_from_snapshot() copies it into a
-     scld snapshot bank and points the DOCK page mappings at it. */
+     shared cartridge bank and points the DOCK page mappings at it. */
   if( snapshot_copy_from( snap ) ) r++;
   TEST_ASSERT( timex_dock[ 0 ].page != NULL );
   TEST_ASSERT( timex_dock[ 0 ].page[ 0 ] == 0xa5 );
@@ -3128,7 +3128,7 @@ dck_lifecycle_test( void )
       writebyte_internal( 0, 0xa5 );
       if( machine_reset( reset ) ) r++;
       dck_test_map( banks[ bank ] );
-      if( !dck_active || readbyte_internal( 0 ) != ( reset ? 0x35 : 0xa5 ) ||
+      if( !dck_active || readbyte_internal( 0 ) != ( reset ? 0 : 0xa5 ) ||
           readbyte_internal( 0x2000 ) != 0x79 ) {
         printf( "dck_lifecycle_test: bank %d %s reset\n",
                 banks[ bank ], reset ? "hard" : "soft" );
@@ -3157,6 +3157,241 @@ dck_lifecycle_test( void )
   utils_file_free( &file );
   if( machine_select( old_machine ) ) r++;
   if( r ) printf( "dck_lifecycle_test failed\n" );
+  return r;
+}
+
+/* The archives contain cartridge.dck: one DOCK ROM page filled with 0x79.
+   Keep fixtures inline so these tests need no external compression tools. */
+static int
+dck_archive_test( void )
+{
+#ifdef HAVE_ZLIB_H
+  static const unsigned char zip[] = {
+    0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00, 0x08, 0x00, 0xea, 0x8a,
+    0x49, 0x5d, 0x0c, 0x27, 0xb8, 0x2b, 0x1d, 0x00, 0x00, 0x00, 0x09, 0x20,
+    0x00, 0x00, 0x0d, 0x00, 0x00, 0x00, 0x63, 0x61, 0x72, 0x74, 0x72, 0x69,
+    0x64, 0x67, 0x65, 0x2e, 0x64, 0x63, 0x6b, 0xed, 0xc1, 0xb1, 0x09, 0x00,
+    0x00, 0x08, 0x03, 0xb0, 0xe2, 0xd7, 0x7e, 0xdf, 0xc1, 0x2b, 0x84, 0x24,
+    0x99, 0x9c, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xde, 0x2b,
+    0x50, 0x4b, 0x01, 0x02, 0x14, 0x03, 0x14, 0x00, 0x00, 0x00, 0x08, 0x00,
+    0xea, 0x8a, 0x49, 0x5d, 0x0c, 0x27, 0xb8, 0x2b, 0x1d, 0x00, 0x00, 0x00,
+    0x09, 0x20, 0x00, 0x00, 0x0d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x80, 0x01, 0x00, 0x00, 0x00, 0x00, 0x63, 0x61,
+    0x72, 0x74, 0x72, 0x69, 0x64, 0x67, 0x65, 0x2e, 0x64, 0x63, 0x6b, 0x50,
+    0x4b, 0x05, 0x06, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x3b,
+    0x00, 0x00, 0x00, 0x48, 0x00, 0x00, 0x00, 0x00, 0x00,
+  };
+  static const unsigned char gzip[] = {
+    0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xed, 0xc1,
+    0xb1, 0x09, 0x00, 0x00, 0x08, 0x03, 0xb0, 0xe2, 0xd7, 0x7e, 0xdf, 0xc1,
+    0x2b, 0x84, 0x24, 0x99, 0x9c, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xde, 0x2b, 0x0c, 0x27, 0xb8, 0x2b, 0x09, 0x20, 0x00, 0x00,
+  };
+#endif
+  unsigned char plain[ 9 + 0x2000 ];
+  const unsigned char *data[] = { plain,
+#ifdef HAVE_ZLIB_H
+    zip, gzip,
+#endif
+  };
+  const size_t lengths[] = { sizeof( plain ),
+#ifdef HAVE_ZLIB_H
+    sizeof( zip ), sizeof( gzip ),
+#endif
+  };
+  const char *suffixes[] = { ".dck",
+#ifdef HAVE_ZLIB_H
+    ".zip", ".dck.gz",
+#endif
+  };
+  libspectrum_machine old_machine = machine_current->machine;
+  char directory[] = "/tmp/fuse-dck-archive-XXXXXX";
+  char filename[ 128 ];
+  utils_file file;
+  size_t format;
+  int loaded, reset, page, fd, r = 0;
+
+  memset( plain, 0, 9 );
+  plain[ 1 ] = LIBSPECTRUM_DCK_PAGE_ROM;
+  memset( plain + 9, 0x79, 0x2000 );
+  if( !mkdtemp( directory ) ) return 1;
+  utils_file_init( &file, NULL );
+  if( machine_select( LIBSPECTRUM_MACHINE_TC2068 ) ) { r++; goto cleanup; }
+  for( format = 0; format < ARRAY_SIZE( data ); format++ ) {
+    snprintf( filename, sizeof( filename ), "%s/cartridge%s",
+              directory, suffixes[ format ] );
+    fd = open( filename, O_WRONLY | O_CREAT | O_TRUNC, 0600 );
+    if( fd < 0 ) { r++; break; }
+    if( write( fd, data[ format ], lengths[ format ] ) != lengths[ format ] )
+      r++;
+    if( close( fd ) ) r++;
+    for( loaded = 0; loaded < 2; loaded++ ) {
+      /* Menu insertion reads the path; generic loading supplies resolved data. */
+      if( loaded ) {
+        if( utils_read_file( filename, &file ) ) { r++; continue; }
+        if( dck_insert_loaded( &file ) ) r++;
+      } else if( dck_insert( filename ) ) r++;
+      /* Neither reset may need the source archive after insertion. */
+      if( loaded ) unlink( filename );
+      for( reset = -1; reset < 2; reset++ ) {
+        if( reset >= 0 && machine_reset( reset ) ) r++;
+        dck_test_map( LIBSPECTRUM_DCK_BANK_DOCK );
+        if( !dck_active || !settings_current.dck_file ||
+            strcmp( settings_current.dck_file,
+                    loaded ? file.filename : filename ) ) r++;
+        for( page = 0; page < 0x2000; page++ )
+          if( readbyte_internal( page ) != 0x79 ) { r++; break; }
+        writebyte_internal( 0, 0xa5 );
+        if( readbyte_internal( 0 ) != 0x79 ) r++;
+      }
+      dck_eject();
+      utils_file_free( &file );
+    }
+    unlink( filename );
+  }
+cleanup:
+  utils_file_free( &file );
+  if( dck_active ) dck_eject();
+  rmdir( directory );
+  if( machine_select( old_machine ) ) r++;
+  if( r ) printf( "dck_archive_test failed: %d errors\n", r );
+  return r;
+}
+
+static int
+dck_snapshot_reset_test( void )
+{
+  libspectrum_machine old_machine = machine_current->machine;
+  libspectrum_snap *snap = libspectrum_snap_alloc();
+  libspectrum_snap *saved = libspectrum_snap_alloc();
+  utils_file file;
+  libspectrum_byte *ram, *rom;
+  int bank, reset, address, r = 0;
+
+  utils_file_init( &file, "buffer-only.dck" );
+  file.length = 9 + 0x2000;
+  file.buffer = libspectrum_new0( unsigned char, file.length );
+  file.buffer[ 3 ] = LIBSPECTRUM_DCK_PAGE_ROM;
+  memset( file.buffer + 9, 0x35, 0x2000 );
+  if( machine_select( LIBSPECTRUM_MACHINE_TC2068 ) ||
+      dck_insert_loaded( &file ) ) { r++; goto cleanup; }
+  libspectrum_snap_set_machine( snap, LIBSPECTRUM_MACHINE_TC2068 );
+  libspectrum_snap_set_dock_active( snap, 1 );
+  for( bank = 0; bank < 2; bank++ ) {
+    ram = libspectrum_new( libspectrum_byte, 0x2000 );
+    rom = libspectrum_new( libspectrum_byte, 0x2000 );
+    memset( ram, 0x96, 0x2000 );
+    memset( rom, 0x79, 0x2000 );
+    if( bank ) {
+      libspectrum_snap_set_exrom_cart( snap, 0, ram );
+      libspectrum_snap_set_exrom_ram( snap, 0, 1 );
+      libspectrum_snap_set_exrom_cart( snap, 1, rom );
+      libspectrum_snap_set_exrom_ram( snap, 1, 0 );
+    } else {
+      libspectrum_snap_set_dock_cart( snap, 0, ram );
+      libspectrum_snap_set_dock_ram( snap, 0, 1 );
+      libspectrum_snap_set_dock_cart( snap, 1, rom );
+      libspectrum_snap_set_dock_ram( snap, 1, 0 );
+    }
+  }
+  if( snapshot_copy_from( snap ) ) { r++; goto cleanup; }
+  /* The snapshot replaces the old cartridge and needs no backing path. */
+  if( !dck_active || settings_current.dck_file ) r++;
+  if( snapshot_copy_to( saved ) ||
+      libspectrum_snap_dock_cart( saved, 2 ) ) r++;
+  for( reset = -1; reset < 2; reset++ ) {
+    if( reset >= 0 && machine_reset( reset ) ) r++;
+    for( bank = 0; bank < 2; bank++ ) {
+      dck_test_map( bank ? LIBSPECTRUM_DCK_BANK_EXROM :
+                          LIBSPECTRUM_DCK_BANK_DOCK );
+      for( address = 0; address < 0x2000; address++ ) {
+        libspectrum_byte expected = reset == 1 ? 0 :
+          ( reset == 0 && address == 0 ? 0xa5 : 0x96 );
+        if( readbyte_internal( address ) != expected ||
+            readbyte_internal( 0x2000 + address ) != 0x79 ) {
+          r++; break;
+        }
+      }
+      writebyte_internal( 0, 0xa5 );
+      writebyte_internal( 0x2000, 0xa5 );
+      if( readbyte_internal( 0 ) != 0xa5 ||
+          readbyte_internal( 0x2000 ) != 0x79 ) r++;
+    }
+    if( !dck_active ) r++;
+  }
+  /* A cartridge-free snapshot must also replace the restored cartridge. */
+  libspectrum_snap_set_dock_active( snap, 0 );
+  if( snapshot_copy_from( snap ) || dck_active ) r++;
+cleanup:
+  dck_eject();
+  utils_file_free( &file );
+  libspectrum_snap_free( snap );
+  libspectrum_snap_free( saved );
+  if( machine_select( old_machine ) ) r++;
+  if( r ) printf( "dck_snapshot_reset_test failed: %d errors\n", r );
+  return r;
+}
+
+static int
+dck_replacement_power_cycle_test( void )
+{
+  static const libspectrum_dck_bank banks[] = {
+    LIBSPECTRUM_DCK_BANK_DOCK, LIBSPECTRUM_DCK_BANK_EXROM,
+    LIBSPECTRUM_DCK_BANK_HOME
+  };
+  libspectrum_machine old_machine = machine_current->machine;
+  libspectrum_snap *snap = libspectrum_snap_alloc();
+  utils_file old, replacement;
+  int bank, from_snapshot, r = 0;
+
+  utils_file_init( &old, "old.dck" );
+  old.length = 9 + 0x2000;
+  old.buffer = libspectrum_new0( unsigned char, old.length );
+  old.buffer[ 3 ] = LIBSPECTRUM_DCK_PAGE_ROM;
+  memset( old.buffer + 9, 0x35, 0x2000 );
+  utils_file_init( &replacement, "replacement.dck" );
+  replacement.length = 9 + 2 * 0x2000;
+  replacement.buffer = libspectrum_new0( unsigned char, replacement.length );
+  replacement.buffer[ 1 ] = LIBSPECTRUM_DCK_PAGE_RAM;
+  replacement.buffer[ 2 ] = LIBSPECTRUM_DCK_PAGE_ROM;
+  memset( replacement.buffer + 9, 0x96, 0x2000 );
+  memset( replacement.buffer + 9 + 0x2000, 0x79, 0x2000 );
+  if( machine_select( LIBSPECTRUM_MACHINE_TC2068 ) ) { r++; goto cleanup; }
+  for( bank = 0; bank < ARRAY_SIZE( banks ); bank++ ) {
+    for( from_snapshot = 0; from_snapshot < ( bank == 2 ? 1 : 2 );
+         from_snapshot++ ) {
+      old.buffer[ 0 ] = banks[ bank ];
+      if( dck_insert_loaded( &old ) || !dck_active ) r++;
+      if( from_snapshot ) {
+        libspectrum_snap_free( snap );
+        snap = libspectrum_snap_alloc();
+        if( snapshot_copy_to( snap ) || snapshot_copy_from( snap ) ) r++;
+      }
+      /* Replace even HOME ROM overlays with a different bank: absent old
+         pages must revert to their normal machine mappings. */
+      replacement.buffer[ 0 ] = banks[ ( bank + 1 ) % 3 ];
+      BC = 0x1234;
+      if( dck_insert_loaded( &replacement ) || !dck_active || BC ) r++;
+      dck_test_map( banks[ bank ] );
+      if( readbyte_internal( 0x4000 ) == 0x35 ) r++;
+      dck_test_map( banks[ ( bank + 1 ) % 3 ] );
+      if( readbyte_internal( 0 ) != 0x96 ||
+          readbyte_internal( 0x2000 ) != 0x79 ) r++;
+      BC = 0x5678;
+      dck_eject();
+      if( BC || dck_active || settings_current.dck_file ) r++;
+      dck_test_map( banks[ ( bank + 1 ) % 3 ] );
+      if( readbyte_internal( 0 ) == 0x96 ||
+          readbyte_internal( 0x2000 ) == 0x79 ) r++;
+    }
+  }
+cleanup:
+  if( dck_active ) dck_eject();
+  utils_file_free( &old );
+  utils_file_free( &replacement );
+  libspectrum_snap_free( snap );
+  if( machine_select( old_machine ) ) r++;
+  if( r ) printf( "dck_replacement_power_cycle_test failed: %d errors\n", r );
   return r;
 }
 
@@ -3825,6 +4060,9 @@ unittests_run( void )
   r += dck_sparse_banks_test();
   r += dck_independent_pages_test();
   r += dck_lifecycle_test();
+  r += dck_archive_test();
+  r += dck_snapshot_reset_test();
+  r += dck_replacement_power_cycle_test();
   r += dck_malformed_test();
   r += dck_home_rom_ram_slots_test();
   r += utils_open_loaded_microdrive_test();

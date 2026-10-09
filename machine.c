@@ -40,6 +40,7 @@
 #include "module.h"
 #include "movie.h"
 #include "peripherals/ula.h"
+#include "peripherals/dck.h"
 #include "pokefinder/pokemem.h"
 #include "rzx.h"
 #include "settings.h"
@@ -532,6 +533,9 @@ machine_reset_from_snapshot( int hard_reset, libspectrum_snap *snap )
   machine_set_variable_timings( machine_current );
 
   memory_reset();
+
+  /* Snapshot cartridge pages replace, rather than overlay, inserted media. */
+  if( snap ) dck_discard();
 
   /* Do the machine-specific bits, including loading the ROMs */
   error = machine_current->reset( hard_reset, snap ); if( error ) return error;
