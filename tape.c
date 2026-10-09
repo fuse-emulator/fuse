@@ -149,6 +149,7 @@ tape_init( void *context )
 static void
 tape_end( void )
 {
+  if( tape_recording ) tape_record_stop();
   libspectrum_tape_free( tape );
   tape = NULL;
 }
@@ -219,6 +220,11 @@ tape_close( void )
 {
   int error;
   ui_confirm_save_t confirm;
+
+  if( tape_recording ) {
+    error = tape_record_stop();
+    if( error ) return error;
+  }
 
   /* If the tape has been modified, check if we want to do this */
   if( tape_modified ) {
@@ -323,6 +329,10 @@ tape_write( const char* filename )
   if( class != LIBSPECTRUM_CLASS_TAPE || type == LIBSPECTRUM_ID_UNKNOWN )
     type = LIBSPECTRUM_ID_TAPE_TZX;
 
+  if( tape_recording ) {
+    error = tape_record_stop();
+    if( error ) return error;
+  }
   length = 0;
 
   error = libspectrum_tape_write( &buffer, &length, tape, type );

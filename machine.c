@@ -224,6 +224,7 @@ machine_select_machine( fuse_machine_info *machine, libspectrum_snap *snap )
 
   /* Preserve the pending tape interval in the old clock before clearing
      events and replacing the machine. tape_play() rescales it on resume. */
+  if( tape_recording && tape_record_stop() ) return 1;
   if( machine_current ) tape_stop();
   machine_current = machine;
 
@@ -514,6 +515,7 @@ machine_reset_from_snapshot( int hard_reset, libspectrum_snap *snap )
   size_t i;
   int error;
 
+  if( tape_recording && tape_record_stop() ) return 1;
   if( hard_reset ) machine_clear_snapshot_rom_banks();
 
   /* Clear poke list (undoes effects of active pokes on Spectrum memory) */
