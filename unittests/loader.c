@@ -333,6 +333,16 @@ loader_test_ear_use( void )
   writebyte_internal( LOADER_TEST_BASE + 8, 0xe6 );
   writebyte_internal( LOADER_TEST_BASE + 9, 0x1f );
   if( ula_read_uses_ear( LOADER_TEST_BASE + 7 ) ) error++;
+  if( !ula_read_is_keyboard_scan( LOADER_TEST_BASE + 7 ) ) error++;
+
+  /* A loader which preserves EAR must not be excluded by the keyboard
+     detector, even if it also complements the input. */
+  writebyte_internal( LOADER_TEST_BASE + 9, 0x40 );
+  if( ula_read_is_keyboard_scan( LOADER_TEST_BASE + 7 ) ) error++;
+  if( !ula_read_uses_ear( LOADER_TEST_BASE + 7 ) ) error++;
+  writebyte_internal( LOADER_TEST_BASE + 9, 0x1f );
+  writebyte_internal( LOADER_TEST_BASE + 7, 0x1f ); /* RRA, not CPL */
+  if( ula_read_is_keyboard_scan( LOADER_TEST_BASE + 7 ) ) error++;
 
   loader_test_restore_memory( &memory );
   return error;
