@@ -1,7 +1,7 @@
 /* tape.c: tape unit tests
    Copyright (c) 1999-2017 Philip Kendall, Darren Salt, Witold Filipczyk
    Copyright (c) 2015-2018 UB880D
-   Copyright (c) 2016-2021 Fredrick Meunier
+   Copyright (c) 2016-2026 Fredrick Meunier
    Copyright (c) 2026 Alberto Garcia
 
    This program is free software; you can redistribute it and/or modify
@@ -123,14 +123,13 @@ tape_test_cleanup( tape_test_fixture *fixture )
 static int
 check_block_details( libspectrum_tape_block *block, const char *expected )
 {
-  char buffer[128];
-
-  tape_block_details( buffer, sizeof( buffer ), block );
-  if( strcmp( buffer, expected ) ) {
-    printf( "tape block detail: expected '%s', got '%s'\n", expected, buffer );
-    return 1;
-  }
-  return 0;
+  char *details;
+  if( tape_block_details( &details, block ) ) return 1;
+  int error = strcmp( details, expected ) != 0;
+  if( error )
+    printf( "tape block detail: expected '%s', got '%s'\n", expected, details );
+  libspectrum_free( details );
+  return error;
 }
 
 static int
@@ -153,6 +152,8 @@ tape_block_details_unittest( void )
   libspectrum_tape_block_set_data_length( block, 19 );
   libspectrum_tape_block_set_data( block, data );
   error |= check_block_details( block, "Bytes: \"TEST\"" );
+  data[2] = 0x60; /* Spectrum pound sign becomes UTF-8. */
+  error |= check_block_details( block, "Bytes: \"\xc2\xa3" "EST\"" );
   data[0] = 0xff;
   error |= check_block_details( block, "19 bytes" );
   libspectrum_tape_block_free( block );
@@ -203,6 +204,41 @@ tape_block_details_unittest( void )
   strcpy( text, "comment" );
   libspectrum_tape_block_set_text( block, text );
   error |= check_block_details( block, "comment" );
+  libspectrum_tape_block_free( block );
+
+  /* Metadata is returned in full, well beyond the old 30/80/128-byte limits. */
+  const libspectrum_tape_type text_types[] = {
+    LIBSPECTRUM_TAPE_BLOCK_COMMENT, LIBSPECTRUM_TAPE_BLOCK_GROUP_START,
+    LIBSPECTRUM_TAPE_BLOCK_MESSAGE
+  };
+  const char sequence[] = "A\xc2\xa3\xe2\x82\xac\xf0\x9f\x98\x80";
+  for( size_t i = 0; i < sizeof( text_types ) / sizeof( text_types[0] ); i++ ) {
+    block = libspectrum_tape_block_alloc( text_types[i] );
+    if( !block ) return 1;
+    text = libspectrum_new( char, 1001 );
+    for( size_t j = 0; j < 100; j++ )
+      memcpy( text + j * 10, sequence, 10 );
+    text[1000] = '\0';
+    libspectrum_tape_block_set_text( block, text );
+    error |= check_block_details( block, text );
+    char *details;
+    if( tape_block_details( &details, block ) ) {
+      error++;
+    } else {
+      text[0] = 'Z';
+      error |= details[0] != 'A'; /* The result is owned, not borrowed. */
+      libspectrum_free( details );
+    }
+    libspectrum_tape_block_free( block );
+  }
+
+  /* Even malformed CUSTOM identifiers are copied without rewriting bytes. */
+  block = libspectrum_tape_block_alloc( LIBSPECTRUM_TAPE_BLOCK_CUSTOM );
+  if( !block ) return 1;
+  text = libspectrum_new( char, 4 );
+  strcpy( text, "A\xff\xc2" );
+  libspectrum_tape_block_set_text( block, text );
+  error |= check_block_details( block, "A\xff\xc2" );
   libspectrum_tape_block_free( block );
 
   block = libspectrum_tape_block_alloc( LIBSPECTRUM_TAPE_BLOCK_JUMP );
