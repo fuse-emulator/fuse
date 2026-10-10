@@ -23,6 +23,14 @@
 fuse_SOURCES += unittests/helpers.c
 noinst_HEADERS += unittests/helpers.h
 
+noinst_PROGRAMS += unittests/widgetutf8test
+unittests_widgetutf8test_SOURCES = unittests/widgetutf8test.c ui/widget/utf8.c
+unittests_widgetutf8test_LDADD =
+noinst_HEADERS += ui/widget/utf8.h
+
+check-widget-utf8: unittests/widgetutf8test
+	$(top_builddir)/unittests/widgetutf8test
+
 noinst_PROGRAMS += unittests/sfifotest
 unittests_sfifotest_SOURCES = unittests/sfifotest.c sound/sfifo.c
 unittests_sfifotest_LDADD =

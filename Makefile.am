@@ -258,7 +258,7 @@ include unittests/Makefile.am
 include z80/Makefile.am
 
 if UI_NULL
-check-local: $(AUDIO_CHECK_TARGETS) fuse unittests/displaytest unittests/sdl2displaytest unittests/sdl2scalerstatetest unittests/sdl2joysticktest unittests/sdl2mousetest unittests/palcompositetest unittests/scalerexpandtest z80/coretest
+check-local: check-widget-utf8 $(AUDIO_CHECK_TARGETS) fuse unittests/displaytest unittests/sdl2displaytest unittests/sdl2scalerstatetest unittests/sdl2joysticktest unittests/sdl2mousetest unittests/palcompositetest unittests/scalerexpandtest z80/coretest
 	@test -e $(top_builddir)/roms || ln -sf "$(abs_top_srcdir)/roms" $(top_builddir)/roms
 	FUSE_TEST_SRCDIR="$(abs_top_srcdir)" $(top_builddir)/fuse --unittests
 	$(top_builddir)/unittests/displaytest
@@ -274,6 +274,6 @@ endif
 	$(top_builddir)/z80/coretest $(srcdir)/z80/tests/tests.in > $(top_builddir)/z80/tests.actual
 	cmp $(top_builddir)/z80/tests.actual $(srcdir)/z80/tests/tests.expected
 else
-check-local: $(AUDIO_CHECK_TARGETS)
+check-local: check-widget-utf8 $(AUDIO_CHECK_TARGETS)
 	@echo "SKIP: internal unit tests require a null-UI build"
 endif
