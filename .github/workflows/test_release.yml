@@ -111,7 +111,7 @@ jobs:
     with:
       reason: ${{ inputs.reason }}
       key: "sdl2-ui-sdl2-sound"
-      dependencies: "mingw64-i686-SDL2"
+      dependencies: "mingw-w64-i686-SDL2"
       configure_params: "--without-win32 --with-sdl --with-audio-driver=sdl"
       verify_ui: "sdl2"
       verify_audio: "sdl"

@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   libspectrum:
-    # Build libspectrum from the canonical SourceForge repository.
+    # Build libspectrum and its native DLLs with MSYS2 MINGW32.
     name: "Libspectrum lib (Windows)"
     uses: ./.github/workflows/build_libspectrum_windows_sub.yml
     with:
@@ -28,7 +28,7 @@ jobs:
     uses: ./.github/workflows/build_windows_sub.yml
     with:
       key: "win32-ui-default"
-      dependencies: "mingw64-i686-libxml2"
+      dependencies: "mingw-w64-i686-libxml2"
       configure_params: "--with-win32"
       verify_ui: "win32"
       verify_libxml2: "yes"
@@ -84,7 +84,7 @@ jobs:
     uses: ./.github/workflows/build_windows_sub.yml
     with:
       key: "sdl2-ui-sdl2-sound"
-      dependencies: "mingw64-i686-SDL2"
+      dependencies: "mingw-w64-i686-SDL2"
       configure_params: "--without-win32 --with-sdl --with-audio-driver=sdl"
       verify_ui: "sdl2"
       verify_libxml2: "no"
