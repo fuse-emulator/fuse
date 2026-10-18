@@ -53,7 +53,6 @@ jobs:
     env:
       CPPFLAGS: -I/opt/fuse/include
       LDFLAGS: -L/opt/fuse/lib
-      PKG_CONFIG_PATH: /opt/fuse/lib/pkgconfig
 
     steps:
       # Keep helpers at the workflow revision even when building an older Fuse ref.
@@ -159,6 +158,9 @@ jobs:
         run: |
           set -o pipefail
           export PATH="/opt/fuse/bin:$PATH"
+          # /etc/profile resets this variable when each MSYS2 shell starts.
+          export PKG_CONFIG_PATH="/opt/fuse/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          pkg-config --modversion libspectrum
           ./autogen.sh
           ./configure --prefix=/opt/fuse --disable-static \
             ${{ inputs.configure_params }} 2>&1 | tee configure.out
