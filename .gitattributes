@@ -1,8 +1,6 @@
 # Windows CI invokes these files from MSYS2; keep scripts and package locks LF-only.
 /.github/scripts/*.sh text eol=lf
 /.github/scripts/*.sha256 text eol=lf
-# Unified diffs contain significant context prefixes and upstream indentation.
-/.github/scripts/*.patch text eol=lf -whitespace
 /data/win32/*.sh text eol=lf
 
 /settings.dat text

@@ -76,17 +76,6 @@ jobs:
         run: |
           bash .github/scripts/build_windows_audiofile.sh "$(cygpath -u "$RUNNER_TEMP")/audiofile-build"
 
-      - name: Upload audiofile test diagnostics
-        if: ${{ always() && inputs.use_libaudiofile }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: audiofile-test-logs-windows-${{ inputs.key }}
-          if-no-files-found: ignore
-          path: |
-            ${{ runner.temp }}/audiofile-build/audiofile/config.log
-            ${{ runner.temp }}/audiofile-build/audiofile/**/*.log
-            ${{ runner.temp }}/audiofile-build/audiofile/**/*.trs
-
       - name: Clone selected libspectrum revision
         env:
           LIBSPECTRUM_REF: ${{ inputs.libspectrum_ref }}
