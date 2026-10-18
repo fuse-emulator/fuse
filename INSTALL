@@ -153,8 +153,9 @@ The audiofile helper builds commit 2f4e4704b731086b11175c433e036bcbe7c9c913 of
 Sergio Baldovi's patched tree, with FLAC, docs and examples disabled. WAV loading
 remains enabled. Both shared and static audiofile libraries are built because its
 internal unit tests require private C++ symbols from the static archive; Fuse
-uses the shared DLL. It uses C++11 for this legacy library, not a change to Fuse's
-C standard. Sources: https://github.com/sbaldovi/audiofile/tree/patched
+uses the shared DLL. A local test-only patch uses binary-mode _pipe on Windows
+instead of POSIX pipe; its checksum is recorded with the source revision.
+It uses C++11 for this legacy library, not a change to Fuse's C standard. Sources: https://github.com/sbaldovi/audiofile/tree/patched
 
 This follows the dependency pattern documented in:
 https://sourceforge.net/p/fuse-emulator/wiki/Building%20Fuse%20on%20Windows%20with%20MinGW-w64%20and%20MSYS2/

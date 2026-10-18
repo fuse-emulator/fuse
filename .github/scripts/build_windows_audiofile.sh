@@ -6,6 +6,7 @@ test "${MSYSTEM:-}" = MINGW32 && test "$(gcc -dumpmachine)" = i686-w64-mingw32 |
   echo "Use the MSYS2 MINGW32 shell/compiler for the 32-bit release" >&2
   exit 1
 }
+script_dir=$(cd "$(dirname "$0")" && pwd)
 revision=2f4e4704b731086b11175c433e036bcbe7c9c913
 repository=https://github.com/sbaldovi/audiofile.git
 prefix=/opt/fuse
@@ -22,6 +23,8 @@ git -C "$work/audiofile" fetch --depth 1 origin "$revision"
 git -C "$work/audiofile" checkout --detach FETCH_HEAD
 test "$(git -C "$work/audiofile" rev-parse HEAD)" = "$revision"
 cd "$work/audiofile"
+git apply --check "$script_dir/audiofile-mingw-tests.patch"
+git apply "$script_dir/audiofile-mingw-tests.patch"
 autoreconf --install --verbose
 # This legacy C++ library is built as C++11; Fuse's C standard is unaffected.
 # Internal UnitTests link with -static and need private C++ symbols which the
@@ -37,3 +40,5 @@ cp COPYING "$prefix/share/fuse/3rd-party/audiofile-COPYING.txt"
 cp COPYING.GPL "$prefix/share/fuse/3rd-party/audiofile-COPYING.GPL.txt"
 printf 'audiofile %s %s\n' "$revision" "$repository" \
   > "$prefix/share/fuse/source-versions.txt"
+printf 'audiofile-tests-patch %s\n' "$(sha256sum "$script_dir/audiofile-mingw-tests.patch" | cut -d' ' -f1)" \
+  >> "$prefix/share/fuse/source-versions.txt"
