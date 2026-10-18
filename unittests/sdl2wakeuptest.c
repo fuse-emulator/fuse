@@ -105,6 +105,10 @@ wake_consume( unsigned int frames )
 #define AUDIO_WAKE_THREADS
 #endif
 #include "audio-wakeup-cases.h"
+/* SDL's compiler flags can also define main, independently of SDL_main.h. */
+#ifdef main
+#undef main
+#endif
 int
 main( void )
 {
