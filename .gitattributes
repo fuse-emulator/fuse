@@ -1,10 +1,23 @@
-# Windows CI invokes these files from MSYS2; keep scripts and package locks LF-only.
-/.github/scripts/*.sh text eol=lf
-/.github/scripts/*.sha256 text eol=lf
-/data/win32/*.sh text eol=lf
+# Unix build tools and generators require consistent LF input, including when
+# sources are checked out with native Windows Git. Release packaging may convert
+# documentation to CRLF separately.
+* text=auto eol=lf
 
+# Explicitly classify the textual generator inputs.
 /settings.dat text
 /menu_data.dat text
 /keysyms.dat text
 /ui/options.dat text
 /z80/*.dat text
+
+# Machine data must never undergo line-ending conversion.
+*.bmp binary
+*.ico binary
+*.png binary
+*.rom binary
+*.scr binary
+*.bz2 binary
+*.mdr binary
+*.opd binary
+*.sbf binary
+*.udi binary
