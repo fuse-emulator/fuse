@@ -33,7 +33,10 @@ autoreconf --install --verbose
   --disable-docs --disable-examples CXXFLAGS='-O2 -g -std=gnu++11'
 make -j2
 test -f libaudiofile/.libs/libaudiofile.a
-make check
+# Bound individual tests and the complete suite so a blocked pipe cannot
+# consume the whole CI job. Keep failures fatal and report assertion details.
+timeout --kill-after=15s 10m make check VERBOSE=1 \
+  LOG_COMPILER='timeout --kill-after=10s 60s'
 make install-strip
 mkdir -p "$prefix/share/fuse/3rd-party"
 cp COPYING "$prefix/share/fuse/3rd-party/audiofile-COPYING.txt"
