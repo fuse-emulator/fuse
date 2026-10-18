@@ -12,6 +12,9 @@ lock="$script_dir/windows-mingw32-crypto.sha256"
 cache=${1:-/opt/fuse/share/fuse/packages}
 mkdir -p "$cache"
 cache=$(cd "$cache" && pwd)
+# setup-msys2 prepares trusted keys, but its initial configuration may omit
+# pacman-key's non-root verification settings. Repair them idempotently.
+pacman-key --init
 packages=()
 while read -r hash name; do
   # Windows checkouts may supply CRLF even when invoked from an MSYS2 shell.

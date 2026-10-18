@@ -103,7 +103,8 @@ class CryptoPackageTests(unittest.TestCase):
                 "with open(os.environ['TEST_CALLS'], 'a') as f:\n"
                 "    f.write(json.dumps([name] + sys.argv[1:]) + '\\n')\n"
                 "if name == 'curl': sys.exit(99)  # Cached tests never use the network.\n"
-                "if name == 'pacman-key' and os.environ.get('BAD_SIGNATURE'): sys.exit(1)\n"
+                "if name == 'pacman-key' and '--verify' in sys.argv and os.environ.get('BAD_SIGNATURE'): sys.exit(1)\n"
+                "if name == 'pacman-key' and '--init' in sys.argv and os.environ.get('BAD_INIT'): sys.exit(1)\n"
             )
             mock.chmod(0o755)
         # MSYS2 provides sha256sum; use the host's equivalent in these tests.
@@ -123,7 +124,9 @@ class CryptoPackageTests(unittest.TestCase):
     def test_reuses_cached_packages_and_verifies_before_install(self):
         result = self.run_install()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual([call[0] for call in self.calls()], ["pacman-key", "pacman"])
+        self.assertEqual([call[0] for call in self.calls()], ["pacman-key", "pacman-key", "pacman"])
+        self.assertEqual(self.calls()[0], ["pacman-key", "--init"])
+        self.assertEqual(self.calls()[1][1], "--verify")
         self.assertIn(str(self.cache / self.name), self.calls()[-1])
 
     def test_crlf_lock_reuses_cached_packages(self):
@@ -131,7 +134,7 @@ class CryptoPackageTests(unittest.TestCase):
         lock.write_bytes(lock.read_bytes().replace(b"\n", b"\r\n"))
         result = self.run_install()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual([call[0] for call in self.calls()], ["pacman-key", "pacman"])
+        self.assertEqual([call[0] for call in self.calls()], ["pacman-key", "pacman-key", "pacman"])
 
     def test_corrupt_package_is_not_installed(self):
         (self.cache / self.name).write_bytes(b"corrupt")
@@ -142,6 +145,11 @@ class CryptoPackageTests(unittest.TestCase):
         self.env["BAD_SIGNATURE"] = "1"
         self.assertNotEqual(self.run_install().returncode, 0)
         self.assertNotIn("pacman", [call[0] for call in self.calls()])
+
+    def test_keyring_initialization_failure_stops_install(self):
+        self.env["BAD_INIT"] = "1"
+        self.assertNotEqual(self.run_install().returncode, 0)
+        self.assertEqual(self.calls(), [["pacman-key", "--init"]])
 
     def test_wrong_environment_is_rejected(self):
         self.env["MSYSTEM"] = "UCRT64"
