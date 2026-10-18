@@ -24,9 +24,12 @@ test "$(git -C "$work/audiofile" rev-parse HEAD)" = "$revision"
 cd "$work/audiofile"
 autoreconf --install --verbose
 # This legacy C++ library is built as C++11; Fuse's C standard is unaffected.
-./configure --prefix="$prefix" --disable-static --disable-flac \
+# Internal UnitTests link with -static and need private C++ symbols which the
+# DLL correctly does not export. Build both; downstream uses the shared library.
+./configure --prefix="$prefix" --enable-shared --enable-static --disable-flac \
   --disable-docs --disable-examples CXXFLAGS='-O2 -g -std=gnu++11'
 make -j2
+test -f libaudiofile/.libs/libaudiofile.a
 make check
 make install-strip
 mkdir -p "$prefix/share/fuse/3rd-party"

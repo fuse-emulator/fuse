@@ -151,7 +151,9 @@ dependencies come from pacman. No signature checks are disabled.
 
 The audiofile helper builds commit 2f4e4704b731086b11175c433e036bcbe7c9c913 of
 Sergio Baldovi's patched tree, with FLAC, docs and examples disabled. WAV loading
-remains enabled. It uses C++11 for this legacy library, not a change to Fuse's
+remains enabled. Both shared and static audiofile libraries are built because its
+internal unit tests require private C++ symbols from the static archive; Fuse
+uses the shared DLL. It uses C++11 for this legacy library, not a change to Fuse's
 C standard. Sources: https://github.com/sbaldovi/audiofile/tree/patched
 
 This follows the dependency pattern documented in:
