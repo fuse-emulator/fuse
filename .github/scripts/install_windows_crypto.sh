@@ -12,9 +12,6 @@ lock="$script_dir/windows-mingw32-crypto.sha256"
 cache=${1:-/opt/fuse/share/fuse/packages}
 mkdir -p "$cache"
 cache=$(cd "$cache" && pwd)
-# setup-msys2 prepares trusted keys, but its initial configuration may omit
-# pacman-key's non-root verification settings. Repair them idempotently.
-pacman-key --init
 packages=()
 while read -r hash name; do
   # Windows checkouts may supply CRLF even when invoked from an MSYS2 shell.
@@ -28,7 +25,15 @@ while read -r hash name; do
     fi
   done
   # Fail closed: do not disable pacman's signature policy to use retained files.
-  pacman-key --verify "$cache/$name.sig" "$cache/$name"
+  # pacman 6.1's wrapper rejects non-root verification unless lock-never is
+  # configured, although its --init no longer adds that setting. Use GnuPG
+  # directly with the same keyring and trusted-signer requirement instead.
+  status=$(gpg --batch --homedir /etc/pacman.d/gnupg --status-fd 1 \
+    --verify "$cache/$name.sig" "$cache/$name")
+  if ! grep -qE '^\[GNUPG:\] TRUST_(FULLY|ULTIMATE)( |$)' <<< "$status"; then
+    echo "Package signature is not from a trusted MSYS2 signer: $name" >&2
+    exit 1
+  fi
   packages+=("$cache/$name")
 done < "$lock"
 (cd "$cache" && tr -d '\r' < "$lock" | sha256sum --check -)

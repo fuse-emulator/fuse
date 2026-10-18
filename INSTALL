@@ -145,8 +145,9 @@ bash .github/scripts/build_windows_audiofile.sh "$PWD/build/windows-audiofile"
 
 The crypto helper installs pinned official MSYS2 libgcrypt/libgpg-error packages
 that remain downloadable but are absent from the current MINGW32 database. It
-checks their recorded SHA-256 hashes and detached signatures using pacman-key;
-normal transitive dependencies come from pacman. No signature checks are disabled.
+checks their recorded SHA-256 hashes and detached signatures using GnuPG with
+the MSYS2 pacman keyring, requiring a fully trusted signer. Normal transitive
+dependencies come from pacman. No signature checks are disabled.
 
 The audiofile helper builds commit 2f4e4704b731086b11175c433e036bcbe7c9c913 of
 Sergio Baldovi's patched tree, with FLAC, docs and examples disabled. WAV loading
