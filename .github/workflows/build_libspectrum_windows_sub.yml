@@ -49,14 +49,27 @@ jobs:
         with:
           msystem: MINGW32
           update: true
+          cache: true
           install: >-
             autoconf-wrapper automake-wrapper libtool make git curl
             mingw-w64-i686-gcc mingw-w64-i686-pkgconf
             mingw-w64-i686-bzip2 mingw-w64-i686-zlib
 
+      - name: Cache pinned cryptographic package downloads
+        if: ${{ inputs.use_libgcrypt }}
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/fuse-mingw32-crypto
+          key: msys2-mingw32-crypto-v1-${{ hashFiles('.github/scripts/windows-mingw32-crypto.sha256') }}
+
       - name: Install pinned MSYS2 cryptographic libraries
         if: ${{ inputs.use_libgcrypt }}
-        run: bash .github/scripts/install_windows_crypto.sh
+        run: |
+          cache="$(cygpath -u "$RUNNER_TEMP")/fuse-mingw32-crypto"
+          # Recheck hashes and signatures on cache hits as well as fresh downloads.
+          bash .github/scripts/install_windows_crypto.sh "$cache"
+          mkdir -p /opt/fuse/share/fuse/packages
+          cp "$cache/"*.pkg.tar.zst "$cache/"*.pkg.tar.zst.sig /opt/fuse/share/fuse/packages/
 
       - name: Build pinned patched audiofile
         if: ${{ inputs.use_libaudiofile }}

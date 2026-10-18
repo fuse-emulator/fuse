@@ -81,6 +81,7 @@ jobs:
         with:
           msystem: MINGW32
           update: true
+          cache: true
           install: >-
             autoconf-wrapper automake-wrapper libtool make git bison flex dos2unix
             man2html zip curl

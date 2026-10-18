@@ -14,6 +14,8 @@ mkdir -p "$cache"
 cache=$(cd "$cache" && pwd)
 packages=()
 while read -r hash name; do
+  # Windows checkouts may supply CRLF even when invoked from an MSYS2 shell.
+  name=${name%$'\r'}
   case "$hash" in ''|'#'*) continue ;; esac
   for file in "$name" "$name.sig"; do
     if [ ! -f "$cache/$file" ]; then
@@ -26,7 +28,7 @@ while read -r hash name; do
   pacman-key --verify "$cache/$name.sig" "$cache/$name"
   packages+=("$cache/$name")
 done < "$lock"
-(cd "$cache" && sha256sum --check "$lock")
+(cd "$cache" && tr -d '\r' < "$lock" | sha256sum --check -)
 # Install both in one transaction; dependencies such as cc-libs and gettext
 # continue to resolve from the normal MINGW32 package database.
 pacman --noconfirm -U --needed "${packages[@]}"

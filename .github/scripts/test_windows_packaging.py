@@ -126,6 +126,13 @@ class CryptoPackageTests(unittest.TestCase):
         self.assertEqual([call[0] for call in self.calls()], ["pacman-key", "pacman"])
         self.assertIn(str(self.cache / self.name), self.calls()[-1])
 
+    def test_crlf_lock_reuses_cached_packages(self):
+        lock = self.base / "windows-mingw32-crypto.sha256"
+        lock.write_bytes(lock.read_bytes().replace(b"\n", b"\r\n"))
+        result = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([call[0] for call in self.calls()], ["pacman-key", "pacman"])
+
     def test_corrupt_package_is_not_installed(self):
         (self.cache / self.name).write_bytes(b"corrupt")
         self.assertNotEqual(self.run_install().returncode, 0)
