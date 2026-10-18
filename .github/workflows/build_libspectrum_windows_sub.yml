@@ -97,7 +97,8 @@ jobs:
             pkg-config --modversion audiofile
           fi
           ./autogen.sh
-          ./configure --prefix=/opt/fuse --disable-static --with-fake-glib \
+          # Keep the normal static archive available for internal unit tests.
+          ./configure --prefix=/opt/fuse --with-fake-glib \
             ${{ inputs.use_zlib == false && '--without-zlib' || '' }} \
             ${{ inputs.use_bzip2 == false && '--without-bzip2' || '' }} \
             ${{ inputs.use_libgcrypt == false && '--without-libgcrypt' || '' }} \

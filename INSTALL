@@ -163,11 +163,14 @@ The wiki currently recommends UCRT64; the release builds retain MINGW32.
 Now change to the libspectrum source directory and build:
 
 ./autogen.sh
-./configure --prefix=/opt/fuse --disable-static --with-fake-glib \
+./configure --prefix=/opt/fuse --with-fake-glib \
             --with-wav-backend=audiofile
 make -j2
 make check
 make install-strip
+
+Keep static libraries enabled for libspectrum's internal unit tests. Its shared
+DLL is also built and is used by Fuse.
 
 Then return to the Fuse source directory (keeping those exported variables):
 
