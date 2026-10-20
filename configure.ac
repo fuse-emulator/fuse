@@ -319,6 +319,16 @@ sdl_available=no
 if test "$enable_sdl2" = yes; then
   PKG_CHECK_MODULES([SDL2], [sdl2], [sdl_available=2],
                     [AC_MSG_WARN([SDL 2 not found])])
+  dnl Some SDL packages put main remapping in the compiler flags. These flags
+  dnl also reach non-SDL tests; let SDL.h handle the actual SDL entry points.
+  sdl_cflags_with_main="$SDL2_CFLAGS"
+  SDL2_CFLAGS=
+  for sdl_flag in $sdl_cflags_with_main; do
+    case "$sdl_flag" in
+      -Dmain=SDL_main) ;;
+      *) SDL2_CFLAGS="$SDL2_CFLAGS $sdl_flag" ;;
+    esac
+  done
 fi
 
 dnl Enable the SDL UI if all conditions are met.

@@ -65,7 +65,7 @@ jobs:
         build:
           - name: "Fuse Win32 build"
             key: "win32-ui-default"
-            dependencies: "mingw64-i686-libxml2"
+            dependencies: "mingw-w64-i686-libxml2"
             configure_params: "--with-win32"
             verify_ui: "win32"
             verify_libxml2: "yes"
@@ -73,7 +73,7 @@ jobs:
             verify_other: ""
           - name: "Fuse SDL 2 build"
             key: "sdl2-ui-sdl2-sound"
-            dependencies: "mingw64-i686-SDL2 mingw64-i686-libxml2"
+            dependencies: "mingw-w64-i686-SDL2 mingw-w64-i686-libxml2"
             configure_params: "--without-win32 --with-sdl --with-audio-driver=sdl"
             verify_ui: "sdl2"
             verify_libxml2: "yes"

@@ -21,6 +21,8 @@
 #include "config.h"
 #include <stdio.h>
 #include <stdlib.h>
+/* SDL is mocked: keep the normal entry point without linking SDL2main. */
+#define SDL_MAIN_HANDLED
 #include <SDL.h>
 #ifdef SDL2_TEST_THREADS
 #include <pthread.h>
