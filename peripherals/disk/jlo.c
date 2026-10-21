@@ -74,6 +74,7 @@ static unsigned int jlo_data_writes;
 static void jlo_reset( int hard_reset );
 static void jlo_memory_map( void );
 static void jlo_activate( void );
+static void jlo_to_snapshot( libspectrum_snap *snap );
 static ui_media_drive_info_t jlo_ui_drives[ JLO_NUM_DRIVES ];
 static void jlo_step( int direction );
 static void jlo_motor( int on );
@@ -248,7 +249,7 @@ static module_info_t jlo_module_info = {
   /* .romcs = */ jlo_memory_map,
   /* .snapshot_enabled = */ NULL,
   /* .snapshot_from = */ NULL,
-  /* .snapshot_to = */ NULL,
+  /* .snapshot_to = */ jlo_to_snapshot,
 
 };
 
@@ -487,6 +488,15 @@ jlo_reset( int hard_reset )
       UI_MEDIA_DRIVE_UPDATE_ALL
       );
   }
+}
+
+static void
+jlo_to_snapshot( libspectrum_snap *snap )
+{
+  /* RAM and controller state are lost even when Board B is paged out.
+     This marker lets libspectrum report major information loss; no JLO
+     state is currently serialised. */
+  libspectrum_snap_set_jlo_active( snap, jlo_available );
 }
 
 int

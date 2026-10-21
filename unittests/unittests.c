@@ -50,6 +50,8 @@
 #include "peripherals/disk/didaktik.h"
 #include "peripherals/disk/disciple.h"
 #include "peripherals/disk/opus.h"
+#include "peripherals/disk/jlo.h"
+#include "peripherals/disk/wd_fdc.h"
 #include "peripherals/disk/plusd.h"
 #include "peripherals/dck.h"
 #include "peripherals/ide/divide.h"
@@ -2659,6 +2661,130 @@ create_rom_fixture( char *filename, size_t length, libspectrum_byte value )
 }
 
 static int
+jlo_snapshot_loss_test( void )
+{
+  libspectrum_machine old_machine = machine_current->machine;
+  char *old_rom = settings_current.rom_jlo;
+  int old_jlo = settings_current.jlo;
+  char rom[] = "/tmp/fuse-jlo-snapshot-XXXXXX";
+  libspectrum_snap *snap;
+  libspectrum_byte *buffer;
+  size_t length;
+  int state, flags, r = 0;
+
+  /* This test must not depend on the copyrighted SAFE firmware. */
+  if( create_rom_fixture( rom, 0x2000, 0 ) ) return 1;
+  settings_current.rom_jlo = rom;
+  settings_current.jlo = 0;
+  if( machine_select( LIBSPECTRUM_MACHINE_TC2068 ) ) { r++; goto cleanup; }
+
+  for( state = 0; state < 4; state++ ) {
+    int enabled = state == 1 || state == 2;
+    if( state == 2 ) {
+      jlo_unpage();
+    } else {
+      settings_current.jlo = enabled;
+      if( periph_update() && machine_reset( 1 ) ) { r++; break; }
+    }
+    if( !!jlo_available != enabled || !!jlo_active != ( state == 1 ) ) r++;
+    snap = libspectrum_snap_alloc();
+    buffer = NULL;
+    length = 0;
+    if( snapshot_copy_to( snap ) ) {
+      r++;
+    } else {
+      if( !!libspectrum_snap_jlo_active( snap ) != enabled ) r++;
+      if( libspectrum_snap_write( &buffer, &length, &flags, snap,
+                                  LIBSPECTRUM_ID_SNAPSHOT_SZX, NULL, 0 ) ) {
+        r++;
+      } else if( enabled &&
+                 !( flags & LIBSPECTRUM_FLAG_SNAPSHOT_MAJOR_INFO_LOSS ) ) {
+        r++;
+      }
+    }
+    libspectrum_free( buffer );
+    libspectrum_snap_free( snap );
+  }
+
+cleanup:
+  settings_current.jlo = old_jlo;
+  settings_current.rom_jlo = old_rom;
+  if( machine_select( old_machine ) ) r++;
+  unlink( rom );
+  if( r ) printf( "jlo_snapshot_loss_test failed: %d errors\n", r );
+  return r;
+}
+
+static int
+jlo_reset_test( void )
+{
+  libspectrum_machine old_machine = machine_current->machine;
+  char *old_rom = settings_current.rom_jlo;
+  int old_jlo = settings_current.jlo;
+  char rom[] = "/tmp/fuse-jlo-reset-XXXXXX";
+  fdd_t *drive = jlo_get_fdd( JLO_DRIVE_0 );
+  libspectrum_byte *media = NULL;
+  int hard_reset, i, r = 0;
+
+  if( create_rom_fixture( rom, 0x2000, 0xa5 ) ) return 1;
+  settings_current.rom_jlo = rom;
+  settings_current.jlo = 1;
+  if( machine_select( LIBSPECTRUM_MACHINE_TC2068 ) || !jlo_available ) {
+    r++; goto cleanup;
+  }
+
+  /* Own a temporary blank disk; never replace pre-existing mounted media. */
+  if( drive->loaded ||
+      disk_new( &drive->disk, 1, 40, DISK_DENS_AUTO, DISK_UDI ) ) {
+    r++; goto cleanup;
+  }
+  media = drive->disk.data;
+  if( fdd_load( drive, 0 ) ) { r++; goto cleanup; }
+
+  for( hard_reset = 0; hard_reset < 2; hard_reset++ ) {
+    jlo_page();
+    writebyte_internal( 0x2000, 0x55 );
+    writebyte_internal( 0x3fff, 0xaa );
+    writeport_internal( 0x009f, 0x12 );
+    writeport_internal( 0x00af, 0x34 );
+    writeport_internal( 0x00bf, 0x56 );
+    /* A reset must stop motors and return from another selected drive. */
+    writeport_internal( 0x00b7, 0x08 );
+    fdd_motoron( drive, 1 );
+
+    if( machine_reset( hard_reset ) ) { r++; break; }
+    if( !jlo_available || !!jlo_active != hard_reset ||
+        !!machine_current->ram.romcs != hard_reset ) r++;
+    for( i = 0; i < JLO_NUM_DRIVES; i++ ) {
+      fdd_t *d = jlo_get_fdd( (jlo_drive_number)i );
+      if( d->selected != ( i == 0 ) || d->motoron ) r++;
+    }
+    if( !drive->loaded || drive->disk.data != media ) r++;
+    if( readport_internal( 0x009f ) || readport_internal( 0x00af ) ||
+        readport_internal( 0x00bf ) ||
+        ( readport_internal( 0x008f ) & WD_FDC_SR_BUSY ) ) r++;
+
+    jlo_page();
+    if( readbyte_internal( 0 ) != 0xa5 ||
+        readbyte_internal( 0x2000 ) != ( hard_reset ? 0 : 0x55 ) ||
+        readbyte_internal( 0x3fff ) != ( hard_reset ? 0 : 0xaa ) ) r++;
+  }
+
+cleanup:
+  if( media ) {
+    fdd_motoron( drive, 0 );
+    fdd_unload( drive );
+    disk_close( &drive->disk );
+  }
+  settings_current.jlo = old_jlo;
+  settings_current.rom_jlo = old_rom;
+  if( machine_select( old_machine ) ) r++;
+  unlink( rom );
+  if( r ) printf( "jlo_reset_test failed: %d errors\n", r );
+  return r;
+}
+
+static int
 machine_load_rom_bank_with_sizes_test( void )
 {
   static const size_t allowed_lengths[] = { 0x2000, 0x4000 };
@@ -4214,6 +4340,8 @@ unittests_run( void )
   r += scaler_for_size_test();
   r += compat_file_vtable_test();
   r += machine_load_rom_bank_with_sizes_test();
+  r += jlo_snapshot_loss_test();
+  r += jlo_reset_test();
   r += utils_file_lifecycle_test();
   r += utils_file_read_failure_test();
   r += utils_file_harddisk_identify_test();
