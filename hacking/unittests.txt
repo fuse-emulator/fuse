@@ -37,6 +37,15 @@ This builds all test binaries and runs them in sequence:
       SDL2 UI subsystem tests (display pipeline, scaler state
       machine, joystick mapping, mouse input).
 
+  unittests/wdfdctest
+      WD FDC stepping, multisector register/event handling, Force
+      Interrupt status, and motor timeout tests.
+
+  unittests/jlotest
+      JLO drive selection, multi-drive stepping/motor handling,
+      no-drive commands, and dummy data-register read tests.
+      Neither standalone disk suite requires a ROM or disk image.
+
   z80/coretest z80/tests/tests.in
       Z80 CPU core regression suite. Output is written to
       z80/tests.actual and compared against

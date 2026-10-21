@@ -42,17 +42,6 @@ static void jlo_test_motor( int on );
 
 
 /*
- * Print a test heading immediately.
- */
-static void
-test_begin( const char *name )
-{
-  printf( "\n========== %s ==========\n", name );
-  fflush( stdout );
-}
-
-
-/*
  * Initialise one artificial JLO drive.
  *
  * No disk image is needed for STEP and selection tests.
@@ -223,8 +212,6 @@ jlo_drive_select_test( void )
   int i;
   int r = 0;
 
-  test_begin( "jlo_drive_select_test" );
-
   wdfdc_test_reset_events();
   jlo_test_init( &jlo );
 
@@ -236,17 +223,6 @@ jlo_drive_select_test( void )
    *   bit 1 = drive B
    */
   jlo_test_dsel_write( &jlo, 0x8a );
-
-  printf(
-    "[JLO] B7=%02x selected=%d%d%d%d side=%d\n",
-    jlo.dsel,
-    jlo.drives[ 3 ].selected,
-    jlo.drives[ 2 ].selected,
-    jlo.drives[ 1 ].selected,
-    jlo.drives[ 0 ].selected,
-    jlo.drives[ 0 ].c_head
-    );
-  fflush( stdout );
 
   if( jlo.drives[ JLO_DRIVE_0 ].selected ) {
     printf( "jlo_drive_select_test: drive A selected unexpectedly\n" );
@@ -312,8 +288,6 @@ jlo_current_drive_retention_test( void )
   jlo_test_context jlo;
   int events = 0;
   int r = 0;
-
-  test_begin( "jlo_current_drive_retention_test" );
 
   wdfdc_test_reset_events();
   jlo_test_init( &jlo );
@@ -409,8 +383,6 @@ jlo_multiple_drive_step_test( void )
   jlo_test_context jlo;
   int r = 0;
 
-  test_begin( "jlo_multiple_drive_step_test" );
-
   wdfdc_test_reset_events();
   jlo_test_init( &jlo );
 
@@ -438,15 +410,6 @@ jlo_multiple_drive_step_test( void )
    * 0x40 = STEP IN without Track Register update.
    */
   wd_fdc_cr_write( jlo.fdc, 0x40 );
-
-  printf(
-    "[JLO] STEP IN cylinders A=%d B=%d C=%d D=%d\n",
-    jlo.drives[ 0 ].c_cylinder,
-    jlo.drives[ 1 ].c_cylinder,
-    jlo.drives[ 2 ].c_cylinder,
-    jlo.drives[ 3 ].c_cylinder
-    );
-  fflush( stdout );
 
   if( jlo.drives[ JLO_DRIVE_0 ].c_cylinder != 10 ) {
     printf(
@@ -512,8 +475,6 @@ jlo_drive_change_motor_test( void )
   int i;
   int r = 0;
 
-  test_begin( "jlo_drive_change_motor_test" );
-
   wdfdc_test_reset_events();
   jlo_test_init( &jlo );
 
@@ -540,15 +501,6 @@ jlo_drive_change_motor_test( void )
    */
   jlo_test_dsel_write( &jlo, 0x02 );
 
-  printf(
-    "[JLO] motor after B7=02: A=%d B=%d C=%d D=%d\n",
-    jlo.drives[ 0 ].motoron,
-    jlo.drives[ 1 ].motoron,
-    jlo.drives[ 2 ].motoron,
-    jlo.drives[ 3 ].motoron
-    );
-  fflush( stdout );
-
   if( jlo.drives[ JLO_DRIVE_0 ].motoron ||
       !jlo.drives[ JLO_DRIVE_1 ].motoron ||
       jlo.drives[ JLO_DRIVE_2 ].motoron ||
@@ -565,15 +517,6 @@ jlo_drive_change_motor_test( void )
    * status. C must start and B must stop.
    */
   jlo_test_dsel_write( &jlo, 0x04 );
-
-  printf(
-    "[JLO] motor after B7=04: A=%d B=%d C=%d D=%d\n",
-    jlo.drives[ 0 ].motoron,
-    jlo.drives[ 1 ].motoron,
-    jlo.drives[ 2 ].motoron,
-    jlo.drives[ 3 ].motoron
-    );
-  fflush( stdout );
 
   if( jlo.drives[ JLO_DRIVE_0 ].motoron ||
       jlo.drives[ JLO_DRIVE_1 ].motoron ||
@@ -605,8 +548,6 @@ jlo_multiple_drive_motor_timeout_test( void )
   jlo_test_context jlo;
   int i;
   int r = 0;
-
-  test_begin( "jlo_multiple_drive_motor_timeout_test" );
 
   wdfdc_test_reset_events();
   jlo_test_init( &jlo );
@@ -673,8 +614,6 @@ jlo_busy_dummy_data_read_test( void )
   libspectrum_byte value;
   int r = 0;
 
-  test_begin( "jlo_busy_dummy_data_read_test" );
-
   wdfdc_test_reset_events();
   jlo_test_init( &jlo );
 
@@ -686,14 +625,6 @@ jlo_busy_dummy_data_read_test( void )
   jlo.fdc->data_offset = 7;
 
   value = jlo_test_dr_read( &jlo );
-
-  printf(
-    "[JLO] dummy BF read value=%02x offset=%d DRQ=%d\n",
-    value,
-    jlo.fdc->data_offset,
-    jlo.fdc->datarq
-    );
-  fflush( stdout );
 
   if( value != 0x5a ) {
     printf(
@@ -759,7 +690,7 @@ main( void )
     return 1;
   }
 
-  printf( "\nJLO standalone tests: OK\n" );
+  printf( "JLO standalone tests: OK\n" );
 
   return 0;
 }

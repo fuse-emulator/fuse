@@ -18,7 +18,6 @@
 void wdfdc_test_machine_init( void );
 void wdfdc_test_reset_events( void );
 int wdfdc_test_run_next_event( void );
-void wdfdc_test_dump_events( void );
 int wdfdc_test_event_count( const char *description );
 libspectrum_dword wdfdc_test_event_time( const char *description );
 
@@ -33,17 +32,6 @@ static int datarq_reset_count;
 
 static void prepare_multisector_read( wd_fdc *fdc, fdd_t *drive,
                                       libspectrum_byte sector );
-
-
-/*
- * Print a test heading immediately.
- */
-static void
-test_begin( const char *name )
-{
-  printf( "\n========== %s ==========\n", name );
-  fflush( stdout );
-}
 
 
 /*
@@ -73,12 +61,6 @@ test_set_intrq( wd_fdc *fdc )
   (void)fdc;
 
   intrq_set_count++;
-
-  printf(
-    "[SIGNAL] INTRQ set, count=%d\n",
-    intrq_set_count
-    );
-  fflush( stdout );
 }
 
 
@@ -88,12 +70,6 @@ test_reset_intrq( wd_fdc *fdc )
   (void)fdc;
 
   intrq_reset_count++;
-
-  printf(
-    "[SIGNAL] INTRQ reset, count=%d\n",
-    intrq_reset_count
-    );
-  fflush( stdout );
 }
 
 
@@ -103,12 +79,6 @@ test_set_datarq( wd_fdc *fdc )
   (void)fdc;
 
   datarq_set_count++;
-
-  printf(
-    "[SIGNAL] DRQ set, count=%d\n",
-    datarq_set_count
-    );
-  fflush( stdout );
 }
 
 
@@ -118,12 +88,6 @@ test_reset_datarq( wd_fdc *fdc )
   (void)fdc;
 
   datarq_reset_count++;
-
-  printf(
-    "[SIGNAL] DRQ reset, count=%d\n",
-    datarq_reset_count
-    );
-  fflush( stdout );
 }
 
 
@@ -296,8 +260,6 @@ wd_fdc_standard_step_in_test( void )
   fdd_t drive;
   int r = 0;
 
-  test_begin( "wd_fdc_standard_step_in_test" );
-
   wdfdc_test_reset_events();
   reset_signal_counters();
   init_test_drive( &drive, 10 );
@@ -356,8 +318,6 @@ wd_fdc_standard_step_out_test( void )
   fdd_t drive;
   int r = 0;
 
-  test_begin( "wd_fdc_standard_step_out_test" );
-
   wdfdc_test_reset_events();
   reset_signal_counters();
   init_test_drive( &drive, 10 );
@@ -415,8 +375,6 @@ wd_fdc_callback_step_in_test( void )
   wd_fdc *fdc;
   fdd_t drive;
   int r = 0;
-
-  test_begin( "wd_fdc_callback_step_in_test" );
 
   wdfdc_test_reset_events();
   reset_signal_counters();
@@ -481,8 +439,6 @@ wd_fdc_callback_step_out_test( void )
   wd_fdc *fdc;
   fdd_t drive;
   int r = 0;
-
-  test_begin( "wd_fdc_callback_step_out_test" );
 
   wdfdc_test_reset_events();
   reset_signal_counters();
@@ -551,8 +507,6 @@ wd_fdc_standard_sector_increment_test( void )
   fdd_t drive;
   int r = 0;
 
-  test_begin( "wd_fdc_standard_sector_increment_test" );
-
   wdfdc_test_reset_events();
   reset_signal_counters();
   init_test_drive( &drive, 10 );
@@ -598,8 +552,6 @@ wd_fdc_delayed_sector_increment_test( void )
   fdd_t drive;
   int r = 0;
 
-  test_begin( "wd_fdc_delayed_sector_increment_test" );
-
   wdfdc_test_reset_events();
   reset_signal_counters();
   init_test_drive( &drive, 10 );
@@ -611,22 +563,7 @@ wd_fdc_delayed_sector_increment_test( void )
 
   prepare_multisector_write( fdc, 5 );
 
-  printf(
-    "[TEST] completing multisector write: sector=%u pending=%d\n",
-    (unsigned)fdc->sector_register,
-    fdc->sector_increment_pending
-    );
-  fflush( stdout );
-
   wd_fdc_dr_write( fdc, 0x55 );
-
-  printf(
-    "[TEST] after write: sector=%u pending=%d state=%d\n",
-    (unsigned)fdc->sector_register,
-    fdc->sector_increment_pending,
-    fdc->state
-    );
-  fflush( stdout );
 
   if( fdc->sector_register != 5 ) {
     printf(
@@ -644,22 +581,12 @@ wd_fdc_delayed_sector_increment_test( void )
     r++;
   }
 
-  wdfdc_test_dump_events();
-
   /*
    * sector_increment_pending is processed by wd_fdc_event() before the
    * state-specific dispatch. Setting NONE here prevents the artificial
    * drive from entering a physical next-sector search.
    */
   fdc->state = WD_FDC_STATE_NONE;
-
-  printf(
-    "[TEST] state set to NONE before event; "
-    "sector=%u pending=%d\n",
-    (unsigned)fdc->sector_register,
-    fdc->sector_increment_pending
-    );
-  fflush( stdout );
 
   if( wdfdc_test_run_next_event() ) {
 
@@ -670,14 +597,6 @@ wd_fdc_delayed_sector_increment_test( void )
     r++;
 
   } else {
-
-    printf(
-      "[TEST] after event: sector=%u pending=%d state=%d\n",
-      (unsigned)fdc->sector_register,
-      fdc->sector_increment_pending,
-      fdc->state
-      );
-    fflush( stdout );
 
     if( fdc->sector_register != 6 ) {
       printf(
@@ -717,8 +636,6 @@ wd_fdc_delayed_read_sector_increment_test( void )
   fdd_t drive;
   libspectrum_dword expected_time;
   int r = 0;
-
-  test_begin( "wd_fdc_delayed_read_sector_increment_test" );
 
   wdfdc_test_reset_events();
   reset_signal_counters();
@@ -821,8 +738,6 @@ wd_fdc_standard_force_interrupt_test( void )
   fdd_t drive;
   int r = 0;
 
-  test_begin( "wd_fdc_standard_force_interrupt_test" );
-
   wdfdc_test_reset_events();
   reset_signal_counters();
   init_test_drive( &drive, 10 );
@@ -831,32 +746,10 @@ wd_fdc_standard_force_interrupt_test( void )
 
   prepare_force_interrupt( fdc );
 
-  printf(
-    "[TEST] before Force Interrupt: status=%02x type=%d "
-    "state=%d drq=%d\n",
-    (unsigned)fdc->status_register,
-    fdc->status_type,
-    fdc->state,
-    fdc->datarq
-    );
-  fflush( stdout );
-
   /*
    * 0xd0 = Force Interrupt without requesting immediate INTRQ.
    */
   wd_fdc_cr_write( fdc, 0xd0 );
-
-  printf(
-    "[TEST] after Force Interrupt: status=%02x type=%d "
-    "state=%d drq=%d DRQ-reset=%d INTRQ-set=%d\n",
-    (unsigned)fdc->status_register,
-    fdc->status_type,
-    fdc->state,
-    fdc->datarq,
-    datarq_reset_count,
-    intrq_set_count
-    );
-  fflush( stdout );
 
   if( fdc->state != WD_FDC_STATE_NONE ) {
     printf(
@@ -971,8 +864,6 @@ wd_fdc_preserve_status_force_interrupt_test( void )
   fdd_t drive;
   int r = 0;
 
-  test_begin( "wd_fdc_preserve_status_force_interrupt_test" );
-
   wdfdc_test_reset_events();
   reset_signal_counters();
   init_test_drive( &drive, 10 );
@@ -984,34 +875,7 @@ wd_fdc_preserve_status_force_interrupt_test( void )
 
   prepare_force_interrupt( fdc );
 
-  printf(
-    "[TEST] before Force Interrupt: status=%02x type=%d "
-    "state=%d drq=%d pending=%d read_id=%d\n",
-    (unsigned)fdc->status_register,
-    fdc->status_type,
-    fdc->state,
-    fdc->datarq,
-    fdc->sector_increment_pending,
-    fdc->read_id
-    );
-  fflush( stdout );
-
   wd_fdc_cr_write( fdc, 0xd0 );
-
-  printf(
-    "[TEST] after Force Interrupt: status=%02x type=%d "
-    "state=%d drq=%d pending=%d read_id=%d "
-    "DRQ-reset=%d INTRQ-set=%d\n",
-    (unsigned)fdc->status_register,
-    fdc->status_type,
-    fdc->state,
-    fdc->datarq,
-    fdc->sector_increment_pending,
-    fdc->read_id,
-    datarq_reset_count,
-    intrq_set_count
-    );
-  fflush( stdout );
 
   if( fdc->state != WD_FDC_STATE_NONE ) {
     printf(
@@ -1145,8 +1009,6 @@ wd_fdc_force_interrupt_intrq_test( void )
   fdd_t drive;
   int r = 0;
 
-  test_begin( "wd_fdc_force_interrupt_intrq_test" );
-
   wdfdc_test_reset_events();
   reset_signal_counters();
   init_test_drive( &drive, 10 );
@@ -1158,29 +1020,10 @@ wd_fdc_force_interrupt_intrq_test( void )
 
   prepare_force_interrupt( fdc );
 
-  printf(
-    "[TEST] before D8: intrq=%d drq=%d status=%02x\n",
-    fdc->intrq,
-    fdc->datarq,
-    (unsigned)fdc->status_register
-    );
-  fflush( stdout );
-
   /*
    * D8 = Force Interrupt + immediate interrupt.
    */
   wd_fdc_cr_write( fdc, 0xd8 );
-
-  printf(
-    "[TEST] after D8: intrq=%d drq=%d "
-    "INTRQ-set=%d DRQ-reset=%d status=%02x\n",
-    fdc->intrq,
-    fdc->datarq,
-    intrq_set_count,
-    datarq_reset_count,
-    (unsigned)fdc->status_register
-    );
-  fflush( stdout );
 
   if( intrq_set_count != 1 ) {
     printf(
@@ -1253,8 +1096,6 @@ wd_fdc_force_interrupt_motor_timeout_test( void )
   wd_fdc *fdc;
   fdd_t drive;
   int r = 0;
-
-  test_begin( "wd_fdc_force_interrupt_motor_timeout_test" );
 
   wdfdc_test_reset_events();
   reset_signal_counters();
@@ -1389,7 +1230,7 @@ main( void )
     return 1;
   }
 
-  printf( "\nWD FDC standalone tests: OK\n" );
+  printf( "WD FDC standalone tests: OK\n" );
 
   return 0;
 }
