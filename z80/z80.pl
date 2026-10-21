@@ -1134,8 +1134,15 @@ sub opcode_shift (@) {
 	contend_read( PC, 3 );
 	z80.memptr.w =
 	    REGISTER + (libspectrum_signed_byte)readbyte_internal( PC );
+	/* These two reads are not M1 cycles. Read before unpaging JLO. */
+	if( jlo_active &&
+	    ( ( PC & 0xfff8 ) == 0x0008 || ( PC & 0xfff8 ) == 0x0068 ) )
+	  jlo_unpage();
 	PC++; contend_read( PC, 3 );
 	opcode3 = readbyte_internal( PC );
+	if( jlo_active &&
+	    ( ( PC & 0xfff8 ) == 0x0008 || ( PC & 0xfff8 ) == 0x0068 ) )
+	  jlo_unpage();
 	contend_read_no_mreq( PC, 1 ); contend_read_no_mreq( PC, 1 ); PC++;
 #ifdef HAVE_ENOUGH_MEMORY
 	switch(opcode3) {
@@ -1150,6 +1157,10 @@ shift
 	print << "shift";
       {
 	libspectrum_byte opcode2;
+	/* Each prefix continuation has its own M1 cycle. */
+	if( jlo_available &&
+	    ( ( PC & 0xfff8 ) == 0x0008 || ( PC & 0xfff8 ) == 0x0068 ) )
+	  jlo_page();
 	contend_read( PC, 4 );
 	opcode2 = readbyte_internal( PC ); PC++;
 	R++;

@@ -496,6 +496,13 @@ writebyte( libspectrum_word address, libspectrum_byte b )
   tstates += 3;
 
   writebyte_internal( address, b );
+
+  /* Non-M1 writes also release the Board B latch, even when the mapped
+     ROM ignores the write. Internal/debugger writes are not bus cycles. */
+  if( jlo_active &&
+      ( ( address & 0xfff8 ) == 0x0008 ||
+        ( address & 0xfff8 ) == 0x0068 ) )
+    jlo_unpage();
 }
 
 void

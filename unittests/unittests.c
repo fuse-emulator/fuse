@@ -2784,6 +2784,210 @@ cleanup:
   return r;
 }
 
+/* Execute one complete instruction, including its prefixes, without
+   dispatching or changing the machine's pending events. */
+static void
+jlo_test_opcode( libspectrum_word address )
+{
+  libspectrum_dword saved_tstates = tstates;
+  libspectrum_dword saved_next_event = event_next_event;
+
+  PC = address;
+  z80.halted = z80.iff2_read = 0;
+  IFF1 = IFF2 = 0;
+  tstates = 0;
+  event_next_event = 1;
+  z80_do_opcodes();
+  tstates = saved_tstates;
+  event_next_event = saved_next_event;
+}
+
+static int
+jlo_banking_test( void )
+{
+  static const libspectrum_word ranges[] = { 0x0008, 0x0068 };
+  static const libspectrum_word outside[] = {
+    0x0007, 0x0010, 0x0067, 0x0070, 0x0108, 0x0168,
+  };
+  static const struct {
+    libspectrum_byte prefix, board_opcode, home_opcode;
+  } prefixes[] = {
+    { 0xcb, 0x00, 0x08 }, /* RLC B, not RRC B */
+    { 0xed, 0x44, 0x47 }, /* NEG, not LD I,A */
+    { 0xdd, 0xe9, 0x00 }, /* JP (IX), not NOP */
+    { 0xfd, 0xe9, 0x00 }, /* JP (IY), not NOP */
+  };
+  libspectrum_machine old_machine = machine_current->machine;
+  char *old_rom = settings_current.rom_jlo;
+  char *old_home = settings_current.rom_tc2068_0;
+  int old_jlo = settings_current.jlo;
+  int old_writable = settings_current.writable_roms;
+  char rom[] = "/tmp/fuse-jlo-bank-XXXXXX";
+  char home[] = "/tmp/fuse-jlo-home-XXXXXX";
+  libspectrum_byte *board_rom, *home_rom;
+  libspectrum_word address;
+  size_t range, prefix, i;
+  int offset, indexed, operand, r = 0;
+
+  if( create_rom_fixture( rom, 0x2000, 0 ) ||
+      create_rom_fixture( home, 0x4000, 0 ) ) {
+    unlink( rom ); unlink( home ); return 1;
+  }
+  settings_current.rom_jlo = rom;
+  settings_current.rom_tc2068_0 = home;
+  settings_current.jlo = 1;
+  settings_current.writable_roms = 0;
+  if( machine_select( LIBSPECTRUM_MACHINE_TC2068 ) || !jlo_available ) {
+    r++; goto cleanup;
+  }
+  board_rom = memory_map_read[0].page;
+  home_rom = memory_map_rom[0].page;
+
+  for( range = 0; range < ARRAY_SIZE( ranges ); range++ ) {
+    for( offset = 0; offset < 8; offset++ ) {
+      address = ranges[range] + offset;
+      board_rom[address] = 0x00; /* NOP */
+      home_rom[address] = 0x04;  /* INC B */
+      B = 0x10;
+      jlo_unpage();
+      jlo_test_opcode( address );
+      if( !jlo_active || B != 0x10 || PC != address + 1 ) {
+        printf( "jlo_banking_test: M1 at %04x did not fetch Board B\n", address );
+        r++;
+      }
+
+      board_rom[address] = 0x11;
+      home_rom[address] = 0x22;
+      jlo_page();
+      if( readbyte( address ) != 0x11 || jlo_active ||
+          readbyte_internal( address ) != 0x22 ) {
+        printf( "jlo_banking_test: read at %04x did not unpage after data\n",
+                address );
+        r++;
+      }
+      jlo_page();
+      writebyte( address, 0x33 );
+      if( jlo_active || board_rom[address] != 0x11 || home_rom[address] != 0x22 ) {
+        printf( "jlo_banking_test: write at %04x did not unpage protected ROM\n",
+                address );
+        r++;
+      }
+      /* Debugger/internal memory inspection is not a CPU bus cycle. */
+      jlo_page();
+      if( readbyte_internal( address ) != 0x11 ) r++;
+      writebyte_internal( address, 0x33 );
+      if( !jlo_active || board_rom[address] != 0x11 ) r++;
+    }
+
+    address = ranges[range];
+    for( prefix = 0; prefix < ARRAY_SIZE( prefixes ); prefix++ ) {
+      home_rom[address - 1] = prefixes[prefix].prefix;
+      home_rom[address] = prefixes[prefix].home_opcode;
+      board_rom[address] = prefixes[prefix].board_opcode;
+      A = 1; B = 0x80; IX = IY = 0x9000;
+      jlo_unpage();
+      jlo_test_opcode( address - 1 );
+      if( !jlo_active ||
+          ( prefix == 0 && ( B != 1 || PC != address + 1 ) ) ||
+          ( prefix == 1 && ( A != 0xff || PC != address + 1 ) ) ||
+          ( prefix >= 2 && PC != 0x9000 ) ) {
+        printf( "jlo_banking_test: prefix %02x missed M1 at %04x\n",
+                prefixes[prefix].prefix, address );
+        r++;
+      }
+    }
+    /* Ignored/repeated index prefixes still generate separate M1 cycles. */
+    home_rom[address - 2] = 0xdd;
+    home_rom[address - 1] = 0xfd;
+    board_rom[address] = 0xe9;
+    IY = 0x9000;
+    jlo_unpage();
+    jlo_test_opcode( address - 2 );
+    if( !jlo_active || PC != 0x9000 ) {
+      printf( "jlo_banking_test: repeated prefix missed M1 at %04x\n", address );
+      r++;
+    }
+
+    /* In DDCB/FDCB instructions neither the displacement nor the final
+       opcode is fetched with M1. Both must read the current bank and then
+       unpage it, without treating the final opcode as a new M1 fetch. */
+    for( indexed = 0; indexed < 2; indexed++ ) {
+      for( operand = 0; operand < 2; operand++ ) {
+        libspectrum_word start = address - ( operand ? 3 : 2 );
+        memset( board_rom, 0, 0x80 );
+        memset( home_rom, 0, 0x80 );
+        board_rom[start] = home_rom[start] = indexed ? 0xfd : 0xdd;
+        board_rom[start + 1] = home_rom[start + 1] = 0xcb;
+        board_rom[start + 2] = home_rom[start + 2] = 1;
+        /* The opcode must come from Home after a displacement unpage,
+           but from Board B before a final-opcode unpage. */
+        board_rom[start + 3] = operand ? 0x00 : 0x08;
+        home_rom[start + 3] = operand ? 0x08 : 0x00;
+        IX = IY = 0x8000;
+        writebyte_internal( 0x8001, 0x80 );
+        jlo_page();
+        jlo_test_opcode( start );
+        if( jlo_active || B != 1 || readbyte_internal( 0x8001 ) != 1 ||
+            PC != start + 4 ) {
+          printf( "jlo_banking_test: %s %s read at %04x did not unpage\n",
+                  indexed ? "FDCB" : "DDCB",
+                  operand ? "opcode" : "displacement", address );
+          r++;
+        }
+      }
+    }
+
+    /* Exercise an actual CPU write as well as the memory access API. */
+    writebyte_internal( 0x8000, 0x32 ); /* LD (nn),A */
+    writebyte_internal( 0x8001, address );
+    writebyte_internal( 0x8002, address >> 8 );
+    jlo_page();
+    jlo_test_opcode( 0x8000 );
+    if( jlo_active || PC != 0x8003 ) {
+      printf( "jlo_banking_test: CPU write at %04x did not unpage\n", address );
+      r++;
+    }
+  }
+
+  for( i = 0; i < ARRAY_SIZE( outside ); i++ ) {
+    home_rom[outside[i]] = 0x00; /* NOP */
+    jlo_unpage();
+    jlo_test_opcode( outside[i] );
+    if( jlo_active || PC != outside[i] + 1 ) {
+      printf( "jlo_banking_test: non-decoded M1 at %04x paged in\n", outside[i] );
+      r++;
+    }
+    jlo_page();
+    readbyte( outside[i] );
+    writebyte( outside[i], 0 );
+    if( !jlo_active ) {
+      printf( "jlo_banking_test: non-decoded address %04x unpaged\n", outside[i] );
+      r++;
+    }
+  }
+  /* JP/RST 0 must not be mistaken for a physical reset. */
+  jlo_unpage();
+  writebyte_internal( 0x8000, 0xc3 ); /* JP 0 */
+  writebyte_internal( 0x8001, 0 );
+  writebyte_internal( 0x8002, 0 );
+  jlo_test_opcode( 0x8000 );
+  if( jlo_active || PC != 0 ) r++;
+  writebyte_internal( 0x8000, 0xc7 ); /* RST 0 */
+  SP = 0x9000;
+  jlo_test_opcode( 0x8000 );
+  if( jlo_active || PC != 0 ) r++;
+
+cleanup:
+  settings_current.jlo = old_jlo;
+  settings_current.rom_jlo = old_rom;
+  settings_current.rom_tc2068_0 = old_home;
+  settings_current.writable_roms = old_writable;
+  if( machine_select( old_machine ) ) r++;
+  unlink( rom ); unlink( home );
+  if( r ) printf( "jlo_banking_test failed: %d errors\n", r );
+  return r;
+}
+
 static int
 machine_load_rom_bank_with_sizes_test( void )
 {
@@ -4342,6 +4546,7 @@ unittests_run( void )
   r += machine_load_rom_bank_with_sizes_test();
   r += jlo_snapshot_loss_test();
   r += jlo_reset_test();
+  r += jlo_banking_test();
   r += utils_file_lifecycle_test();
   r += utils_file_read_failure_test();
   r += utils_file_harddisk_identify_test();
