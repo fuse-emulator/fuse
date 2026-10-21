@@ -215,9 +215,10 @@ jlo_dr_write( libspectrum_word port GCC_UNUSED,
 }
 
 /*
- * B7: drive/side select
+ * B7: drive/density/side select
  *
  * bits 0..3 = drive select mask
+ * bit 6     = density (0 = double/MFM, 1 = single/FM)
  * bit 7     = side select
  */
 
@@ -344,7 +345,7 @@ jlo_init( void *context GCC_UNUSED )
   jlo_dsel = 0x01;
 
   /*
-   * Same density setting used by Fuse's Opus WD1770.
+   * B7 resets to 0x01, selecting double density (MFM).
    */
   jlo_fdc->dden = 1;
 
@@ -453,12 +454,9 @@ jlo_reset( int hard_reset )
   wd_fdc_master_reset( jlo_fdc );
   jlo_motor( 0 );
 
-  jlo_dsel = 0x01;
-
-  for( i = 0; i < JLO_NUM_DRIVES; i++ )
-    fdd_select( &jlo_drives[ i ], i == 0 );
-
-  jlo_fdc->current_drive = &jlo_drives[ 0 ];
+  /* Reset all B7 outputs together, including density after an FM command. */
+  jlo_logic_select( jlo_fdc, jlo_drives, &jlo_unselected_drive,
+                    &jlo_dsel, 0x01 );
 
   jlo_available = 1;
 

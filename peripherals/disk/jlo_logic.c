@@ -44,6 +44,10 @@ jlo_logic_select( wd_fdc *fdc, fdd_t drives[ JLO_NUM_DRIVES ],
 
   *dsel = value;
 
+  /* B7 bit 6 drives /DDEN: 0 selects MFM, 1 selects FM. The WD core's
+     dden field is logical MFM enable, not the physical active-low pin. */
+  fdc->dden = ( value & 0x40 ) ? 0 : 1;
+
   for( i = 0; i < JLO_NUM_DRIVES; i++ ) {
     int selected = ( value & ( 1 << i ) ) ? 1 : 0;
 

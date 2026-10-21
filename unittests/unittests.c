@@ -2749,7 +2749,8 @@ jlo_reset_test( void )
     writeport_internal( 0x00af, 0x34 );
     writeport_internal( 0x00bf, 0x56 );
     /* A reset must stop motors and return from another selected drive. */
-    writeport_internal( 0x00b7, 0x08 );
+    /* Select drive 3, side 1 and FM before checking reset defaults. */
+    writeport_internal( 0x00b7, 0xc8 );
     fdd_motoron( drive, 1 );
 
     if( machine_reset( hard_reset ) ) { r++; break; }
@@ -2757,7 +2758,7 @@ jlo_reset_test( void )
         !!machine_current->ram.romcs != hard_reset ) r++;
     for( i = 0; i < JLO_NUM_DRIVES; i++ ) {
       fdd_t *d = jlo_get_fdd( (jlo_drive_number)i );
-      if( d->selected != ( i == 0 ) || d->motoron ) r++;
+      if( d->selected != ( i == 0 ) || d->motoron || d->c_head ) r++;
     }
     if( !drive->loaded || drive->disk.data != media ) r++;
     if( readport_internal( 0x009f ) || readport_internal( 0x00af ) ||

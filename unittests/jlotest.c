@@ -276,6 +276,51 @@ jlo_drive_select_test( void )
 }
 
 
+/* Verify every B7 value, including density-only changes and unused bits. */
+static int
+jlo_density_select_test( void )
+{
+  jlo_test_context jlo;
+  int value, i, r = 0;
+
+  wdfdc_test_reset_events();
+  jlo_test_init( &jlo );
+
+  for( value = 0; value < 256; value++ ) {
+    fdd_t *current;
+    int mfm = !( value & 0x40 );
+
+    jlo_test_dsel_write( &jlo, value );
+    current = jlo.fdc->current_drive;
+    if( jlo.fdc->dden != mfm || jlo.dsel != value ) {
+      printf( "jlo_density_select_test: B7=%02x did not select %s\n",
+              value, mfm ? "MFM" : "FM" );
+      r++;
+      break;
+    }
+    /* Bit 6 alone must not change the selected drives, head or current drive. */
+    jlo_test_dsel_write( &jlo, value ^ 0x40 );
+    if( jlo.fdc->dden != !mfm || jlo.fdc->current_drive != current ) {
+      printf( "jlo_density_select_test: density-only toggle of B7=%02x failed\n",
+              value );
+      r++;
+      break;
+    }
+    for( i = 0; i < JLO_NUM_DRIVES; i++ ) {
+      if( jlo.drives[i].selected != !!( value & ( 1 << i ) ) ||
+          jlo.drives[i].c_head != !!( value & 0x80 ) ) {
+        printf( "jlo_density_select_test: B7=%02x changed drive %d wiring\n",
+                value, i );
+        r++;
+      }
+    }
+  }
+
+  jlo_test_end( &jlo );
+  return r;
+}
+
+
 /*
  * Verify that current_drive is not unnecessarily changed.
  *
@@ -673,6 +718,7 @@ main( void )
   fdd_register_startup();
 
   r += jlo_drive_select_test();
+  r += jlo_density_select_test();
   r += jlo_current_drive_retention_test();
   r += jlo_multiple_drive_step_test();
   r += jlo_drive_change_motor_test();
