@@ -1,5 +1,16 @@
 Note that most files in this directory are _not_ covered by the GNU GPL.
 
+JLO SAFE DOS v2.65 (safe265.rom) is NOT distributed with Fuse. Obtain it
+separately and select it using --rom-jlo FILE. The download and original
+copyright notice are available at:
+https://www.timexsinclair.com/computer_media/jlo-safe-dos-v2-65/index.html
+
+SAFE is copyright (c) 1985-1993 John L. Oliger, not public domain. His
+April 1996 freeware release retains copyright, requires attribution and
+identification of modified releases, and permits uploading the complete
+archive with all its files, including the readme. Consult the original
+notice before redistributing SAFE; the ROM is not covered by Fuse's GPL.
+
 The following licenses apply:
 
 128-0.rom

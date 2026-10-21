@@ -32,6 +32,7 @@ What Fuse does have:
   storage interfaces.
 * Emulation of the Beta 128, +D, Didaktik 80/40, DISCiPLE and Opus Discovery
   disk interfaces.
+* Emulation of the JLO Disk System for TC2068 and TS2068 machines.
 * Emulation of the Spectranet and SpeccyBoot network interfaces.
 * Emulation of the TTX2000 S Teletext adapter.
 * Support for the Recreated ZX Spectrum Bluetooth keyboard.

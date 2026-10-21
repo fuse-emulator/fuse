@@ -5631,6 +5631,40 @@ Other external sound interfaces are not routed through this response.
 .\"
 .\"------------------------------------------------------------------
 .\"
+.SH JLO DISK SYSTEM EMULATION
+The JLO Disk System, also known as the Oliger Disk System, was produced
+by the John Oliger Company for the Timex/Sinclair\ 2068. Board\ A provides
+the WD1770 floppy disk controller, while Board\ B provides 8\ KiB each of
+ROM and RAM. Its SAFE Disk BASIC firmware extends the computer's BASIC
+with disk filing commands.
+.PP
+Fuse emulates both boards and four drives numbered 0 to 3. It may only be
+used with TC2068 and TS2068 emulation. Enable the
+.I "JLO Disk System interface"
+option in the
+.I "Options, Peripherals, Disk..."
+dialog. Drive geometry is configured in the Disk Options dialog. See the
+.B "DISK FILE FORMATS"
+section for supported disk image formats.
+.PP
+With SAFE, use the cassette SAVE and LOAD syntax with a slash before
+the filename. For example,
+.RI ` "SAVE /\(dqname\(dq" '
+and
+.RI ` "LOAD /\(dqname\(dq" '
+save and load a BASIC program. New blank disks must first be formatted
+using
+.RI ` "FORMAT /\(dqdiskname\(dq" '.
+Use
+.RI ` CAT '
+to list the disk contents.
+.PP
+Historical documentation, including the original interface manual and
+SAFE source listings, is indexed at
+.IR https://www.timexsinclair.com/product/disk-board-b-with-nmi-save/index.html .
+.\"
+.\"------------------------------------------------------------------
+.\"
 .SH OPUS DISCOVERY EMULATION
 .PP
 By default, Fuse emulates the Opus Discovery interface with the optional 2k RAM
@@ -5757,8 +5791,8 @@ Caps Shift automatically.
 .\"
 .SH DISK FILE FORMATS
 .PP
-Fuse supports several disk image formats in its +D, Didaktik, DISCiPLE and
-Beta\ 128 emulation.
+Fuse supports several disk image formats in its +D, Didaktik, DISCiPLE,
+JLO and Beta\ 128 emulation.
 .PP
 For reading:
 .PP

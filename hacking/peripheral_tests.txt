@@ -61,6 +61,22 @@ Interface 1
 * Enter LOAD *"m";1;"Success"
 * You should see "Congraturation! You sucsess!"
 
+JLO Disk System
+
+* Obtain the external 8 KiB SAFE 2.65 ROM and read its copyright notice:
+  https://www.timexsinclair.com/computer_media/jlo-safe-dos-v2-65/index.html
+  SAFE is copyrighted freeware and is not distributed with Fuse.
+* Start fuse as
+  ./fuse --machine ts2068 --jlo --rom-jlo /path/to/safe265.rom --jlo0disk-new
+  Use --machine 2068 for a TC2068. Other machine models do not enable JLO.
+* Only on the new blank disk, enter FORMAT /"TEST", then CAT.
+* Enter a BASIC program, for example 10 PRINT "JLO".
+* Enter SAVE /"TEST", then CAT and check that TEST is listed.
+* Enter NEW, then LOAD /"TEST" and RUN. The program should print "JLO".
+* Use Media, Disk, JLO, Drive 0:, Save As... to save the image (for example
+  as .udi). Eject and reinsert that image, then repeat LOAD and RUN to
+  check that the image survives a save/reopen round trip.
+
 Opus
 
 * Start fuse as ./fuse --opus --opusdisk lib/tests/success.opd
