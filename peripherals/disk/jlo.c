@@ -75,7 +75,6 @@ static void jlo_reset( int hard_reset );
 static void jlo_memory_map( void );
 static void jlo_activate( void );
 static void jlo_to_snapshot( libspectrum_snap *snap );
-static ui_media_drive_info_t jlo_ui_drives[ JLO_NUM_DRIVES ];
 static void jlo_step( int direction );
 static void jlo_motor( int on );
 /*

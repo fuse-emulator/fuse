@@ -26,4 +26,4 @@ int jlo_disk_insert( jlo_drive_number which, const char *filename,
                      int autoload );
 fdd_t *jlo_get_fdd( jlo_drive_number which );
 
-#endif
+#endif /* #ifndef FUSE_JLO_H */

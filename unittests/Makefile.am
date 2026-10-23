@@ -301,7 +301,6 @@ unittests_wdfdctest_SOURCES = \
         peripherals/disk/wd_fdc.c \
         peripherals/disk/fdd.c \
         peripherals/disk/crc.c
-
 unittests_wdfdctest_LDADD = $(LIBSPECTRUM_LIBS)
 
 unittests_jlotest_SOURCES = \
@@ -311,6 +310,5 @@ unittests_jlotest_SOURCES = \
         peripherals/disk/wd_fdc.c \
         peripherals/disk/fdd.c \
         peripherals/disk/crc.c
-
 unittests_jlotest_LDADD = $(LIBSPECTRUM_LIBS)
 endif
