@@ -19,6 +19,8 @@ void wdfdc_test_machine_init( void );
 void wdfdc_test_reset_events( void );
 int wdfdc_test_run_next_event( void );
 int wdfdc_test_run_event( const char *description );
+int wdfdc_test_event_count( const char *description );
+libspectrum_dword wdfdc_test_event_time( const char *description );
 
 
 typedef struct jlo_test_context {
@@ -656,20 +658,29 @@ static int
 jlo_busy_dummy_data_read_test( void )
 {
   jlo_test_context jlo;
-  libspectrum_byte value;
-  int r = 0;
+  libspectrum_byte value = 0;
+  libspectrum_dword event_time;
+  int i, r = 0;
 
   wdfdc_test_reset_events();
   jlo_test_init( &jlo );
 
-  jlo.fdc->state = WD_FDC_STATE_READ;
-  jlo.fdc->status_register |= WD_FDC_SR_BUSY;
-
-  jlo.fdc->datarq = 0;
-  jlo.fdc->data_register = 0x5a;
+  /* Start a real command with a spin-up continuation and no selected
+     media. Dummy reads must leave that continuation queued and runnable. */
+  jlo_test_dsel_write( &jlo, 0x00 );
+  wd_fdc_dr_write( jlo.fdc, 0x5a );
+  wd_fdc_cr_write( jlo.fdc, 0x80 );
   jlo.fdc->data_offset = 7;
+  event_time = wdfdc_test_event_time( "WD FDC event" );
 
-  value = jlo_test_dr_read( &jlo );
+  for( i = 0; i < 16; i++ )
+    value = jlo_test_dr_read( &jlo );
+
+  if( wdfdc_test_event_count( "WD FDC event" ) != 1 ||
+      wdfdc_test_event_time( "WD FDC event" ) != event_time ) {
+    printf( "jlo_busy_dummy_data_read_test: dummy reads changed pending event\n" );
+    r++;
+  }
 
   if( value != 0x5a ) {
     printf(
@@ -692,6 +703,14 @@ jlo_busy_dummy_data_read_test( void )
     printf(
       "jlo_busy_dummy_data_read_test: DRQ changed unexpectedly\n"
       );
+    r++;
+  }
+
+  for( i = 0; i < 16 && ( jlo.fdc->status_register & WD_FDC_SR_BUSY ); i++ ) {
+    if( wdfdc_test_run_next_event() ) break;
+  }
+  if( jlo.fdc->status_register & WD_FDC_SR_BUSY ) {
+    printf( "jlo_busy_dummy_data_read_test: pending command did not complete\n" );
     r++;
   }
 

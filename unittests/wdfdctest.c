@@ -7,6 +7,7 @@
 
 #include "libspectrum.h"
 
+#include "bitmap.h"
 #include "event.h"
 #include "machine.h"
 #include "peripherals/disk/fdd.h"
@@ -1183,6 +1184,227 @@ wd_fdc_force_interrupt_motor_timeout_test( void )
 }
 
 
+/* Reference: WD1770/1772 datasheet, Type II/IV Commands and Status Register:
+   https://hxc2001.com/download/datasheet/floppy/thirdparty/FDC/WesternDigital/WD1772.pdf
+
+   A synthetic MFM track with two 128-byte sectors. CRC constants use the
+   WD polynomial x^16+x^12+x^5+1, initial value 0xffff, including A1 marks. */
+static void
+prepare_transfer_track( fdd_t *drive, libspectrum_byte *track,
+                         libspectrum_byte *clocks, libspectrum_byte *fm,
+                         libspectrum_byte *weak )
+{
+  static const libspectrum_byte id_crc[][2] = { { 0xea, 0x2d }, { 0xbf, 0x7e } };
+  static const libspectrum_byte data_crc[][2] = { { 0x65, 0xf5 }, { 0x53, 0x28 } };
+  int sector, base, i;
+
+  memset( track, 0x4e, 6250 );
+  memset( clocks, 0, DISK_CLEN( 6250 ) );
+  memset( fm, 0, DISK_CLEN( 6250 ) );
+  memset( weak, 0, DISK_CLEN( 6250 ) );
+  for( sector = 0; sector < 2; sector++ ) {
+    base = sector * 256;
+    for( i = 16; i < 19; i++ ) {
+      track[base + i] = 0xa1;
+      bitmap_set( clocks, base + i );
+    }
+    track[base + 19] = 0xfe;
+    track[base + 20] = track[base + 21] = track[base + 23] = 0;
+    track[base + 22] = sector + 1;
+    memcpy( track + base + 24, id_crc[sector], 2 );
+    memset( track + base + 48, 0, 12 );
+    for( i = 60; i < 63; i++ ) {
+      track[base + i] = 0xa1;
+      bitmap_set( clocks, base + i );
+    }
+    track[base + 63] = 0xfb;
+    memset( track + base + 64, ( sector + 1 ) * 0x11, 128 );
+    memcpy( track + base + 192, data_crc[sector], 2 );
+  }
+
+  init_test_drive( drive, 0 );
+  drive->selected = drive->loaded = drive->ready = drive->loadhead = 1;
+  drive->disk.track = track;
+  drive->disk.clocks = clocks;
+  drive->disk.fm = fm;
+  drive->disk.weak = weak;
+  drive->disk.c_bpt = 6250;
+  fdd_motoron( drive, 1 );
+}
+
+/* Advance byte timing through real FDD/WD callbacks in the bounded test
+   scheduler. Do not manufacture the next sector's state or register values. */
+static int
+transfer_wait_drq( wd_fdc *fdc, int advance )
+{
+  int events;
+
+  for( events = 0; events < 64; events++ ) {
+    if( !( fdc->status_register & WD_FDC_SR_BUSY ) ) return 1;
+    if( !advance && fdc->datarq ) return 0;
+    if( wdfdc_test_run_next_event() ) return 1;
+    advance = 0;
+  }
+  return 1;
+}
+
+static int
+wd_fdc_multisector_transfer_test( int write, int delayed )
+{
+  libspectrum_byte track[6250], clocks[DISK_CLEN( 6250 )];
+  libspectrum_byte fm[DISK_CLEN( 6250 )], weak[DISK_CLEN( 6250 )];
+  fdd_t drive;
+  wd_fdc *fdc;
+  unsigned int flags = WD_FLAG_DRQ;
+  int sector, byte, r = 0;
+
+  wdfdc_test_reset_events();
+  reset_signal_counters();
+  prepare_transfer_track( &drive, track, clocks, fm, weak );
+  if( delayed )
+    flags |= WD_FLAG_DELAY_SECTOR_INC | WD_FLAG_PRESERVE_STATUS_ON_FORCE_INTERRUPT;
+  fdc = init_test_fdc_flags( &drive, flags );
+  fdc->dden = 1;
+  wd_fdc_sec_write( fdc, 1 );
+  wd_fdc_cr_write( fdc, write ? 0xb8 : 0x98 );
+
+  for( sector = 1; sector <= 2; sector++ ) {
+    for( byte = 0; byte < 128; byte++ ) {
+      if( transfer_wait_drq( fdc, sector != 1 || byte != 0 ) ||
+          fdc->sector_register != sector || fdc->sector_increment_pending ) {
+        printf( "multisector %s (delayed=%d): sector %d byte %d not ready\n",
+                write ? "write" : "read", delayed, sector, byte );
+        r++; goto cleanup;
+      }
+      if( write ) {
+        wd_fdc_dr_write( fdc, ( sector + 2 ) * 0x11 );
+      } else if( wd_fdc_dr_read( fdc ) != sector * 0x11 ) {
+        printf( "multisector read (delayed=%d): sector %d byte %d mismatch\n",
+                delayed, sector, byte );
+        r++; goto cleanup;
+      }
+    }
+    if( !( fdc->status_register & WD_FDC_SR_BUSY ) || fdc->datarq ||
+        fdc->sector_register != sector + !delayed ||
+        fdc->sector_increment_pending != delayed ||
+        ( delayed && wdfdc_test_event_count( "WD FDC event" ) != 1 ) ) {
+      printf( "multisector %s (delayed=%d): invalid sector %d continuation\n",
+              write ? "write" : "read", delayed, sector );
+      r++; goto cleanup;
+    }
+  }
+  if( write ) {
+    for( sector = 0; sector < 2; sector++ ) {
+      for( byte = 0; byte < 128; byte++ ) {
+        if( track[sector * 256 + 64 + byte] != ( sector + 3 ) * 0x11 ) {
+          printf( "multisector write: sector %d byte %d was not stored\n",
+                  sector + 1, byte );
+          r++; goto cleanup;
+        }
+      }
+    }
+  }
+
+  /* SAFE ends a multisector command using D0 before asking for sector 3. */
+  wd_fdc_cr_write( fdc, 0xd0 );
+  if( ( fdc->status_register & WD_FDC_SR_BUSY ) || fdc->datarq || fdc->intrq ||
+      wdfdc_test_event_count( "WD FDC event" ) ||
+      ( delayed && ( fdc->sector_increment_pending ||
+                     wdfdc_test_event_count( "WD FDC timeout" ) ) ) ) {
+    printf( "multisector %s (delayed=%d): D0 left transfer activity pending\n",
+            write ? "write" : "read", delayed );
+    r++;
+  }
+  if( write ) {
+    /* Read both records back through the controller, checking the written
+       address marks and CRCs as well as the payload and next-sector path. */
+    wd_fdc_sec_write( fdc, 1 );
+    wd_fdc_cr_write( fdc, 0x98 );
+    for( sector = 1; sector <= 2; sector++ ) {
+      for( byte = 0; byte < 128; byte++ ) {
+        if( transfer_wait_drq( fdc, sector != 1 || byte != 0 ) ||
+            wd_fdc_dr_read( fdc ) != ( sector + 2 ) * 0x11 ) {
+          printf( "multisector write/readback (delayed=%d): "
+                  "sector %d byte %d failed\n", delayed, sector, byte );
+          r++; goto cleanup;
+        }
+      }
+    }
+    if( !( fdc->status_register & WD_FDC_SR_BUSY ) ||
+        ( fdc->status_register & WD_FDC_SR_CRCERR ) ) r++;
+    wd_fdc_cr_write( fdc, 0xd0 );
+  }
+
+cleanup:
+  fdd_motoron( &drive, 0 );
+  free_test_fdc( fdc );
+  return r;
+}
+
+/* WD1770 Status Register: Force Interrupt while idle returns Type I
+   status even when active-command status preservation is enabled. */
+static int
+wd_fdc_idle_force_interrupt_test( void )
+{
+  fdd_t drive;
+  wd_fdc *fdc;
+  int r = 0;
+
+  wdfdc_test_reset_events();
+  reset_signal_counters();
+  init_test_drive( &drive, 0 );
+  fdc = init_test_fdc_flags( &drive, WD_FLAG_PRESERVE_STATUS_ON_FORCE_INTERRUPT );
+  prepare_force_interrupt( fdc );
+  fdc->status_register &= ~WD_FDC_SR_BUSY;
+  fdc->state = WD_FDC_STATE_NONE;
+  fdc->read_id = fdc->sector_increment_pending = 0;
+  fdc->id_mark = WD_FDC_AM_NONE;
+  wd_fdc_cr_write( fdc, 0xd0 );
+  if( fdc->status_type != WD_FDC_STATUS_TYPE1 || fdc->datarq || fdc->intrq ||
+      ( fdc->status_register & ( WD_FDC_SR_BUSY | WD_FDC_SR_CRCERR |
+                                 WD_FDC_SR_WRPROT | WD_FDC_SR_IDX_DRQ ) ) ||
+      !( fdc->status_register & WD_FDC_SR_LOST ) ) {
+    printf( "wd_fdc_idle_force_interrupt_test: idle status was not Type I\n" );
+    r++;
+  }
+  free_test_fdc( fdc );
+  return r;
+}
+
+static int
+wd_fdc_d0_motor_lifecycle_test( void )
+{
+  fdd_t drive;
+  wd_fdc *fdc;
+  int r = 0;
+
+  wdfdc_test_reset_events();
+  reset_signal_counters();
+  init_test_drive( &drive, 10 );
+  fdc = init_test_fdc_flags( &drive, WD_FLAG_PRESERVE_STATUS_ON_FORCE_INTERRUPT );
+  prepare_force_interrupt( fdc );
+  wd_fdc_cr_write( fdc, 0xd0 );
+  tstates += machine_current->timings.processor_speed / 2;
+  wd_fdc_cr_write( fdc, 0xd0 );
+  if( wdfdc_test_event_count( "WD FDC motor off" ) != 1 ||
+      wdfdc_test_event_time( "WD FDC motor off" ) !=
+        tstates + 2 * machine_current->timings.processor_speed || fdc->intrq ) {
+    printf( "wd_fdc_d0_motor_lifecycle_test: repeated D0 left a stale timer\n" );
+    r++;
+  }
+  /* A subsequent accepted command must cancel the idle motor timer. */
+  wd_fdc_dr_write( fdc, 1 );
+  wd_fdc_cr_write( fdc, 0x18 ); /* SEEK, spin-up disabled */
+  if( wdfdc_test_event_count( "WD FDC motor off" ) ||
+      !( fdc->status_register & WD_FDC_SR_BUSY ) ||
+      !( fdc->status_register & WD_FDC_SR_MOTORON ) ) {
+    printf( "wd_fdc_d0_motor_lifecycle_test: new command did not cancel timer\n" );
+    r++;
+  }
+  free_test_fdc( fdc );
+  return r;
+}
+
 int
 main( void )
 {
@@ -1211,6 +1433,10 @@ main( void )
   r += wd_fdc_standard_sector_increment_test();
   r += wd_fdc_delayed_sector_increment_test();
   r += wd_fdc_delayed_read_sector_increment_test();
+  r += wd_fdc_multisector_transfer_test( 0, 0 );
+  r += wd_fdc_multisector_transfer_test( 0, 1 );
+  r += wd_fdc_multisector_transfer_test( 1, 0 );
+  r += wd_fdc_multisector_transfer_test( 1, 1 );
 
   /*
    * Type IV Force Interrupt compatibility and signal tests.
@@ -1219,6 +1445,8 @@ main( void )
   r += wd_fdc_preserve_status_force_interrupt_test();
   r += wd_fdc_force_interrupt_intrq_test();
   r += wd_fdc_force_interrupt_motor_timeout_test();
+  r += wd_fdc_d0_motor_lifecycle_test();
+  r += wd_fdc_idle_force_interrupt_test();
 
   if( r ) {
     printf(

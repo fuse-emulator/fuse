@@ -1056,9 +1056,10 @@ wd_fdc_cr_write( wd_fdc *f, libspectrum_byte b )
     if( ( b & 0x0f ) == 0 &&
         ( f->type == WD1770 || f->type == WD1772 ) &&
         ( f->status_register & WD_FDC_SR_MOTORON ) ) {
-      event_add_with_data( tstates + 2 *
-                           machine_current->timings.processor_speed,
-                           motor_off_event, f );
+      /* Restart this controller's idle period; do not leave an older
+         completion/D0 timeout able to stop the motor prematurely. */
+      event_remove_type_user_data( motor_off_event, f );
+      wd_fdc_schedule_motor_off( f );
     }
 
     return;
