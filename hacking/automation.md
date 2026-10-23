@@ -451,14 +451,17 @@ to limit dependencies. Depending on the scenario, `identity` can contain:
 - `tape`: the loaded tape/PZX/TZX input;
 - `disk`: the disk image selected for insertion into an emulated disk drive;
 - `disk_location`: the disk controller (`plus3`, `beta`, `plusd`, `opus`,
-  `disciple`, or `didaktik`) and zero-based drive number;
+  `disciple`, `didaktik`, or `jlo`) and zero-based drive number;
 - `rzx`: the input recording;
 - `external_snapshot`: a separately loaded snapshot;
 - `rzx_snapshot_source`: `embedded` or `external`;
 - `active_roms`: the active 16 KiB ROM pages after startup.
 
 Paths are diagnostic source names, not stable identity. Consumers should use
-size and CRC-32 together when comparing inputs.
+size and CRC-32 together when comparing inputs. Disk identity uses the
+decompressed input before disk-format normalisation. If several images are
+selected for insertion, only the last recorded image is reported. Newly
+created blank disks have no input identity.
 
 ### Settings
 

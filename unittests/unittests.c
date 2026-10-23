@@ -87,6 +87,7 @@
 #include "spectrum.h"
 #include "screenshot.h"
 #include "ui/scaler/scaler.h"
+#include "ui/uimedia.h"
 #include "helpers.h"
 #include "unittests.h"
 #include "utils.h"
@@ -3906,6 +3907,109 @@ utils_open_loaded_disk_test( void )
   return r;
 }
 
+/* File Open auto-selects +3 for CPCEMU images, but generic images use the
+   active controller. Explicit drive insertion must retain the machine. */
+static int
+utils_open_loaded_jlo_disk_test( void )
+{
+  static const libspectrum_machine machines[] = {
+    LIBSPECTRUM_MACHINE_TC2068, LIBSPECTRUM_MACHINE_TS2068,
+    LIBSPECTRUM_MACHINE_PLUS3
+  };
+  libspectrum_machine old_machine = machine_current->machine;
+  char *old_rom = settings_current.rom_jlo;
+  int old_jlo = settings_current.jlo;
+  char rom[] = "/tmp/fuse-jlo-media-XXXXXX";
+  compat_file_vtable_t vtable;
+  utils_file file;
+  ui_media_drive_info_t *drive;
+  ui_media_drive_info_t *plus3_drive =
+    ui_media_drive_find( UI_MEDIA_CONTROLLER_PLUS3, 0 );
+  ui_media_drive_info_t *jlo_drive =
+    ui_media_drive_find( UI_MEDIA_CONTROLLER_JLO, 0 );
+  libspectrum_machine expected_machine;
+  int model, mode, cpc, error, r = 0;
+
+  if( !plus3_drive || plus3_drive->fdd->loaded ||
+      !jlo_drive || jlo_drive->fdd->loaded ) return 1;
+  if( create_rom_fixture( rom, 0x2000, 0 ) ) return 1;
+  settings_current.rom_jlo = rom;
+  settings_current.jlo = 1;
+  compat_file_get_vtable( &utils_file_previous_vtable );
+  vtable = utils_file_previous_vtable;
+  vtable.open = utils_file_test_open;
+  vtable.read = utils_file_test_read;
+
+  for( model = 0; model < 3; model++ ) {
+    /* Generic File Open, CPCEMU File Open, then explicit CPCEMU insertion. */
+    for( mode = 0; mode < 3; mode++ ) {
+      cpc = mode != 0;
+      expected_machine = mode == 1 ? LIBSPECTRUM_MACHINE_PLUS3 : machines[model];
+      if( machine_select( machines[model] ) ) { r++; goto cleanup; }
+      drive = ui_media_drive_find( model == 2 || mode == 1 ?
+        UI_MEDIA_CONTROLLER_PLUS3 : UI_MEDIA_CONTROLLER_JLO, 0 );
+      /* Never replace media owned by another test or the caller. */
+      if( !drive || drive->fdd->loaded ) { r++; goto cleanup; }
+      utils_file_init( &file, cpc ? "already-loaded.dsk" :
+                                   "already-loaded.sad" );
+      file.length = cpc ? 512 : 22 + 512;
+      file.buffer = libspectrum_new0( unsigned char, file.length );
+      if( cpc ) {
+        memcpy( file.buffer, "MV - CPCEMU Disk-File\r\nDisk-Info\r\n", 34 );
+        file.buffer[0x30] = file.buffer[0x31] = 1;
+        file.buffer[0x33] = 1;
+        memcpy( file.buffer + 256, "Track-Info\r\n", 12 );
+      } else {
+        memcpy( file.buffer, "Aley's disk backup", 18 );
+        file.buffer[18] = file.buffer[19] = file.buffer[20] = 1;
+        file.buffer[21] = 8;
+      }
+      utils_file_test_path = cpc ? "already-loaded.dsk" : "already-loaded.sad";
+      utils_file_open_count = utils_file_read_count = 0;
+      compat_file_set_vtable( &vtable );
+      if( mode == 2 ) {
+        error = utils_file_identify( &file );
+        if( !error ) error = ui_media_drive_insert_file( drive, &file, 0 );
+      } else {
+        error = utils_open_loaded_file( &file, 0, NULL );
+      }
+      compat_file_set_vtable( &utils_file_previous_vtable );
+      if( error || machine_current->machine != expected_machine ||
+          !drive->fdd->loaded || drive->fdd->disk.sides != 1 ||
+          drive->fdd->disk.cylinders != 1 ||
+          drive->fdd->disk.type != ( cpc ? DISK_CPC : DISK_SAD ) ||
+          utils_file_open_count || utils_file_read_count ) {
+        printf( "utils_open_loaded_jlo_disk_test: model %d, mode %d failed\n",
+                model, mode );
+        r++;
+      }
+      if( drive->fdd->loaded ) {
+        fdd_unload( drive->fdd );
+        disk_close( &drive->fdd->disk );
+      }
+      /* Clean up either controller if automatic dispatch regresses. */
+      if( drive != plus3_drive && plus3_drive->fdd->loaded ) {
+        fdd_unload( plus3_drive->fdd );
+        disk_close( &plus3_drive->fdd->disk );
+      }
+      if( drive != jlo_drive && jlo_drive->fdd->loaded ) {
+        fdd_unload( jlo_drive->fdd );
+        disk_close( &jlo_drive->fdd->disk );
+      }
+      utils_file_free( &file );
+    }
+  }
+
+cleanup:
+  compat_file_set_vtable( &utils_file_previous_vtable );
+  settings_current.jlo = old_jlo;
+  settings_current.rom_jlo = old_rom;
+  if( machine_select( old_machine ) ) r++;
+  unlink( rom );
+  if( r ) printf( "utils_open_loaded_jlo_disk_test failed: %d errors\n", r );
+  return r;
+}
+
 static int
 utils_open_loaded_compressed_disk_test( void )
 {
@@ -4564,6 +4668,7 @@ unittests_run( void )
   r += dck_home_rom_ram_slots_test();
   r += utils_open_loaded_microdrive_test();
   r += utils_open_loaded_disk_test();
+  r += utils_open_loaded_jlo_disk_test();
   r += utils_open_loaded_compressed_disk_test();
   r += utils_open_loaded_disk_merge_test();
   r += disk_write_blank_disk_cpc_save_test();

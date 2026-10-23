@@ -79,6 +79,7 @@ automation_disk_controller_name( ui_media_controller controller )
   case UI_MEDIA_CONTROLLER_OPUS: return "opus";
   case UI_MEDIA_CONTROLLER_DISCIPLE: return "disciple";
   case UI_MEDIA_CONTROLLER_DIDAKTIK: return "didaktik";
+  case UI_MEDIA_CONTROLLER_JLO: return "jlo";
   default: return "unknown";
   }
 }
@@ -222,6 +223,8 @@ utils_open_loaded_file( utils_file *file, int autoload,
         error = utils_insert_disk( UI_MEDIA_CONTROLLER_DISCIPLE, file, autoload );
       else if( periph_is_active( PERIPH_TYPE_PLUSD ) )
         error = utils_insert_disk( UI_MEDIA_CONTROLLER_PLUSD, file, autoload );
+      else if( periph_is_active( PERIPH_TYPE_JLO ) )
+        error = utils_insert_disk( UI_MEDIA_CONTROLLER_JLO, file, autoload );
     break;
 
   case LIBSPECTRUM_CLASS_CARTRIDGE_IF2:

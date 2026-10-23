@@ -846,6 +846,8 @@ parse_nonoption_args( int argc, char **argv, int first_arg,
           utils_file_move( &start_files->disk_disciple, &file );
         else if( periph_is_active( PERIPH_TYPE_OPUS ) )
           utils_file_move( &start_files->disk_opus, &file );
+        else if( periph_is_active( PERIPH_TYPE_JLO ) )
+          utils_file_move( &start_files->disk_jlo[JLO_DRIVE_0], &file );
       }
       break;
 
@@ -953,9 +955,16 @@ do_start_files( start_files_t *start_files )
                   "both --jlo%ddisk and --jlo%ddisk-new specified; "
                   "new disk ignored", i, i );
       }
-      error = jlo_disk_insert( (jlo_drive_number)i,
-                               start_files->disk_jlo[i].filename,
-                               autoload && i == JLO_DRIVE_0 );
+      error = utils_file_read( &start_files->disk_jlo[i] );
+      if( error ) return error;
+#ifdef ENABLE_AUTOMATION
+      /* Capture source identity before disk-format normalisation. */
+      if( automation_active() )
+        automation_record_disk( &start_files->disk_jlo[i], "jlo", i );
+#endif
+      error = ui_media_drive_insert_file(
+        ui_media_drive_find( UI_MEDIA_CONTROLLER_JLO, i ),
+        &start_files->disk_jlo[i], autoload && i == JLO_DRIVE_0 );
     } else if( start_files->disk_jlo_new[i] ) {
       error = jlo_disk_insert( (jlo_drive_number)i, NULL, 0 );
     } else {

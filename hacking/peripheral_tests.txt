@@ -76,6 +76,21 @@ JLO Disk System
 * Use Media, Disk, JLO, Drive 0:, Save As... to save the image (for example
   as .udi). Eject and reinsert that image, then repeat LOAD and RUN to
   check that the image survives a save/reopen round trip.
+* Restart with that .udi image as a positional argument instead of
+  --jlo0disk-new, and also try File, Open... while JLO is enabled. Both
+  should insert it into JLO drive 0 without changing the Timex model.
+* With a CPCEMU .dsk image, File, Open... and positional startup should
+  instead select the +3. To keep the Timex/JLO setup, use Media, Disk,
+  JLO, Drive 0:, Insert... or the explicit --jlo0disk option.
+* With an automation-enabled build, an existing output directory and
+  --no-auto-load --automation-output /path/to/output --automation-frames 1,
+  check result.json: identity.disk must give the input size and CRC-32
+  before disk-format normalisation (after decompression, if applicable).
+  For the positional .udi image, identity.disk_location must name
+  controller "jlo" and drive 0; for positional CPCEMU .dsk, "plus3" and
+  drive 0. Repeat with explicit --jlo0disk through --jlo3disk, checking
+  controller "jlo" and the corresponding zero-based drive number for
+  either format.
 
 Opus
 
