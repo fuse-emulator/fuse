@@ -47,6 +47,7 @@
 #include "peripherals/scld.h"
 #include "peripherals/disk/beta.h"
 #include "peripherals/disk/disk.h"
+#include "peripherals/disk/crc.h"
 #include "peripherals/disk/didaktik.h"
 #include "peripherals/disk/disciple.h"
 #include "peripherals/disk/opus.h"
@@ -3859,6 +3860,188 @@ disk_open_malformed_udi_rejected_test( void )
   return r;
 }
 
+static int
+disk_open_fdi_bounds_test( void )
+{
+  libspectrum_byte image[512];
+  utils_file file;
+  disk_t disk;
+  int i, r = 0;
+
+  /* One track, one 128-byte sector, with enough room for the header. */
+  for( i = 0; i < 9; i++ ) {
+    memset( image, 0, sizeof( image ) );
+    memcpy( image, "FDI", 3 );
+    image[4] = image[6] = 1;
+    image[10] = 0x00; image[11] = 1; /* data at 256 */
+    image[20] = 1;                 /* one sector */
+    image[25] = 1;                 /* sector data present */
+    if( i == 1 ) image[15] = 2;    /* track beyond EOF */
+    if( i == 2 ) image[27] = 1;    /* sector beyond EOF */
+    if( i == 3 ) image[24] = 8;    /* invalid size code */
+    if( i == 4 ) image[14] = image[15] = image[16] = image[17] = 255;
+    if( i == 5 ) image[26] = 200;  /* sector crosses EOF */
+    utils_file_init( &file, "bounds.fdi" );
+    file.buffer = image;
+    file.length = i == 6 ? 13 : i == 7 ? 20 : sizeof( image );
+    if( i == 8 ) image[12] = image[13] = 255; /* header outside file */
+    file.type = LIBSPECTRUM_ID_DISK_FDI;
+    memset( &disk, 0, sizeof( disk ) );
+    if( disk_open_loaded( &disk, &file, 0, 0 ) !=
+        ( i < 6 && i != 3 ? DISK_OK : DISK_OPEN ) ) r++;
+    disk_close( &disk );
+  }
+  if( r ) printf( "disk_open_fdi_bounds_test failed\n" );
+  return r;
+}
+
+static int
+disk_open_fdi_recovery_test( void )
+{
+  libspectrum_byte image[841];
+  utils_file file;
+  disk_t disk;
+  int t, s, j, k, h, p, offset, ids, marks, r = 0;
+
+  /* Two tracks, three sectors each, and three extra header bytes.
+     Both tracks have a bad middle sector followed by readable data. */
+  memset( image, 0, sizeof( image ) );
+  memcpy( image, "FDI", 3 );
+  image[4] = 2; image[6] = 1;
+  image[10] = 73; image[12] = 3;
+  for( t = 0; t < 2; t++ ) {
+    h = 17 + t * 28;
+    image[h] = ( t * 384 ) & 255;
+    image[h + 1] = ( t * 384 ) >> 8;
+    image[h + 6] = 3;
+    for( s = 0; s < 3; s++ ) {
+      p = h + 7 + s * 7;
+      image[p] = t;
+      image[p + 2] = s + 1;
+      image[p + 4] = s == 2 ? 0x81 : 1;
+      offset = s * 128;
+      if( s == 1 ) offset = t ? 320 : 65535;
+      image[p + 5] = offset & 255;
+      image[p + 6] = offset >> 8;
+      memset( image + 73 + t * 384 + s * 128, 0x30 + t * 3 + s, 128 );
+    }
+  }
+  utils_file_init( &file, "recovery.fdi" );
+  file.buffer = image;
+  file.length = sizeof( image );
+  file.type = LIBSPECTRUM_ID_DISK_FDI;
+  memset( &disk, 0, sizeof( disk ) );
+  if( disk_open_loaded( &disk, &file, 0, 0 ) != DISK_OK ) r++;
+  else for( t = 0; t < 2; t++ ) {
+    DISK_SET_TRACK_IDX( ( &disk ), t );
+    ids = marks = 0;
+    for( j = 0; j < disk.c_bpt; j++ ) {
+      if( !bitmap_test( disk.clocks, j ) ) continue; /* FM marks */
+      if( disk.track[j] == 0xfe ) ids++;
+      if( disk.track[j] == 0xfb || disk.track[j] == 0xf8 ) {
+        s = marks ? 2 : 0;
+        if( disk.track[j] != ( s == 2 ? 0xf8 : 0xfb ) ) r++;
+        for( k = 1; k <= 128; k++ )
+          if( disk.track[j + k] != 0x30 + t * 3 + s ) { r++; break; }
+        marks++;
+      }
+    }
+    if( ids != 3 || marks != 2 ) r++;
+  }
+  disk_close( &disk );
+  if( r ) printf( "disk_open_fdi_recovery_test failed\n" );
+  return r;
+}
+
+static int
+disk_open_fdi_semantics_test( void )
+{
+  static const int flags[] = { 1, 0, 2, 0x81, 0x80, 0x40, 0xc0,
+                               0x40, 0x20, 0, 0x40 };
+  libspectrum_byte image[8192];
+  disk_t disk;
+  utils_file file;
+  libspectrum_word crc;
+  int test, j, k, n, size, data_offset, length, ids, marks, pos;
+  int id_pos, data_pos, start, missing, mfm, r = 0;
+
+  for( test = 0; test < (int)( sizeof( flags ) / sizeof( flags[0] ) );
+       test++ ) {
+    n = test == 7 ? 36 : 1; /* cross the old 35-header chunk boundary */
+    size = test == 8 || test == 9 ? 5 : 0;
+    length = 128 << size;
+    missing = flags[test] & 0x40;
+    data_offset = 14 + 7 + n * 7;
+    memset( image, 0, sizeof( image ) );
+    memcpy( image, "FDI", 3 );
+    image[4] = image[6] = 1;
+    image[10] = data_offset & 0xff;
+    image[11] = data_offset >> 8;
+    image[20] = n;
+    for( j = 0; j < n; j++ ) {
+      image[21 + j * 7 + 2] = j + 1;
+      image[21 + j * 7 + 3] = size;
+      image[21 + j * 7 + 4] = flags[test];
+      /* Missing-data offsets need not point into the file. */
+      if( missing ) image[21 + j * 7 + 6] = 255;
+    }
+    memset( image + data_offset, 0x5a, missing ? 0 : length );
+    utils_file_init( &file, "semantics.fdi" );
+    file.buffer = image;
+    file.length = data_offset + ( missing ? 0 : length );
+    if( test == 10 ) file.length--; /* truncated sector header */
+    file.type = LIBSPECTRUM_ID_DISK_FDI;
+    memset( &disk, 0, sizeof( disk ) );
+    pos = disk_open_loaded( &disk, &file, test & 1, 0 );
+    if( test == 10 ) {
+      if( pos != DISK_OPEN ) r++;
+      disk_close( &disk );
+      continue;
+    }
+    if( pos != DISK_OK ) {
+      r++;
+      disk_close( &disk );
+      continue;
+    }
+    DISK_SET_TRACK_IDX( ( &disk ), 0 );
+    ids = marks = 0;
+    id_pos = data_pos = -1;
+    mfm = test == 8 || test == 9;
+    for( j = 0; j < disk.c_bpt; j++ ) {
+      if( mfm ? j < 3 || !bitmap_test( disk.clocks, j - 1 ) :
+                !bitmap_test( disk.clocks, j ) ) continue;
+      if( disk.track[j] == 0xfe ) { ids++; id_pos = j; }
+      if( disk.track[j] == 0xfb || disk.track[j] == 0xf8 ) {
+        marks++; data_pos = j;
+      }
+    }
+    if( ids != n || marks != ( missing ? 0 : 1 ) ) r++;
+    /* Check ID and data CRC independently, including MFM's three A1s. */
+    if( id_pos < 0 ) r++;
+    else {
+      start = id_pos - ( mfm ? 3 : 0 );
+      crc = 0xffff;
+      for( k = start; k < id_pos + 7; k++ )
+        crc = crc_fdc( crc, disk.track[k] );
+      if( crc ) r++;
+      if( disk.track[id_pos + 3] != n || disk.track[id_pos + 4] != size ) r++;
+    }
+    if( !missing && data_pos >= 0 ) {
+      if( disk.track[data_pos] != ( flags[test] & 0x80 ? 0xf8 : 0xfb ) ) r++;
+      for( k = 0; k < length; k++ )
+        if( disk.track[data_pos + 1 + k] != 0x5a ) { r++; break; }
+      crc = 0xffff;
+      start = data_pos - ( mfm ? 3 : 0 );
+      for( k = start; k < data_pos + length + 3; k++ )
+        crc = crc_fdc( crc, disk.track[k] );
+      if( ( crc == 0 ) != ( ( flags[test] & ( 1 << size ) ) != 0 ) ) r++;
+    }
+    disk_close( &disk );
+  }
+  if( r ) printf( "disk_open_fdi_semantics_test failed: %d\n", r );
+  return r;
+}
+
 static FILE compat_file_test_file;
 static int compat_file_test_calls[ 7 ];
 
@@ -4327,6 +4510,9 @@ unittests_run( void )
   r += disk_write_blank_disk_cpc_save_test();
   r += disk_write_open_udi_roundtrip_test();
   r += disk_open_malformed_udi_rejected_test();
+  r += disk_open_fdi_bounds_test();
+  r += disk_open_fdi_semantics_test();
+  r += disk_open_fdi_recovery_test();
   r += screenshot_scr_roundtrip_test();
   r += event_queue_test();
 #ifdef ENABLE_AUTOMATION
