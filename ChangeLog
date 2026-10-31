@@ -1,4 +1,4 @@
-2026-10-30  Fredrick Meunier  <fredm@spamcop.net>
+2026-10-31  Fredrick Meunier  <fredm@spamcop.net>
 
         * Fuse 1.10.1 released.
 
@@ -21,6 +21,8 @@
             snapshots (fixes bug #348) (thanks, Sergio Baldoví) (Fredrick
             Meunier).
           * Fix undefined behaviour in UDI disk image decoding (Fredrick
+            Meunier).
+          * Fix FDI parsing and recover unavailable sector data (Fredrick
             Meunier).
           * Clear joystick button state when resetting or loading snapshots,
             preventing stuck direction and fire inputs (Fredrick Meunier).
