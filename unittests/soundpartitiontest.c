@@ -16,7 +16,15 @@
 #ifndef SOUND_PCM_ADMISSION
 #define SOUND_PCM_ADMISSION 1
 #endif
+#ifdef SOUND_TEST_BACKEND_CADENCE
+/* Test both capabilities independently of the configured production driver. */
+#undef SOUND_SUBFRAME_OUTPUT
+#if SOUND_TEST_BACKEND_CADENCE
+#define SOUND_SUBFRAME_OUTPUT 1
+#endif
+#else
 #define FUSE_SOUND_TEST_INTERVAL 0
+#endif
 #include "sound.c"
 #include "event.c"
 int rzx_playback;
@@ -719,6 +727,46 @@ test_scheduler( void )
   printf( "scheduler: tape/overshoot/ties/frame/rearm/RZX/reinit passed\n" );
 }
 
+#ifdef SOUND_TEST_BACKEND_CADENCE
+static void
+test_backend_cadence( void )
+{
+  unsigned int frame;
+  event_init( NULL );
+  scheduler_source = event_register( scheduler_edge, "Test tape" );
+  scheduler_frame = event_register( scheduler_frame_end, "Test frame" );
+  movie_recording = 0;
+  speaker = SOUND_SPEAKER_TYPE_UNFILTERED;
+  initialise();
+  CHECK( audio_cut_interval == ( SOUND_TEST_BACKEND_CADENCE ?
+    sound_audio_interval_tstates( sound_get_effective_processor_speed() ) : 0 ) );
+  audio_frame_suspended = 0;
+  for( frame = 0; frame < FRAMES; frame++ ) {
+    unsigned int calls = output_calls;
+    libspectrum_dword endpoint;
+    device_count = 0;
+    sound_schedule_audio();
+    event_add( 110, scheduler_source );
+    event_add( 69888, scheduler_frame );
+    scheduled_test = 1;
+    for( endpoint = 4; endpoint <= 69888; endpoint += 4 ) {
+      tstates = endpoint;
+      event_do_events();
+    }
+    CHECK( audio_position == 0 && tstates == 0 && device_count > 0 );
+    if( SOUND_TEST_BACKEND_CADENCE )
+      CHECK( output_calls > calls + 1 );
+    else
+      CHECK( output_calls == calls + 1 );
+  }
+  scheduled_test = 0;
+  sound_end();
+  event_end();
+  printf( "backend opt-in %d: delivery cadence passed\n",
+          SOUND_TEST_BACKEND_CADENCE );
+}
+#endif
+
 int
 main( int argc, char **argv )
 {
@@ -730,6 +778,10 @@ main( int argc, char **argv )
   settings_current.volume_beeper = settings_current.volume_ay = 70;
   settings_current.volume_specdrum = settings_current.volume_covox = 50;
   settings_current.volume_uspeech = 50;
+#ifdef SOUND_TEST_BACKEND_CADENCE
+  test_backend_cadence();
+  return 0;
+#endif
   test_scheduler();
   if( argc > 2 && !strcmp( argv[2], "--scheduler-only" ) ) return 0;
   test_discontinuities();

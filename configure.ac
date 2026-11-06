@@ -745,6 +745,15 @@ fi
 AC_SUBST(SOUND_LIBADD)
 AC_SUBST(SOUND_LIBS)
 
+dnl Only backends with explicit support receive subframe PCM submissions.
+dnl Legacy drivers retain their frame-sized delivery and pacing assumptions.
+case $audio_driver in
+  sdl | coreaudio | alsa)
+    AC_DEFINE([SOUND_SUBFRAME_OUTPUT], 1,
+              [Defined for backends supporting subframe PCM delivery])
+    ;;
+esac
+
 dnl Are we supplying the ROMs or relying on another package?
 AC_MSG_CHECKING(where to find the Spectrum ROM images)
 AC_ARG_WITH(roms-dir,

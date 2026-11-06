@@ -73,8 +73,18 @@ unittests_soundpartitiontest_CPPFLAGS = $(AM_CPPFLAGS)
 unittests_soundpartitiontest_LDADD = $(LIBSPECTRUM_LIBS) $(GLIB_LIBS) -lm
 EXTRA_DIST += unittests/audio-frame-equivalence.py
 
-check-sound-scheduler: unittests/soundpartitiontest
+noinst_PROGRAMS += unittests/soundframecadencetest unittests/soundsubframecadencetest
+unittests_soundframecadencetest_SOURCES = $(unittests_soundpartitiontest_SOURCES)
+unittests_soundframecadencetest_CPPFLAGS = $(AM_CPPFLAGS) -DSOUND_TEST_BACKEND_CADENCE=0
+unittests_soundframecadencetest_LDADD = $(unittests_soundpartitiontest_LDADD)
+unittests_soundsubframecadencetest_SOURCES = $(unittests_soundpartitiontest_SOURCES)
+unittests_soundsubframecadencetest_CPPFLAGS = $(AM_CPPFLAGS) -DSOUND_TEST_BACKEND_CADENCE=1
+unittests_soundsubframecadencetest_LDADD = $(unittests_soundpartitiontest_LDADD)
+
+check-sound-scheduler: unittests/soundpartitiontest unittests/soundframecadencetest unittests/soundsubframecadencetest
 	$(top_builddir)/unittests/soundpartitiontest 48000 --scheduler-only
+	$(top_builddir)/unittests/soundframecadencetest
+	$(top_builddir)/unittests/soundsubframecadencetest
 
 # Focused scheduler, discontinuity and physical admission regressions.
 check-sound-renderer: unittests/soundpartitiontest
