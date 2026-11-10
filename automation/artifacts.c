@@ -349,6 +349,11 @@ automation_artifacts_end( void )
 {
   libspectrum_free( screen_rgb );
   libspectrum_free( pcm );
+  screen_rgb = NULL;
+  screen_width = screen_height = 0;
+  pcm = NULL;
+  pcm_count = pcm_capacity = 0;
+  audio_initialized = 0;
 }
 
 #endif

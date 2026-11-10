@@ -691,6 +691,10 @@ automation_end( void )
   libspectrum_free( disk_controller );
   libspectrum_free( rzx_name );
   libspectrum_free( snapshot_name );
+  diagnostics = NULL;
+  diagnostics_count = 0;
+  scenario.output_directory = NULL;
+  tape_name = disk_name = disk_controller = rzx_name = snapshot_name = NULL;
   automation_artifacts_end();
 }
 

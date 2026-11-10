@@ -34,7 +34,7 @@
 #include <unistd.h>
 
 #ifdef HAVE_LIB_XML2
-#include <libxml/encoding.h>
+#include <libxml/parser.h>
 #endif
 
 #ifdef ENABLE_AUTOMATION
@@ -46,6 +46,7 @@
 #include "fuse.h"
 #include "fuse-internal.h"
 #include "infrastructure/startup_manager.h"
+#include "infrastructure/startup_files.h"
 #include "keyboard.h"
 #include "keyboard_refresh.h"
 #include "machine.h"
@@ -118,35 +119,20 @@ libspectrum_creator *fuse_creator;
 /* The earliest version of libspectrum we need */
 static const char * const LIBSPECTRUM_MIN_VERSION = "0.5.0";
 
-/* The various types of file we may want to run on startup */
-typedef struct start_files_t {
-
-  utils_file disk_plus3;
-  utils_file disk_opus;
-  utils_file disk_plusd;
-  utils_file disk_beta;
-  utils_file disk_didaktik80;
-  utils_file disk_disciple;
-  utils_file dock;
-  utils_file if2;
-  utils_file playback;
-  const char *recording;
-  utils_file snapshot;
-  utils_file tape;
-
-  const char *simpleide_master, *simpleide_slave;
-  const char *zxatasp_master, *zxatasp_slave;
-  const char *zxcf;
-  const char *divide_master, *divide_slave;
-  const char *divmmc;
-  const char *zxmmc;
-  utils_file mdr[8];
-
-} start_files_t;
-
 /* Context for the display startup routine */
 static display_startup_context display_context;
 
+/* Exclusive application-runner ownership, not independent emulation contexts.
+   Full manager/UI failure unwind is still being extracted separately. */
+static struct {
+  int attempted;
+  int manager_started;
+  int initialized;
+  int xml_owned;
+  int libspectrum_owned;
+} legacy_ownership;
+
+static void fuse_settings_end( void );
 static int fuse_init(int argc, char **argv);
 
 static void creator_register_startup( void );
@@ -156,11 +142,9 @@ static void fuse_show_version( void );
 static void fuse_show_test_build_info( void );
 static void fuse_show_help( void );
 
-static int setup_start_files( start_files_t *start_files );
 static int parse_nonoption_args( int argc, char **argv, int first_arg,
-				 start_files_t *start_files );
-static int do_start_files( start_files_t *start_files );
-static void free_start_files( start_files_t *start_files );
+                                 fuse_start_files *start_files );
+static int do_start_files( fuse_start_files *start_files );
 
 static int fuse_end(void);
 
@@ -168,14 +152,37 @@ int
 fuse_legacy_main( int argc, char **argv )
 {
   int r;
+  libspectrum_error_function_t previous_error_function;
+
+  /* Global subsystem state has not been audited for restart or reentry. */
+  if( legacy_ownership.attempted ) {
+    fprintf( stderr, "Fuse legacy runner supports only one session attempt\n" );
+    return 1;
+  }
+  legacy_ownership.attempted = 1;
+  previous_error_function = libspectrum_error_function;
 
   if(fuse_init(argc,argv)) {
     fprintf(stderr,"%s: error initialising -- giving up!\n", fuse_progname);
+    /* Only the pre-manager ownership boundary is safe here so far. */
+    if( !legacy_ownership.manager_started ) {
+      fuse_settings_end();
+#ifdef ENABLE_AUTOMATION
+      automation_end();
+#endif
+    }
+    libspectrum_error_function = previous_error_function;
     return 1;
   }
 
-  if( settings_current.show_help ||
-      settings_current.show_version ) return 0;
+  if( settings_current.show_help || settings_current.show_version ) {
+    fuse_settings_end();
+#ifdef ENABLE_AUTOMATION
+    automation_end();
+#endif
+    libspectrum_error_function = previous_error_function;
+    return 0;
+  }
 
 #ifdef UI_NULL
   if( settings_current.unittests ) {
@@ -208,6 +215,7 @@ fuse_legacy_main( int argc, char **argv )
 #ifdef ENABLE_AUTOMATION
   if( automation_active() ) automation_end();
 #endif
+  libspectrum_error_function = previous_error_function;
 
   return r;
 }
@@ -217,6 +225,7 @@ fuse_libspectrum_init( void *context )
 {
   if( libspectrum_check_version( LIBSPECTRUM_MIN_VERSION ) ) {
     if( libspectrum_init() ) return 1;
+    legacy_ownership.libspectrum_owned = 1;
   } else {
     ui_error( UI_ERROR_ERROR,
               "libspectrum version %s found, but %s required",
@@ -236,6 +245,20 @@ libspectrum_register_startup( void )
   startup_manager_register( STARTUP_MANAGER_MODULE_LIBSPECTRUM, dependencies,
                             ARRAY_SIZE( dependencies ), fuse_libspectrum_init,
                             NULL, NULL );
+}
+
+/* Settings own their strings; the application owns XML's global cleanup.
+   Keep both at the existing settings callback position on normal shutdown. */
+static void
+fuse_settings_end( void )
+{
+  settings_end( legacy_ownership.initialized );
+  if( legacy_ownership.xml_owned ) {
+    legacy_ownership.xml_owned = 0;
+#ifdef HAVE_LIB_XML2
+    xmlCleanupParser();
+#endif
+  }
 }
 
 static int
@@ -292,6 +315,7 @@ static int
 run_startup_manager( int *argc, char ***argv )
 {
   startup_manager_init();
+  legacy_ownership.manager_started = 1;
 
   display_context.argc = argc;
   display_context.argv = argv;
@@ -332,7 +356,7 @@ run_startup_manager( int *argc, char ***argv )
   rzx_register_startup();
   scld_register_startup();
   screenshot_register_startup();
-  settings_register_startup();
+  settings_register_startup( fuse_settings_end );
   setuid_register_startup();
   simpleide_register_startup();
   slt_register_startup();
@@ -359,7 +383,7 @@ static int fuse_init(int argc, char **argv)
 {
   int error, first_arg;
   char *start_scaler;
-  start_files_t start_files;
+  fuse_start_files start_files = { 0 };
 
   /* Seed the bad but widely-available random number
      generator with the current time */
@@ -379,6 +403,8 @@ static int fuse_init(int argc, char **argv)
   if( display_init(&argc,&argv) ) return 1;
 #endif
 
+  /* Config parsing can initialize XML before its manager registration runs. */
+  legacy_ownership.xml_owned = 1;
   if( settings_init( &first_arg, argc, argv ) ) return 1;
 #ifndef UI_NULL
   if( settings_current.unittests ) {
@@ -402,22 +428,20 @@ static int fuse_init(int argc, char **argv)
 
   fuse_show_copyright();
 
-  if( run_startup_manager( &argc, &argv ) ) return 1;
+  error = run_startup_manager( &argc, &argv );
+  if( error ) goto cleanup;
 
   error = machine_select_id( settings_current.start_machine );
-  if( error ) return error;
+  if( error ) goto cleanup;
 
-  error = scaler_select_id( start_scaler ); libspectrum_free( start_scaler );
-  if( error ) return error;
+  error = scaler_select_id( start_scaler );
+  if( error ) goto cleanup;
 
-  if( setup_start_files( &start_files ) ) return 1;
-  if( parse_nonoption_args( argc, argv, first_arg, &start_files ) ) {
-    free_start_files( &start_files );
-    return 1;
-  }
-  error = do_start_files( &start_files );
-  free_start_files( &start_files );
-  if( error ) return 1;
+  fuse_start_files_init( &start_files );
+  error = parse_nonoption_args( argc, argv, first_arg, &start_files );
+  if( !error ) error = do_start_files( &start_files );
+  fuse_start_files_end( &start_files );
+  if( error ) goto cleanup;
 
   /* Must do this after all subsytems are initialised */
   debugger_command_evaluate( settings_current.debugger_command );
@@ -435,7 +459,13 @@ static int fuse_init(int argc, char **argv)
   );
 #endif
 
-  return 0;
+  legacy_ownership.initialized = 1;
+  error = 0;
+
+cleanup:
+  fuse_start_files_end( &start_files );
+  libspectrum_free( start_scaler );
+  return error;
 }
 
 static int
@@ -634,79 +664,10 @@ int fuse_emulation_unpause(void)
   return 0;
 }
 
-static int
-setup_start_files( start_files_t *start_files )
-{
-  utils_file_init( &start_files->disk_plus3, settings_current.plus3disk_file );
-  utils_file_init( &start_files->disk_opus, settings_current.opusdisk_file );
-  utils_file_init( &start_files->disk_plusd, settings_current.plusddisk_file );
-  utils_file_init( &start_files->disk_didaktik80, settings_current.didaktik80disk_file );
-  utils_file_init( &start_files->disk_disciple, settings_current.discipledisk_file );
-  utils_file_init( &start_files->disk_beta, settings_current.betadisk_file );
-  utils_file_init( &start_files->dock, settings_current.dck_file );
-  utils_file_init( &start_files->if2, settings_current.if2_file );
-  utils_file_init( &start_files->playback, settings_current.playback_file );
-  start_files->recording = settings_current.record_file;
-  utils_file_init( &start_files->snapshot, settings_current.snapshot );
-  utils_file_init( &start_files->tape, settings_current.tape_file );
-
-  start_files->simpleide_master =
-    utils_safe_strdup( settings_current.simpleide_master_file );
-  start_files->simpleide_slave = 
-    utils_safe_strdup( settings_current.simpleide_slave_file );
-
-  start_files->zxatasp_master =
-    utils_safe_strdup( settings_current.zxatasp_master_file );
-  start_files->zxatasp_slave =
-    utils_safe_strdup( settings_current.zxatasp_slave_file );
-
-  start_files->zxcf = utils_safe_strdup( settings_current.zxcf_pri_file );
-
-  start_files->divide_master =
-    utils_safe_strdup( settings_current.divide_master_file );
-  start_files->divide_slave =
-    utils_safe_strdup( settings_current.divide_slave_file );
-
-  start_files->divmmc =
-    utils_safe_strdup( settings_current.divmmc_file );
-
-  start_files->zxmmc = utils_safe_strdup( settings_current.zxmmc_file );
-
-  utils_file_init( &start_files->mdr[0], settings_current.mdr_file );
-  utils_file_init( &start_files->mdr[1], settings_current.mdr_file2 );
-  utils_file_init( &start_files->mdr[2], settings_current.mdr_file3 );
-  utils_file_init( &start_files->mdr[3], settings_current.mdr_file4 );
-  utils_file_init( &start_files->mdr[4], settings_current.mdr_file5 );
-  utils_file_init( &start_files->mdr[5], settings_current.mdr_file6 );
-  utils_file_init( &start_files->mdr[6], settings_current.mdr_file7 );
-  utils_file_init( &start_files->mdr[7], settings_current.mdr_file8 );
-
-  return 0;
-}
-
-static void
-free_start_files( start_files_t *start_files )
-{
-  int i;
-
-  utils_file_free( &start_files->disk_plus3 );
-  utils_file_free( &start_files->disk_opus );
-  utils_file_free( &start_files->disk_plusd );
-  utils_file_free( &start_files->disk_beta );
-  utils_file_free( &start_files->disk_didaktik80 );
-  utils_file_free( &start_files->disk_disciple );
-  utils_file_free( &start_files->dock );
-  utils_file_free( &start_files->if2 );
-  utils_file_free( &start_files->playback );
-  utils_file_free( &start_files->snapshot );
-  utils_file_free( &start_files->tape );
-  for( i = 0; i < 8; i++ ) utils_file_free( &start_files->mdr[i] );
-}
-
 /* Make 'best guesses' as to what to do with non-option arguments */
 static int
 parse_nonoption_args( int argc, char **argv, int first_arg,
-		      start_files_t *start_files )
+                      fuse_start_files *start_files )
 {
   size_t i, j;
   const char *filename;
@@ -745,21 +706,21 @@ parse_nonoption_args( int argc, char **argv, int first_arg,
 
     case LIBSPECTRUM_CLASS_HARDDISK:
       if( settings_current.zxcf_active ) {
-	start_files->zxcf = filename;
+        settings_set_string( &start_files->zxcf, filename );
       } else if( settings_current.zxatasp_active ) {
-	start_files->zxatasp_master = filename;
+        settings_set_string( &start_files->zxatasp_master, filename );
       } else if( settings_current.simpleide_active ) {
-	start_files->simpleide_master = filename;
+        settings_set_string( &start_files->simpleide_master, filename );
       } else if( settings_current.divide_enabled ) {
-	start_files->divide_master = filename;
+        settings_set_string( &start_files->divide_master, filename );
       } else if( settings_current.divmmc_enabled ) {
-	start_files->divmmc = filename;
+        settings_set_string( &start_files->divmmc, filename );
       } else if( settings_current.zxmmc_enabled ) {
-	start_files->zxmmc = filename;
+        settings_set_string( &start_files->zxmmc, filename );
       } else {
 	/* No IDE interface active, so activate the ZXCF */
 	settings_current.zxcf_active = 1;
-	start_files->zxcf = filename;
+        settings_set_string( &start_files->zxcf, filename );
       }
       break;
 
@@ -847,7 +808,7 @@ parse_nonoption_args( int argc, char **argv, int first_arg,
 }
 
 static int
-do_start_files( start_files_t *start_files )
+do_start_files( fuse_start_files *start_files )
 {
   int autoload, error, i, check_snapshot;
 
@@ -1058,7 +1019,11 @@ static int fuse_end(void)
 
   svg_capture_end();
 
-  libspectrum_end();
+  if( legacy_ownership.libspectrum_owned ) {
+    legacy_ownership.libspectrum_owned = 0;
+    libspectrum_end();
+  }
+  legacy_ownership.initialized = 0;
 
   return 0;
 }

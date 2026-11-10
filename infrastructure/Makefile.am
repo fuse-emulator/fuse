@@ -19,6 +19,7 @@
 ##
 ## E-mail: philip-fuse@shadowmagic.org.uk
 
-libfuselegacy_la_SOURCES += infrastructure/startup_manager.c
+libfuselegacy_la_SOURCES += infrastructure/startup_manager.c \
+                             infrastructure/startup_files.c
 
-noinst_HEADERS += infrastructure/startup_manager.h
+noinst_HEADERS += infrastructure/startup_manager.h infrastructure/startup_files.h

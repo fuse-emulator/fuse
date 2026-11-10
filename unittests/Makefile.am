@@ -26,7 +26,7 @@ EXTRA_DIST += unittests/fixtures/floatingbus/README.md \
 	unittests/fixtures/floatingbus/.gitignore
 
 LIFECYCLE_CHECK_TARGETS = check-startup-manager
-.PHONY: $(LIFECYCLE_CHECK_TARGETS) check-legacy-engine-link
+.PHONY: $(LIFECYCLE_CHECK_TARGETS) check-legacy-engine-link check-startup-ownership
 
 # Per-test CPPFLAGS give shared sources distinct non-Libtool object names.
 noinst_PROGRAMS += unittests/startupmanagertest
@@ -259,7 +259,10 @@ noinst_HEADERS += unittests/unittests.h
 
 # Both consumers use the selected legacy UI/backends. The source form links no
 # engine archive: it reuses the canonical sources and configured special objects.
-check_PROGRAMS += unittests/legacyenginelinktest unittests/legacyenginesourcetest
+check_PROGRAMS += unittests/legacyenginelinktest unittests/legacyenginesourcetest \
+                  unittests/startupownershiptest
+unittests_startupownershiptest_SOURCES = unittests/startupownershiptest.c
+unittests_startupownershiptest_LDADD = libfuselegacy.la
 unittests_legacyenginelinktest_SOURCES = unittests/legacyenginetest.c
 unittests_legacyenginelinktest_LDADD = libfuselegacy.la
 unittests_legacyenginesourcetest_SOURCES = unittests/legacyenginetest.c \
@@ -269,7 +272,30 @@ unittests_legacyenginesourcetest_LDADD = $(libfuselegacy_la_LIBADD)
 unittests_legacyenginesourcetest_DEPENDENCIES = $(libfuselegacy_la_DEPENDENCIES)
 $(unittests_legacyenginesourcetest_OBJECTS): config.h
 
-LIFECYCLE_CHECK_TARGETS += check-legacy-engine-link
+LIFECYCLE_CHECK_TARGETS += check-legacy-engine-link check-startup-ownership
+
+# Keep every preference read/write inside an isolated child-process sandbox.
+check-startup-ownership: unittests/startupownershiptest
+	@set -e; program="$(abs_top_builddir)/unittests/startupownershiptest$(EXEEXT)"; \
+	  tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' 0 1 2 3 15; \
+	  cd "$$tmp"; export HOME=. XDG_CONFIG_HOME=. USERPROFILE=. WINDIR=. APPDATA=.; \
+	  "$$program" storage; "$$program" no-save; \
+	  test -z "$$(find . -type f -print)"; \
+	  "$$program" save; test -n "$$(find . -type f -print)"; \
+	  before=$$(find . -type f -exec cksum {} \;); \
+	  "$$program" help > /dev/null; "$$program" version > /dev/null; \
+	  $(STARTUP_OWNERSHIP_FAILURE_CHECK) \
+	  test "$$before" = "$$(find . -type f ! -path './output/*' -exec cksum {} \;)"; \
+	  echo 'Startup storage, settings policy and early-runner ownership passed'
+
+if ENABLE_AUTOMATION
+STARTUP_OWNERSHIP_FAILURE_CHECK = "$$program" settings-failure; \
+  mkdir output; "$$program" session --machine 48 \
+  --rom-48 "$(abs_top_srcdir)/roms/48.rom" \
+  --automation-output output --automation-frames 1 > /dev/null;
+else
+STARTUP_OWNERSHIP_FAILURE_CHECK =
+endif
 check-legacy-engine-link: unittests/legacyenginelinktest unittests/legacyenginesourcetest
 	$(top_builddir)/unittests/legacyenginelinktest --help > /dev/null
 	$(top_builddir)/unittests/legacyenginelinktest --version > /dev/null
@@ -380,4 +406,7 @@ unittests_scalerexpandtest_LDADD = $(LIBSPECTRUM_LIBS) \
         ui/scaler/scalers16.lo ui/scaler/scalers32.lo ui/scaler/snes_ntsc.o
 unittests_scalerexpandtest_CPPFLAGS = $(AM_CPPFLAGS)
 
+else
+check-startup-ownership:
+	@echo "SKIP: startup ownership tests require a null-UI build"
 endif

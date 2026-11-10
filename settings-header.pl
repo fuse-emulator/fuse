@@ -108,11 +108,17 @@ char **settings_get_rom_setting( settings_info *settings, size_t which,
 
 void settings_set_string( char **string_setting, const char *value );
 
+/* Clear owned strings; safe to repeat on an initialized/zeroed object. */
 int settings_free( settings_info *settings );
+
+/* End current settings once. Saving requires explicit caller authorization;
+   global XML lifetime belongs to the application, not the settings object. */
+void settings_end( int save );
 
 int settings_write_config( settings_info *settings );
 
-void settings_register_startup( void );
+/* Preserve settings' teardown position while the caller supplies policy. */
+void settings_register_startup( void (*end_fn)( void ) );
 
 #endif				/* #ifndef FUSE_SETTINGS_H */
 CODE
