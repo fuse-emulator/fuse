@@ -25,14 +25,21 @@ ACLOCAL_AMFLAGS = -I m4
 bin_PROGRAMS = fuse
 
 noinst_PROGRAMS =
+check_PROGRAMS =
 
-fuse_SOURCES = display.c \
+# Configured, UI-bound legacy engine; no installed library or SDK.
+noinst_LTLIBRARIES = libfuselegacy.la
+fuse_SOURCES = fuse-main.c
+FUSE_APP_LIBS =
+fuse_LDADD = libfuselegacy.la $(FUSE_APP_LIBS)
+fuse_DEPENDENCIES = libfuselegacy.la
+
+libfuselegacy_la_SOURCES = display.c \
 	display_border.c \
 	display_dirty.c \
 	display_internal.h \
 	display_render.c \
 	event.c \
-	fuse-main.c \
 	fuse.c \
 	input.c \
 	input_refresh.c \
@@ -75,7 +82,7 @@ fuse_SOURCES = display.c \
 	utils.c \
 	utils_string.c
 
-fuse_LDADD = \
+FUSE_LEGACY_LIBS = \
              $(PTHREAD_LIBS) \
              $(LIBSPECTRUM_LIBS) \
              $(GTK_LIBS) \
@@ -85,10 +92,12 @@ fuse_LDADD = \
              $(XML_LIBS)
 
 if USE_SDL2
-fuse_LDADD += $(SDL2_LIBS)
+FUSE_LEGACY_LIBS += $(SDL2_LIBS)
 endif
 
-fuse_DEPENDENCIES =
+LEGACY_ENGINE_OBJECTS = $(SOUND_LIBADD) $(TIMER_LIBADD) $(LEGACY_SCALER_OBJECTS)
+libfuselegacy_la_LIBADD = $(LEGACY_ENGINE_OBJECTS) $(FUSE_LEGACY_LIBS)
+libfuselegacy_la_DEPENDENCIES = $(LEGACY_ENGINE_OBJECTS)
 
 if EMSCRIPTEN
 fuse_LDFLAGS = -sUSE_SDL=2 -sASYNCIFY
@@ -108,12 +117,12 @@ clean-local:
 	-rm -rf emscripten-data emscripten-data.stamp
 endif
 
-EXTRA_fuse_SOURCES =
+EXTRA_libfuselegacy_la_SOURCES =
 
 BUILT_SOURCES = options.h settings.c settings.h
 
 # Rebuild even sources without config.h when the assertion policy changes.
-$(fuse_OBJECTS): config.h
+$(fuse_OBJECTS) $(libfuselegacy_la_OBJECTS) $(SOUND_LIBADD) $(TIMER_LIBADD): config.h
 
 settings.c: settings.pl settings.dat
 	$(AM_V_GEN)$(PERL) -I$(srcdir)/perl $(srcdir)/settings.pl $(srcdir)/settings.dat > $@.tmp && mv $@.tmp $@
@@ -223,6 +232,14 @@ metrics:
 check-metrics:
 	python3 $(srcdir)/tools/test_metrics.py
 
+# Inspect the configured source/object boundary without a separate manifest.
+# Special objects retain their recipes (notably the two scaler data sizes).
+.PHONY: print-legacy-engine-inputs
+print-legacy-engine-inputs:
+	@printf '%s\n' 'Sources:' $(libfuselegacy_la_SOURCES) \
+	  'Special objects:' $(LEGACY_ENGINE_OBJECTS) \
+	  'External link flags:' '$(FUSE_LEGACY_LIBS)'
+
 .PHONY: metrics check-metrics check-sfifo check-coreaudio
 .PHONY: install-win32 install-win32-strip dist-win32 dist-win32-dir \
 	dist-win32-zip dist-win32-7z dist-win32-exe distclean-win32
@@ -233,7 +250,8 @@ if COMPAT_WIN32
 
 fuse_LDFLAGS = -mwindows
 fuse_SOURCES += windres.rc
-fuse_LDADD += -lcomctl32 -lwinmm windres.o
+FUSE_LEGACY_LIBS += -lcomctl32 -lwinmm
+FUSE_APP_LIBS += windres.o
 fuse_DEPENDENCIES += windres.o
 
 windres.o: windres.rc data/win32/winfuse.ico data/win32/fuse.manifest $(ui_win32_res)

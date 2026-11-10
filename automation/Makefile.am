@@ -1,6 +1,6 @@
 # Makefile.am: development automation sources
 
-EXTRA_fuse_SOURCES += \
+EXTRA_libfuselegacy_la_SOURCES += \
 	     automation/artifacts.c \
 	     automation/artifacts.h \
 	     automation/automation.c \
@@ -13,7 +13,7 @@ EXTRA_fuse_SOURCES += \
 	     automation/state.h
 
 if ENABLE_AUTOMATION
-fuse_SOURCES += \
+libfuselegacy_la_SOURCES += \
 	automation/artifacts.c \
 	automation/artifacts.h \
 	automation/automation.c \

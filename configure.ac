@@ -110,6 +110,7 @@ AC_PATH_PROG(PERL, perl)
 AC_SUBST(PERL)
 AC_PROG_LEX([noyywrap])
 AC_PROG_YACC
+AM_PROG_AR
 LT_INIT
 
 dnl Check for host specific programs
@@ -663,48 +664,48 @@ dnl Add the necessary options for the selected audio driver
 dnl
 case $audio_driver in
   sdl)
-    SOUND_LIBADD='sound/sdl2sound.$(OBJEXT)' SOUND_LIBS='' sound_fifo=yes
+    SOUND_LIBADD='sound/sdl2sound.lo' SOUND_LIBS='' sound_fifo=yes
     AC_DEFINE([SOUND_PCM_ADMISSION], 1,
               [Defined for exact PCM production admission])
     use_sdl=$sdl_available
     ;;
   directsound)
-    SOUND_LIBADD='sound/dxsound.$(OBJEXT)' SOUND_LIBS='-ldsound -lole32 -ldxguid'
+    SOUND_LIBADD='sound/dxsound.lo' SOUND_LIBS='-ldsound -lole32 -ldxguid'
     AC_DEFINE([DIRECTSOUND_VERSION], 0x0700, [DirectX 7 or higher is required])
     ;;
   win32sound)
-    SOUND_LIBADD='sound/win32sound.$(OBJEXT)' SOUND_LIBS='-lwinmm'
+    SOUND_LIBADD='sound/win32sound.lo' SOUND_LIBS='-lwinmm'
     ;;
   alsa)
-    SOUND_LIBADD='sound/alsasound.$(OBJEXT) sound/alsa_config.$(OBJEXT)' SOUND_LIBS='-lasound'
+    SOUND_LIBADD='sound/alsasound.lo sound/alsa_config.lo' SOUND_LIBS='-lasound'
     AC_DEFINE([SOUND_PCM_ADMISSION], 1,
               [Defined for exact PCM production admission])
     ;;
   libao)
-    SOUND_LIBADD='sound/aosound.$(OBJEXT)' SOUND_LIBS='-lao'
+    SOUND_LIBADD='sound/aosound.lo' SOUND_LIBS='-lao'
     ;;
   solaris | openbsd)
-    SOUND_LIBADD='sound/sunsound.$(OBJEXT)' SOUND_LIBS=''
+    SOUND_LIBADD='sound/sunsound.lo' SOUND_LIBS=''
     ;;
   hpux)
-    SOUND_LIBADD='sound/hpsound.$(OBJEXT)' SOUND_LIBS=''
+    SOUND_LIBADD='sound/hpsound.lo' SOUND_LIBS=''
     ;;
   oss)
-    SOUND_LIBADD='sound/osssound.$(OBJEXT)' SOUND_LIBS=''
+    SOUND_LIBADD='sound/osssound.lo' SOUND_LIBS=''
     ;;
   coreaudio)
-    SOUND_LIBADD='sound/coreaudiosound.$(OBJEXT)' SOUND_LIBS='-framework CoreAudio -framework AudioUnit' sound_fifo=yes
+    SOUND_LIBADD='sound/coreaudiosound.lo' SOUND_LIBS='-framework CoreAudio -framework AudioUnit' sound_fifo=yes
     AC_DEFINE([SOUND_PCM_ADMISSION], 1,
               [Defined for exact PCM production admission])
     ;;
   wii)
-    SOUND_LIBADD='sound/wiisound.$(OBJEXT)' SOUND_LIBS='' sound_fifo=yes
+    SOUND_LIBADD='sound/wiisound.lo' SOUND_LIBS='' sound_fifo=yes
     ;;
   pulseaudio)
-    SOUND_LIBADD='sound/pulsesound.$(OBJEXT)' SOUND_LIBS='-lpulse-simple -lpulse'
+    SOUND_LIBADD='sound/pulsesound.lo' SOUND_LIBS='-lpulse-simple -lpulse'
     ;;
   null)
-    SOUND_LIBADD='sound/nullsound.$(OBJEXT)' SOUND_LIBS=''
+    SOUND_LIBADD='sound/nullsound.lo' SOUND_LIBS=''
     AC_DEFINE([NO_SOUND], 1, [Defined if no sound code is present])
     ;;
 esac
@@ -738,7 +739,7 @@ if test "$sound_fifo" = yes; then
     AC_MSG_ERROR([C11 atomic unsigned int support is required by the audio FIFO])
   ])
   dnl Strange construct used here as += doesn't seem to work on OS X
-  SOUND_LIBADD="$SOUND_LIBADD"' sound/sfifo.$(OBJEXT)'
+  SOUND_LIBADD="$SOUND_LIBADD"' sound/sfifo.lo'
   AC_DEFINE([SOUND_FIFO], 1, [Defined if the sound code uses a fifo])
 fi
 
@@ -838,13 +839,13 @@ AM_CONDITIONAL([ENABLE_AUTOMATION], [test "$automation" = yes])
 dnl Work out which timer routines to use
 AC_MSG_CHECKING(which timer routines to use)
 if test "$automation" = yes; then
-  TIMER_LIBADD='timer/null.$(OBJEXT)'
+  TIMER_LIBADD='timer/null.lo'
   AC_MSG_RESULT(conditional virtual timer)
 elif test "$UI" = sdl2; then
-  TIMER_LIBADD='timer/sdl.$(OBJEXT)'
+  TIMER_LIBADD='timer/sdl.lo'
   AC_MSG_RESULT(SDL)
 else
-  TIMER_LIBADD='timer/native.$(OBJEXT)'
+  TIMER_LIBADD='timer/native.lo'
   AC_MSG_RESULT(native)
 fi
 AC_SUBST(TIMER_LIBADD)

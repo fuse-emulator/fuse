@@ -20,14 +20,11 @@
 ##
 ## E-mail: philip-fuse@shadowmagic.org.uk
 
-fuse_SOURCES += timer/timer.c
+libfuselegacy_la_SOURCES += timer/timer.c
 
-EXTRA_fuse_SOURCES += \
+EXTRA_libfuselegacy_la_SOURCES += \
                       timer/native.c \
                       timer/null.c \
                       timer/sdl.c
-
-fuse_DEPENDENCIES += $(TIMER_LIBADD)
-fuse_LDADD += $(TIMER_LIBADD)
 
 noinst_HEADERS += timer/timer.h

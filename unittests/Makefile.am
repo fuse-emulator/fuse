@@ -20,17 +20,19 @@
 ##
 ## E-mail: philip-fuse@shadowmagic.org.uk
 
-fuse_SOURCES += unittests/helpers.c unittests/floatingbus.c
+libfuselegacy_la_SOURCES += unittests/helpers.c unittests/floatingbus.c
 noinst_HEADERS += unittests/helpers.h
 EXTRA_DIST += unittests/fixtures/floatingbus/README.md \
 	unittests/fixtures/floatingbus/.gitignore
 
 LIFECYCLE_CHECK_TARGETS = check-startup-manager
-.PHONY: $(LIFECYCLE_CHECK_TARGETS)
+.PHONY: $(LIFECYCLE_CHECK_TARGETS) check-legacy-engine-link
 
+# Per-test CPPFLAGS give shared sources distinct non-Libtool object names.
 noinst_PROGRAMS += unittests/startupmanagertest
 unittests_startupmanagertest_SOURCES = unittests/startupmanagertest.c \
                                      infrastructure/startup_manager.c
+unittests_startupmanagertest_CPPFLAGS = $(AM_CPPFLAGS)
 unittests_startupmanagertest_LDADD = $(LIBSPECTRUM_LIBS) $(GLIB_LIBS)
 
 check-startup-manager: unittests/startupmanagertest
@@ -52,6 +54,7 @@ check-keyboard-refresh: unittests/keyboardrefreshtest
 if USE_SDL2
 noinst_PROGRAMS += unittests/sdl2eventstest
 unittests_sdl2eventstest_SOURCES = unittests/sdl2eventstest.c ui/sdl2/sdl2_events.c
+unittests_sdl2eventstest_CPPFLAGS = $(AM_CPPFLAGS)
 unittests_sdl2eventstest_LDADD = $(SDL2_LIBS)
 check-sdl2-events: unittests/sdl2eventstest
 	$(top_builddir)/unittests/sdl2eventstest
@@ -62,6 +65,7 @@ endif
 
 noinst_PROGRAMS += unittests/inputdispatchtest
 unittests_inputdispatchtest_SOURCES = unittests/inputdispatchtest.c input.c
+unittests_inputdispatchtest_CPPFLAGS = $(AM_CPPFLAGS)
 unittests_inputdispatchtest_LDADD =
 
 check-input-dispatch: unittests/inputdispatchtest
@@ -69,6 +73,7 @@ check-input-dispatch: unittests/inputdispatchtest
 
 noinst_PROGRAMS += unittests/inputrefreshtest
 unittests_inputrefreshtest_SOURCES = unittests/inputrefreshtest.c input_refresh.c
+unittests_inputrefreshtest_CPPFLAGS = $(AM_CPPFLAGS)
 unittests_inputrefreshtest_LDADD =
 
 check-input-refresh: unittests/inputrefreshtest
@@ -79,6 +84,7 @@ EXTRA_DIST += unittests/emscriptenwaittest.c
 
 noinst_PROGRAMS += unittests/widgetutf8test
 unittests_widgetutf8test_SOURCES = unittests/widgetutf8test.c ui/widget/utf8.c
+unittests_widgetutf8test_CPPFLAGS = $(AM_CPPFLAGS)
 unittests_widgetutf8test_LDADD =
 noinst_HEADERS += ui/widget/utf8.h
 
@@ -246,10 +252,29 @@ endif
 
 if UI_NULL
 
-fuse_SOURCES += unittests/unittests.c
+libfuselegacy_la_SOURCES += unittests/unittests.c
 noinst_HEADERS += unittests/unittests.h
 
 ## Standalone internal test programs
+
+# Both consumers use the selected legacy UI/backends. The source form links no
+# engine archive: it reuses the canonical sources and configured special objects.
+check_PROGRAMS += unittests/legacyenginelinktest unittests/legacyenginesourcetest
+unittests_legacyenginelinktest_SOURCES = unittests/legacyenginetest.c
+unittests_legacyenginelinktest_LDADD = libfuselegacy.la
+unittests_legacyenginesourcetest_SOURCES = unittests/legacyenginetest.c \
+                                        $(libfuselegacy_la_SOURCES)
+unittests_legacyenginesourcetest_CPPFLAGS = $(AM_CPPFLAGS)
+unittests_legacyenginesourcetest_LDADD = $(libfuselegacy_la_LIBADD)
+unittests_legacyenginesourcetest_DEPENDENCIES = $(libfuselegacy_la_DEPENDENCIES)
+$(unittests_legacyenginesourcetest_OBJECTS): config.h
+
+LIFECYCLE_CHECK_TARGETS += check-legacy-engine-link
+check-legacy-engine-link: unittests/legacyenginelinktest unittests/legacyenginesourcetest
+	$(top_builddir)/unittests/legacyenginelinktest --help > /dev/null
+	$(top_builddir)/unittests/legacyenginelinktest --version > /dev/null
+	$(top_builddir)/unittests/legacyenginesourcetest --help > /dev/null
+	$(top_builddir)/unittests/legacyenginesourcetest --version > /dev/null
 
 noinst_PROGRAMS += unittests/displaytest
 noinst_PROGRAMS += unittests/sdl2displaytest
@@ -264,33 +289,33 @@ if ENABLE_AUTOMATION
 AUDIO_TEST_BINARIES = unittests/fuse-audio-0 unittests/fuse-audio-35000 \
                      unittests/fuse-audio-17500 unittests/fuse-audio-8750 \
                      unittests/fuse-audio-997 unittests/fuse-audio-1
-AUDIO_TEST_OBJECTS = unittests/audio-cut-0.$(OBJEXT) \
-                    unittests/audio-cut-35000.$(OBJEXT) \
-                    unittests/audio-cut-17500.$(OBJEXT) \
-                    unittests/audio-cut-8750.$(OBJEXT) \
-                    unittests/audio-cut-997.$(OBJEXT) \
-                    unittests/audio-cut-1.$(OBJEXT)
+AUDIO_TEST_OBJECTS = unittests/audio-cut-0.lo \
+                    unittests/audio-cut-35000.lo \
+                    unittests/audio-cut-17500.lo \
+                    unittests/audio-cut-8750.lo \
+                    unittests/audio-cut-997.lo \
+                    unittests/audio-cut-1.lo
 CLEANFILES += $(AUDIO_TEST_BINARIES) $(AUDIO_TEST_OBJECTS)
 
-$(AUDIO_TEST_OBJECTS): $(srcdir)/sound.c $(fuse_OBJECTS)
+$(AUDIO_TEST_OBJECTS): $(srcdir)/sound.c $(fuse_OBJECTS) $(libfuselegacy_la_OBJECTS)
 	$(AM_V_CC)interval=$@; interval=$${interval#unittests/audio-cut-}; \
-	  interval=$${interval%.$(OBJEXT)}; \
-	  $(COMPILE) -DFUSE_SOUND_TEST_INTERVAL=$$interval -c -o $@ $(srcdir)/sound.c
+	  interval=$${interval%.lo}; \
+	  $(LTCOMPILE) -DFUSE_SOUND_TEST_INTERVAL=$$interval -c -o $@ $(srcdir)/sound.c
 
-unittests/fuse-audio-0: unittests/audio-cut-0.$(OBJEXT)
-unittests/fuse-audio-35000: unittests/audio-cut-35000.$(OBJEXT)
-unittests/fuse-audio-17500: unittests/audio-cut-17500.$(OBJEXT)
-unittests/fuse-audio-8750: unittests/audio-cut-8750.$(OBJEXT)
-unittests/fuse-audio-997: unittests/audio-cut-997.$(OBJEXT)
-unittests/fuse-audio-1: unittests/audio-cut-1.$(OBJEXT)
+unittests/fuse-audio-0: unittests/audio-cut-0.lo
+unittests/fuse-audio-35000: unittests/audio-cut-35000.lo
+unittests/fuse-audio-17500: unittests/audio-cut-17500.lo
+unittests/fuse-audio-8750: unittests/audio-cut-8750.lo
+unittests/fuse-audio-997: unittests/audio-cut-997.lo
+unittests/fuse-audio-1: unittests/audio-cut-1.lo
 
-$(AUDIO_TEST_BINARIES): $(fuse_OBJECTS) $(fuse_DEPENDENCIES)
-	$(AM_V_CCLD)objects=; for object in $(fuse_OBJECTS); do \
-	  case $$object in sound.$(OBJEXT)) ;; \
+$(AUDIO_TEST_BINARIES): $(fuse_OBJECTS) $(fuse_DEPENDENCIES) $(libfuselegacy_la_OBJECTS) $(libfuselegacy_la_DEPENDENCIES)
+	$(AM_V_CCLD)objects=; for object in $(libfuselegacy_la_OBJECTS); do \
+	  case $$object in sound.lo) ;; \
 	    *) objects="$$objects $$object" ;; esac; \
 	  done; \
 	  interval=$@; interval=$${interval#unittests/fuse-audio-}; \
-	  $(fuse_LINK) $$objects unittests/audio-cut-$$interval.$(OBJEXT) $(fuse_LDADD) $(LIBS)
+	  $(fuse_LINK) $(fuse_OBJECTS) $$objects unittests/audio-cut-$$interval.lo $(libfuselegacy_la_LIBADD) $(FUSE_APP_LIBS) $(LIBS)
 
 check-sound-engine-equivalence: fuse$(EXEEXT) $(AUDIO_TEST_BINARIES)
 	python3 $(srcdir)/unittests/audio-frame-equivalence.py \
@@ -300,6 +325,7 @@ check-sound-engine-equivalence: fuse$(EXEEXT) $(AUDIO_TEST_BINARIES)
 	  ./unittests/fuse-audio-1
 
 noinst_PROGRAMS += unittests/automation_json_test
+unittests_automation_json_test_CPPFLAGS = $(AM_CPPFLAGS)
 unittests_automation_json_test_SOURCES = \
 	unittests/automation_json.c \
 	automation/json.c \
@@ -344,14 +370,14 @@ unittests_palcompositetest_SOURCES = \
         unittests/palcompositetest.c \
         ui/scaler/snes_ntsc.c
 unittests_palcompositetest_LDADD = $(LIBSPECTRUM_LIBS) \
-        ui/scaler/scalers16.o ui/scaler/scalers32.o
+        ui/scaler/scalers16.lo ui/scaler/scalers32.lo
 unittests_palcompositetest_CPPFLAGS = $(AM_CPPFLAGS)
 
 unittests_scalerexpandtest_SOURCES = \
         unittests/scalerexpandtest.c \
         ui/scaler/scaler.c
 unittests_scalerexpandtest_LDADD = $(LIBSPECTRUM_LIBS) \
-        ui/scaler/scalers16.o ui/scaler/scalers32.o ui/scaler/snes_ntsc.o
+        ui/scaler/scalers16.lo ui/scaler/scalers32.lo ui/scaler/snes_ntsc.o
 unittests_scalerexpandtest_CPPFLAGS = $(AM_CPPFLAGS)
 
 endif

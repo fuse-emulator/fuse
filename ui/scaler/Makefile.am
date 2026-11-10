@@ -21,22 +21,16 @@
 ##
 ## E-mail: philip-fuse@shadowmagic.org.uk
 
-fuse_SOURCES += ui/scaler/scaler.c \
+libfuselegacy_la_SOURCES += ui/scaler/scaler.c \
                 ui/scaler/snes_ntsc.c
 
-fuse_LDADD += \
-              ui/scaler/scalers16.o \
-              ui/scaler/scalers32.o
+LEGACY_SCALER_OBJECTS = ui/scaler/scalers16.lo ui/scaler/scalers32.lo
 
-fuse_DEPENDENCIES += \
-                     ui/scaler/scalers16.o \
-                     ui/scaler/scalers32.o
+ui/scaler/scalers16.lo: $(srcdir)/ui/scaler/scalers.c config.h
+	$(AM_V_CC)$(LTCOMPILE) -DSCALER_DATA_SIZE=2 -c $(srcdir)/ui/scaler/scalers.c -o $@
 
-ui/scaler/scalers16.o: $(srcdir)/ui/scaler/scalers.c
-	$(AM_V_CC)$(COMPILE) -DSCALER_DATA_SIZE=2 -c $(srcdir)/ui/scaler/scalers.c -o $@
-
-ui/scaler/scalers32.o: $(srcdir)/ui/scaler/scalers.c
-	$(AM_V_CC)$(COMPILE) -DSCALER_DATA_SIZE=4 -c $(srcdir)/ui/scaler/scalers.c -o $@
+ui/scaler/scalers32.lo: $(srcdir)/ui/scaler/scalers.c config.h
+	$(AM_V_CC)$(LTCOMPILE) -DSCALER_DATA_SIZE=4 -c $(srcdir)/ui/scaler/scalers.c -o $@
 
 noinst_HEADERS += \
                   ui/scaler/scaler.h \
@@ -52,6 +46,6 @@ EXTRA_DIST += \
               ui/scaler/scaler_hq4x.c
 
 CLEANFILES += \
-              ui/scaler/scalers16.o \
-              ui/scaler/scalers32.o \
+              ui/scaler/scalers16.lo \
+              ui/scaler/scalers32.lo \
               ui/scaler/snes_ntsc.o

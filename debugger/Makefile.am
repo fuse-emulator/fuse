@@ -20,7 +20,7 @@
 ##
 ## E-mail: philip-fuse@shadowmagic.org.uk
 
-fuse_SOURCES += \
+libfuselegacy_la_SOURCES += \
                 debugger/breakpoint.c \
                 debugger/command.c \
                 debugger/commandl.l \

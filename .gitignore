@@ -5,6 +5,7 @@
 .grepai
 .vscode
 /aclocal.m4
+/ar-lib
 /autom4te.cache
 /compile
 /config.cache
@@ -52,6 +53,8 @@
 /missing
 /mkinstalldirs
 *.o
+*.lo
+*.la
 /options.h
 /roms/128p-0.rom
 /roms/128p-1.rom
@@ -106,6 +109,9 @@ tags
 /unittests/inputdispatchtest
 /unittests/inputrefreshtest
 /unittests/keyboardrefreshtest
+/unittests/legacyenginelinktest
+/unittests/legacyenginesourcetest
+/unittests/startupmanagertest
 /unittests/sdl2eventstest
 /tools/__pycache__/
 /unittests/pcm_fifotest
