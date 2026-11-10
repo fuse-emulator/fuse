@@ -31,24 +31,7 @@
 #include <sys/types.h>
 #include <time.h>
 
-#ifdef WIN32
-#include <windows.h>
-#endif				/* #ifdef WIN32 */
-
 #include <unistd.h>
-
-/* We need to include SDL.h on Mac O X and Windows to do some magic
-   bootstrapping by redefining main. As we now allow SDL joystick code to be
-   used in the GTK and Xlib UIs we need to also do the magic when that code is
-   in use, feel free to look away for the next line */
-#if defined UI_SDL2 || (defined USE_JOYSTICK && (defined UI_X || defined UI_GTK) )
-#include <SDL.h>		/* Needed on MacOS X and Windows */
-#endif /* SDL 2 UI or joystick support */
-
-#ifdef GEKKO
-/* #include <fat.h>
- that requires disc_io.h which does not exist for wii? */
-#endif				/* #ifdef GEKKO */
 
 #ifdef HAVE_LIB_XML2
 #include <libxml/encoding.h>
@@ -61,6 +44,7 @@
 #include "display.h"
 #include "event.h"
 #include "fuse.h"
+#include "fuse-internal.h"
 #include "infrastructure/startup_manager.h"
 #include "keyboard.h"
 #include "keyboard_refresh.h"
@@ -180,22 +164,11 @@ static void free_start_files( start_files_t *start_files );
 
 static int fuse_end(void);
 
-#ifdef UI_WIN32
-int fuse_main(int argc, char **argv)
-#else
-int main(int argc, char **argv)
-#endif
+int
+fuse_legacy_main( int argc, char **argv )
 {
   int r;
 
-#ifdef WIN32
-  SetErrorMode( SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX );
-#endif
-
-#ifdef GEKKO
-  fatInitDefault();
-#endif				/* #ifdef GEKKO */
-  
   if(fuse_init(argc,argv)) {
     fprintf(stderr,"%s: error initialising -- giving up!\n", fuse_progname);
     return 1;

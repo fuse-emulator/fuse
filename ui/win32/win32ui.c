@@ -290,32 +290,14 @@ fuse_window_proc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam )
   return( DefWindowProc( hWnd, msg, wParam, lParam ) );
 }
 
-/* this is where windows program begins */
-int WINAPI
-WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
-         int nCmdShow )
+/* Application bootstrap supplies the values used by ui_init to create windows. */
+void
+win32ui_set_application( HINSTANCE instance, HINSTANCE previous_instance,
+                         int show_command )
 {
-  /* remember those values for window creation in ui_init */
-  fuse_hInstance = hInstance;
-  fuse_nCmdShow = nCmdShow;
-  fuse_hPrevInstance = hPrevInstance;
-
-/* HACK: __argc, __argv are broken and return zero when using mingwrt 4.0+
-   on MinGW.
-   HACK: MinGW-w64 based toolchains neither feature _argc nor _argv. The 32 bit
-   incarnation only defines __MINGW32__. This leads to build breakage due to
-   missing declarations. Luckily MinGW-w64 based toolchains define
-   __MINGW64_VERSION_foo macros inside _mingw.h, which is included from all
-   system headers. Thus we abuse that to detect them.
-*/
-#if defined( __GNUC__ ) && defined( __MINGW32__ ) \
-                        && !defined( __MINGW64_VERSION_MAJOR )
-  return fuse_main( _argc, _argv );
-#else
-  return fuse_main( __argc, __argv );
-#endif
-
-  /* FIXME: how do deal with returning wParam */
+  fuse_hInstance = instance;
+  fuse_hPrevInstance = previous_instance;
+  fuse_nCmdShow = show_command;
 }
 
 int

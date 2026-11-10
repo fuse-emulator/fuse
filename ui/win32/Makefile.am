@@ -22,7 +22,7 @@
 
 if UI_WIN32
 
-fuse_SOURCES += $(ui_win32_files)
+fuse_SOURCES += ui/win32/win32main.c $(ui_win32_files)
 
 BUILT_SOURCES += $(ui_win32_built)
 

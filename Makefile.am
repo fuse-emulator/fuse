@@ -32,6 +32,7 @@ fuse_SOURCES = display.c \
 	display_internal.h \
 	display_render.c \
 	event.c \
+	fuse-main.c \
 	fuse.c \
 	input.c \
 	input_refresh.c \
@@ -142,6 +143,7 @@ noinst_HEADERS = bitmap.h \
 	display.h \
 	event.h \
 	fuse.h \
+	fuse-internal.h \
 	input.h \
 	input_refresh.h \
 	keyboard.h \

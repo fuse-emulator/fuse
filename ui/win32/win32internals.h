@@ -48,6 +48,10 @@ extern HWND fuse_hWnd;
 /* application instance */
 extern HINSTANCE fuse_hInstance;
 
+/* Supplied by the executable entry point, before ui_init. */
+void win32ui_set_application( HINSTANCE instance, HINSTANCE previous_instance,
+                             int show_command );
+
 /* status bar handle */
 extern HWND fuse_hStatusWindow;
 
