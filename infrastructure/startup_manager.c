@@ -44,6 +44,9 @@ static GArray *registered_modules;
 
 static GArray *end_functions;
 
+/* End callbacks may themselves reach emergency shutdown. */
+static int ending;
+
 void
 startup_manager_init( void )
 {
@@ -56,11 +59,24 @@ startup_manager_init( void )
 static void
 startup_manager_end( void )
 {
-  g_array_free( registered_modules, TRUE );
-  registered_modules = NULL;
+  guint i;
 
-  g_array_free( end_functions, TRUE );
-  end_functions = NULL;
+  if( registered_modules ) {
+    /* Failed initialization (or a dependency cycle) leaves registrations whose
+       dependency arrays have not yet been released. */
+    for( i = 0; i < registered_modules->len; i++ ) {
+      registered_module_t *registered_module =
+        &g_array_index( registered_modules, registered_module_t, i );
+      g_array_free( registered_module->dependencies, TRUE );
+    }
+    g_array_free( registered_modules, TRUE );
+    registered_modules = NULL;
+  }
+
+  if( end_functions ) {
+    g_array_free( end_functions, TRUE );
+    end_functions = NULL;
+  }
 }
 
 void
@@ -169,15 +185,19 @@ startup_manager_run( void )
 void
 startup_manager_run_end( void )
 {
-  guint i;
+  if( ending ) return;
+  ending = 1;
 
-  for( i = end_functions->len; i-- != 0; )
-  {
-    startup_manager_end_fn end_fn = 
-      g_array_index( end_functions, startup_manager_end_fn, i );
+  while( end_functions && end_functions->len ) {
+    guint last = end_functions->len - 1;
+    startup_manager_end_fn end_fn =
+      g_array_index( end_functions, startup_manager_end_fn, last );
 
+    /* Consume ownership before calling out; recursive teardown is a no-op. */
+    g_array_set_size( end_functions, last );
     end_fn();
   }
 
   startup_manager_end();
+  ending = 0;
 }

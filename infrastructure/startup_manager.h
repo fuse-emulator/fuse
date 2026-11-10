@@ -104,10 +104,14 @@ void startup_manager_register_no_dependencies(
   startup_manager_module module, startup_manager_init_fn init_fn,
   void *init_context, startup_manager_end_fn end_fn );
 
-/* Run all the registered init functions in the right order */
+/* Run all the registered init functions in the right order. On failure, the
+   failing initializer owns its partial cleanup; the caller must run_end to
+   unwind completed modules and release pending registrations. */
 int startup_manager_run( void );
 
-/* Run all the end functions in inverse order of the init functions */
+/* Run completed end functions in inverse initialization order and release all
+   registrations. Safe before init, after failure and on repeated/recursive end.
+   Do not call during an initializer or register new work from an end callback. */
 void startup_manager_run_end( void );
 
 #endif				/* #ifndef FUSE_STARTUP_MANAGER_H */

@@ -25,6 +25,17 @@ noinst_HEADERS += unittests/helpers.h
 EXTRA_DIST += unittests/fixtures/floatingbus/README.md \
 	unittests/fixtures/floatingbus/.gitignore
 
+LIFECYCLE_CHECK_TARGETS = check-startup-manager
+.PHONY: $(LIFECYCLE_CHECK_TARGETS)
+
+noinst_PROGRAMS += unittests/startupmanagertest
+unittests_startupmanagertest_SOURCES = unittests/startupmanagertest.c \
+                                     infrastructure/startup_manager.c
+unittests_startupmanagertest_LDADD = $(LIBSPECTRUM_LIBS) $(GLIB_LIBS)
+
+check-startup-manager: unittests/startupmanagertest
+	$(top_builddir)/unittests/startupmanagertest
+
 INPUT_CHECK_TARGETS = check-input-refresh check-input-dispatch \
                       check-keyboard-refresh check-sdl2-events
 .PHONY: $(INPUT_CHECK_TARGETS)
