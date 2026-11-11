@@ -29,6 +29,7 @@ void display_render_init( void );
 void display_render_frame( void );
 
 int display_border_init( void );
+void display_border_end( void );
 void display_border_frame( void );
 
 #endif /* #ifndef FUSE_DISPLAY_INTERNAL_H */

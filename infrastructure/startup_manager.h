@@ -24,6 +24,8 @@
 #ifndef FUSE_STARTUP_MANAGER_H
 #define FUSE_STARTUP_MANAGER_H
 
+#include <stddef.h>
+
 /* The modules the startup manager knows about */
 typedef enum startup_manager_module {
 

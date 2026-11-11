@@ -1267,6 +1267,8 @@ static const struct test_t tests[] = {
 #undef main
 #endif
 
+static int ui_end_calls;
+
 int
 main( int argc, char *argv[] )
 {
@@ -1288,6 +1290,10 @@ main( int argc, char *argv[] )
     }
   }
 
+  if( display_end() || display_end() || ui_end_calls != 1 ) return 1;
+  /* Reacquiring the display must also reset border allocation bookkeeping. */
+  if( display_init( &argc, &argv ) ) return 1;
+  if( display_end() || ui_end_calls != 2 ) return 1;
   return 0;
 }
 
@@ -1298,6 +1304,8 @@ ui_init( int *argc, char ***argv )
 {
   return 0;
 }
+
+int ui_end( void ) { ui_end_calls++; return 0; }
 
 void uidisplay_area( int x, int y, int w, int h ) {}
 void uidisplay_frame_end( void ) {}

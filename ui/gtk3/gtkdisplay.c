@@ -571,6 +571,24 @@ uidisplay_end( void )
   return 0;
 }
 
+void
+gtkdisplay_end( void )
+{
+  cancel_pending_resize();
+  if( gtkui_drawing_area )
+    g_signal_handlers_disconnect_by_func( gtkui_drawing_area, gtkdisplay_draw, NULL );
+  if( gtkui_window )
+    g_signal_handlers_disconnect_by_func( gtkui_window,
+                                         drawing_area_resize_callback, NULL );
+  if( surface ) {
+    cairo_surface_destroy( surface );
+    surface = NULL;
+  }
+  surface_scaler = SCALER_NUM;
+  dirty_area_count = 0;
+  display_ui_initialised = 0;
+}
+
 /* Set one pixel in the display */
 void
 uidisplay_putpixel( int x, int y, int colour )

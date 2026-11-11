@@ -47,6 +47,7 @@
 #include "fuse-internal.h"
 #include "infrastructure/startup_manager.h"
 #include "infrastructure/startup_files.h"
+#include "infrastructure/startup_test.h"
 #include "keyboard.h"
 #include "keyboard_refresh.h"
 #include "machine.h"
@@ -122,14 +123,14 @@ static const char * const LIBSPECTRUM_MIN_VERSION = "0.5.0";
 /* Context for the display startup routine */
 static display_startup_context display_context;
 
-/* Exclusive application-runner ownership, not independent emulation contexts.
-   Full manager/UI failure unwind is still being extracted separately. */
+/* Exclusive application-runner ownership, not independent emulation contexts. */
 static struct {
   int attempted;
   int manager_started;
   int initialized;
   int xml_owned;
   int libspectrum_owned;
+  int ended;
 } legacy_ownership;
 
 static void fuse_settings_end( void );
@@ -164,22 +165,13 @@ fuse_legacy_main( int argc, char **argv )
 
   if(fuse_init(argc,argv)) {
     fprintf(stderr,"%s: error initialising -- giving up!\n", fuse_progname);
-    /* Only the pre-manager ownership boundary is safe here so far. */
-    if( !legacy_ownership.manager_started ) {
-      fuse_settings_end();
-#ifdef ENABLE_AUTOMATION
-      automation_end();
-#endif
-    }
+    fuse_end();
     libspectrum_error_function = previous_error_function;
     return 1;
   }
 
   if( settings_current.show_help || settings_current.show_version ) {
-    fuse_settings_end();
-#ifdef ENABLE_AUTOMATION
-    automation_end();
-#endif
+    fuse_end();
     libspectrum_error_function = previous_error_function;
     return 0;
   }
@@ -212,9 +204,6 @@ fuse_legacy_main( int argc, char **argv )
   if( automation_active() && automation_write_result() ) r = 1;
 #endif
   fuse_end();
-#ifdef ENABLE_AUTOMATION
-  if( automation_active() ) automation_end();
-#endif
   libspectrum_error_function = previous_error_function;
 
   return r;
@@ -247,18 +236,12 @@ libspectrum_register_startup( void )
                             NULL, NULL );
 }
 
-/* Settings own their strings; the application owns XML's global cleanup.
-   Keep both at the existing settings callback position on normal shutdown. */
+/* Keep settings at their existing teardown position. Process-global XML
+   cleanup runs only after all owned XML users (including SVG) have ended. */
 static void
 fuse_settings_end( void )
 {
   settings_end( legacy_ownership.initialized );
-  if( legacy_ownership.xml_owned ) {
-    legacy_ownership.xml_owned = 0;
-#ifdef HAVE_LIB_XML2
-    xmlCleanupParser();
-#endif
-  }
 }
 
 static int
@@ -433,6 +416,10 @@ static int fuse_init(int argc, char **argv)
 
   error = machine_select_id( settings_current.start_machine );
   if( error ) goto cleanup;
+  if( FUSE_STARTUP_FAIL( "machine.selected" ) ) {
+    error = 1;
+    goto cleanup;
+  }
 
   error = scaler_select_id( start_scaler );
   if( error ) goto cleanup;
@@ -442,6 +429,10 @@ static int fuse_init(int argc, char **argv)
   if( !error ) error = do_start_files( &start_files );
   fuse_start_files_end( &start_files );
   if( error ) goto cleanup;
+  if( FUSE_STARTUP_FAIL( "startup.files" ) ) {
+    error = 1;
+    goto cleanup;
+  }
 
   /* Must do this after all subsytems are initialised */
   debugger_command_evaluate( settings_current.debugger_command );
@@ -1007,18 +998,36 @@ do_start_files( fuse_start_files *start_files )
 /* Tidy-up function called at end of emulation */
 static int fuse_end(void)
 {
-  movie_stop();		/* stop movie recording */
+  if( !legacy_ownership.attempted || legacy_ownership.ended ) return 0;
+  /* Disarm before invoking callbacks, including emergency shutdown reentry. */
+  legacy_ownership.ended = 1;
 
-  startup_manager_run_end();
-
-  periph_end();
-  ui_end();
-  ui_media_drive_end();
-  module_end();
+  movie_stop();
+  /* Active trainer restoration needs live machine memory/maps. */
   pokemem_end();
 
-  svg_capture_end();
+  if( legacy_ownership.manager_started ) {
+    legacy_ownership.manager_started = 0;
+    startup_manager_run_end();
+  }
+  /* The settings callback may not have become a completed registration. */
+  fuse_settings_end();
 
+  periph_end();
+  display_end();
+  ui_media_drive_end();
+  module_end();
+  svg_capture_end();
+#ifdef ENABLE_AUTOMATION
+  automation_end();
+#endif
+
+  if( legacy_ownership.xml_owned ) {
+    legacy_ownership.xml_owned = 0;
+#ifdef HAVE_LIB_XML2
+    xmlCleanupParser();
+#endif
+  }
   if( legacy_ownership.libspectrum_owned ) {
     legacy_ownership.libspectrum_owned = 0;
     libspectrum_end();
@@ -1027,6 +1036,14 @@ static int fuse_end(void)
 
   return 0;
 }
+
+#ifdef FUSE_STARTUP_TEST
+void
+fuse_startup_test_shutdown( void )
+{
+  fuse_end();
+}
+#endif
 
 /* Emergency shutdown */
 void

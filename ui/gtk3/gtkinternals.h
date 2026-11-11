@@ -36,6 +36,8 @@ extern libspectrum_dword gtkdisplay_colours[ 16 ];
 
 void gtkdisplay_update_geometry( void );
 void gtkdisplay_get_window_size( int *width, int *height );
+/* Terminal UI cleanup, separate from machine-switch display teardown. */
+void gtkdisplay_end( void );
 
 /*
  * Keyboard routines (gtkkeyboard.c)

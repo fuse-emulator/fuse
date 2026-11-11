@@ -584,6 +584,9 @@ ui_drive_inserted( const ui_media_drive_info_t *drive, int new )
 int
 specplus3_shutdown( void )
 {
+  /* +3 and +3e share this controller and shutdown callback. */
+  libspectrum_free( specplus3_fdc );
+  specplus3_fdc = NULL;
   return 0;
 }
 

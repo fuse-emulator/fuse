@@ -20,6 +20,7 @@
 #include "tape.h"
 #include "sound/dc_filter.h"
 #include "sound/output_mixer.h"
+#include "infrastructure/startup_test.h"
 #include "sound/audio_timeline.h"
 #include "sound/speaker_filter.h"
 #include "sound/tv_filter.h"
@@ -75,6 +76,7 @@ output_mixer_init( libspectrum_dword clock_rate, int sample_rate,
       ( channels == 2 &&
         output_buffer_init( &tv_right_buf, clock_rate, sample_rate ) ) )
     return 1;
+  if( FUSE_STARTUP_FAIL( "sound.mixer.buffers" ) ) return 1;
   ula_synth = new_Blip_Synth();
   blip_synth_set_volume( ula_synth, volume );
   blip_synth_set_output( ula_synth, ula_buf );
@@ -110,6 +112,8 @@ output_mixer_end( void )
   libspectrum_free( ula_samples );
   libspectrum_free( ula_frame );
   libspectrum_free( ula_published );
+  tv_samples = ula_samples = ula_frame = ula_published = NULL;
+  ula_frame_size = ula_frame_count = ula_published_count = 0;
 }
 
 void

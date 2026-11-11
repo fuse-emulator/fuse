@@ -601,10 +601,13 @@ void
 rzx_register_startup( void )
 {
   startup_manager_module dependencies[] = {
+    STARTUP_MANAGER_MODULE_CREATOR,
     STARTUP_MANAGER_MODULE_DEBUGGER,
     STARTUP_MANAGER_MODULE_EVENT,
     STARTUP_MANAGER_MODULE_MACHINE,
     STARTUP_MANAGER_MODULE_SETUID,
+    /* Recording finalization uses creator data and current settings. */
+    STARTUP_MANAGER_MODULE_SETTINGS_END,
   };
   startup_manager_register( STARTUP_MANAGER_MODULE_RZX, dependencies,
                             ARRAY_SIZE( dependencies ), rzx_init, NULL,

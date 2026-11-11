@@ -36,6 +36,7 @@
 
 #include "debugger/debugger.h"
 #include "fuse.h"
+#include "infrastructure/startup_test.h"
 #include "gtkinternals.h"
 #include "keyboard.h"
 #include "machine.h"
@@ -63,6 +64,7 @@ GtkWidget *gtkui_window;
 GtkWidget *gtkui_drawing_area;
 
 static GtkWidget *menu_bar;
+static int resources_owned;
 
 /* Wait until the window has reached its final size before applying
    fullscreen changes. See gtkui_window_configure() for more details */
@@ -167,11 +169,16 @@ ui_init( int *argc, char ***argv )
 
   g_set_prgname( FUSE_APP_ID );
 
-  gtk_init(argc,argv);
+  if( !gtk_init_check( argc, argv ) ) {
+    fprintf( stderr, "%s: could not initialize GTK display\n", fuse_progname );
+    return 1;
+  }
 
   g_resources_register( gtkui_get_resource() );
+  resources_owned = 1;
 
   gtkui_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+  if( FUSE_STARTUP_FAIL( "gtk.window" ) ) goto failed;
 
 #ifdef FUSE_ICON_AVAILABLE
   gtk_window_set_icon_name( GTK_WINDOW( gtkui_window ), FUSE_APP_ID );
@@ -215,8 +222,9 @@ ui_init( int *argc, char ***argv )
                        gtkui_menu_data_size ) ) {
     fprintf(stderr,"%s: couldn't make menus %s:%d\n",
 	    fuse_progname,__FILE__,__LINE__);
-    return 1;
+    goto failed;
   }
+  if( FUSE_STARTUP_FAIL( "gtk.menu" ) ) goto failed;
 
   gtk_window_add_accel_group( GTK_WINDOW(gtkui_window), accel_group );
   gtk_box_pack_start( GTK_BOX(box), menu_bar, FALSE, FALSE, 0 );
@@ -225,7 +233,7 @@ ui_init( int *argc, char ***argv )
   if(!gtkui_drawing_area) {
     fprintf(stderr,"%s: couldn't create drawing area at %s:%d\n",
 	    fuse_progname,__FILE__,__LINE__);
-    return 1;
+    goto failed;
   }
 
   /* Set minimum size for drawing area */
@@ -253,6 +261,10 @@ ui_init( int *argc, char ***argv )
   ui_mouse_present = 1;
 
   return 0;
+
+failed:
+  ui_end();
+  return 1;
 }
 
 static void
@@ -322,12 +334,32 @@ ui_event(void)
 int
 ui_end(void)
 {
-  /* Don't display the window whilst doing all this! */
-  gtk_widget_hide( gtkui_window );
-
-  g_object_unref( ui_manager_menu );
-
-  g_resources_unregister( gtkui_get_resource() );
+  /* Stop callbacks before destroying widgets after machine teardown. */
+  gtkdisplay_end();
+  if( gtkui_window ) {
+    g_signal_handlers_disconnect_by_func( gtkui_window, gtkui_delete, NULL );
+    g_signal_handlers_disconnect_by_func( gtkui_window, gtkkeyboard_keypress, NULL );
+    g_signal_handlers_disconnect_by_func( gtkui_window, gtkkeyboard_keyrelease, NULL );
+    g_signal_handlers_disconnect_by_func( gtkui_window, gtkui_lose_focus, NULL );
+    g_signal_handlers_disconnect_by_func( gtkui_window, gtkui_gain_focus, NULL );
+    g_signal_handlers_disconnect_by_func( gtkui_window, gtkui_window_state, NULL );
+    g_signal_handlers_disconnect_by_func( gtkui_window, gtkui_window_configure, NULL );
+    g_signal_handlers_disconnect_by_func( gtkui_window, gtkui_drag_data_received, NULL );
+    gtk_widget_hide( gtkui_window );
+  }
+  if( menu_bar )
+    g_signal_handlers_disconnect_by_func( menu_bar, gtkui_menu_deactivate, NULL );
+  if( ui_manager_menu ) {
+    g_object_unref( ui_manager_menu );
+    ui_manager_menu = NULL;
+  }
+  if( gtkui_window ) gtk_widget_destroy( gtkui_window );
+  gtkui_window = gtkui_drawing_area = menu_bar = NULL;
+  if( resources_owned ) {
+    resources_owned = 0;
+    g_resources_unregister( gtkui_get_resource() );
+  }
+  ui_mouse_present = 0;
 
   return 0;
 }

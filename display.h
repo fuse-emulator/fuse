@@ -93,6 +93,8 @@ typedef struct display_startup_context {
 } display_startup_context;
 
 int display_init( int *argc, char ***argv );
+/* Ends only successfully acquired UI/display state; safe to repeat. */
+int display_end( void );
 void display_register_startup( display_startup_context *context );
 
 typedef void (*display_dirty_fn)( libspectrum_word offset );

@@ -30,6 +30,7 @@
 #include "fuse.h"
 #include "infrastructure/startup_manager.h"
 #include "machine.h"
+#include "infrastructure/startup_test.h"
 #include "machines/machines.h"
 #include "machines/scorpion.h"
 #include "machines/spec128.h"
@@ -68,6 +69,7 @@ typedef struct snapshot_rom_bank {
 static GSList *snapshot_rom_banks;
 
 static int machine_add_machine( int (*init_function)(fuse_machine_info *machine) );
+static void machine_end( void );
 void machine_clear_snapshot_rom_banks( void );
 static int machine_select_machine( fuse_machine_info *machine, libspectrum_snap *snap );
 static void machine_set_const_timings( fuse_machine_info *machine );
@@ -76,44 +78,21 @@ static void machine_set_variable_timings( fuse_machine_info *machine );
 static int
 machine_init_machines( void *context )
 {
-  int error;
+  static int (*const initializers[])( fuse_machine_info * ) = {
+    spec16_init, spec48_init, spec48_ntsc_init, spec128_init, specplus2_init,
+    specplus2a_init, specplus3_init, specplus3e_init, tc2048_init, tc2068_init,
+    ts2068_init, pentagon_init, pentagon512_init, pentagon1024_init,
+    scorpion_init, spec_se_init
+  };
+  size_t i;
 
-  error = machine_add_machine( spec16_init    );
-  if (error ) return error;
-  error = machine_add_machine( spec48_init    );
-  if (error ) return error;
-  error = machine_add_machine( spec48_ntsc_init );
-  if (error ) return error;
-  error = machine_add_machine( spec128_init   );
-  if (error ) return error;
-  error = machine_add_machine( specplus2_init );
-  if (error ) return error;
-  error = machine_add_machine( specplus2a_init );
-  if( error ) return error;
-
-  error = machine_add_machine( specplus3_init );
-  if (error ) return error;
-
-  error = machine_add_machine( specplus3e_init );
-  if( error ) return error;
-
-  error = machine_add_machine( tc2048_init );
-  if (error ) return error;
-  error = machine_add_machine( tc2068_init );
-  if( error ) return error;
-  error = machine_add_machine( ts2068_init );
-  if( error ) return error;
-  error = machine_add_machine( pentagon_init );
-  if (error ) return error;
-  error = machine_add_machine( pentagon512_init );
-  if (error ) return error;
-  error = machine_add_machine( pentagon1024_init );
-  if (error ) return error;
-  error = machine_add_machine( scorpion_init );
-  if ( error ) return error;
-  error = machine_add_machine( spec_se_init );
-  if ( error ) return error;
-
+  for( i = 0; i < ARRAY_SIZE( initializers ); i++ ) {
+    int error = machine_add_machine( initializers[i] );
+    if( error ) {
+      machine_end();
+      return error;
+    }
+  }
   return 0;
 }
 
@@ -122,17 +101,22 @@ static int machine_add_machine( int (*init_function)( fuse_machine_info *machine
   fuse_machine_info *machine;
   int error;
 
-  machine_count++;
+  machine = libspectrum_new0( fuse_machine_info, 1 );
+  error = init_function( machine );
+  if( error ) {
+    /* A failing machine initializer owns any partial internal allocations. */
+    libspectrum_free( machine );
+    return error;
+  }
+  if( FUSE_STARTUP_FAIL( "machine.model" ) ) {
+    if( machine->shutdown ) machine->shutdown();
+    libspectrum_free( machine );
+    return 1;
+  }
 
-  machine_types =
-    libspectrum_renew( fuse_machine_info *, machine_types, machine_count );
-
-  machine_types[ machine_count - 1 ] = libspectrum_new( fuse_machine_info, 1 );
-  machine = machine_types[ machine_count - 1 ];
-
-  machine->unattached_port_for_port = NULL;
-  error = init_function( machine ); if( error ) return error;
-
+  machine_types = libspectrum_renew( fuse_machine_info *, machine_types,
+                                    machine_count + 1 );
+  machine_types[ machine_count++ ] = machine;
   machine_set_const_timings( machine );
 
   machine->capabilities = libspectrum_machine_capabilities( machine->machine );
@@ -628,7 +612,11 @@ machine_end( void )
     libspectrum_free( machine_types[i] );
   }
 
+  machine_clear_snapshot_rom_banks();
   libspectrum_free( machine_types );
+  machine_types = NULL;
+  machine_count = 0;
+  machine_current = NULL;
 }
 
 void

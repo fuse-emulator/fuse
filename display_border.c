@@ -36,14 +36,12 @@ struct border_change_t {
 static struct border_change_t border_change_end_sentinel =
 { DISPLAY_SCREEN_WIDTH_COLS, DISPLAY_SCREEN_HEIGHT - 1, 0 };
 
-static int border_changes_last;
+static int border_changes_last, border_changes_size;
 static struct border_change_t *border_changes;
 
 static struct border_change_t *
 alloc_change( void )
 {
-  static int border_changes_size;
-
   if( border_changes_size == border_changes_last ) {
     border_changes_size += 10;
     border_changes = libspectrum_renew( struct border_change_t,
@@ -64,14 +62,20 @@ add_border_sentinel( void )
   return 0;
 }
 
+void
+display_border_end( void )
+{
+  libspectrum_free( border_changes );
+  border_changes = NULL;
+  border_changes_last = border_changes_size = 0;
+}
+
 int
 display_border_init( void )
 {
   int error;
 
-  border_changes_last = 0;
-  if( border_changes ) libspectrum_free( border_changes );
-  border_changes = NULL;
+  display_border_end();
 
   error = add_border_sentinel();
   if( error ) return error;

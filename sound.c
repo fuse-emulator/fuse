@@ -47,6 +47,7 @@
 #include "sound/ay_engine.h"
 #include "sound/audio_timeline.h"
 #include "sound/blipbuffer.h"
+#include "infrastructure/startup_test.h"
 #include "sound/output_mixer.h"
 #include "sound/source_synths.h"
 #include "sound/silence_noise.h"
@@ -55,6 +56,7 @@
 
 /* configuration */
 int sound_enabled = 0;		/* Are we currently using the sound card */
+static int lowlevel_owned;       /* Acquired before synthesis is ready. */
 
 static int sound_enabled_ever = 0; /* whether sound has *ever* been in use; see
 				      sound_ay_write() and sound_ay_reset() */
@@ -104,7 +106,8 @@ sound_init_buffer( Blip_Buffer **buf )
   /* Allow up to 1s of playback buffer - this allows us to cope with slowing
      down to 2% of speed where a single Speccy frame generates just under 1s
      of sound */
-  if ( blip_buffer_set_sample_rate( *buf, settings_current.sound_freq, 1000 ) ) {
+  if( FUSE_STARTUP_FAIL( buf == &left_buf ? "sound.left" : "sound.right" ) ||
+      blip_buffer_set_sample_rate( *buf, settings_current.sound_freq, 1000 ) ) {
     sound_end();
     ui_error( UI_ERROR_ERROR, "out of memory at %s:%d", __FILE__, __LINE__ );
     return 0;
@@ -150,6 +153,11 @@ sound_init( const char *device )
       sound_lowlevel_init( device, &settings_current.sound_freq,
                            &sound_stereo_ay ) )
     return;
+  lowlevel_owned = 1;
+  if( FUSE_STARTUP_FAIL( "sound.backend" ) ) {
+    sound_end();
+    return;
+  }
   if( sound_stereo_ay != SOUND_STEREO_AY_NONE &&
       sound_stereo_ay != SOUND_STEREO_AY_ACB &&
       sound_stereo_ay != SOUND_STEREO_AY_ABC ) {
@@ -195,6 +203,10 @@ sound_init( const char *device )
   samples = libspectrum_new0( blip_sample_t, sound_framesiz * sound_channels );
   frame_samples = libspectrum_new0( blip_sample_t,
                                     sound_framesiz * sound_channels );
+  if( FUSE_STARTUP_FAIL( "sound.samples" ) ) {
+    sound_end();
+    return;
+  }
 
   sound_enabled = sound_enabled_ever = 1;
   sound_tv_route = -1;
@@ -223,20 +235,24 @@ void
 sound_end( void )
 {
   if( audio_event >= 0 ) event_remove_type( audio_event );
-  if( sound_enabled ) {
-    ay_engine_end();
-    source_synths_end();
-    output_mixer_end();
-    delete_Blip_Buffer( &left_buf );
-    delete_Blip_Buffer( &right_buf );
+  /* Each synthesis helper tolerates absent resources. sound_enabled describes
+     usable output, not ownership of a partially constructed pipeline. */
+  ay_engine_end();
+  source_synths_end();
+  output_mixer_end();
+  delete_Blip_Buffer( &left_buf );
+  delete_Blip_Buffer( &right_buf );
 
-    if( settings_current.sound ) sound_lowlevel_end();
-    libspectrum_free( samples );
-    libspectrum_free( frame_samples );
-    audio_position = 0;
-    frame_sample_count = 0;
-    sound_enabled = 0;
+  if( lowlevel_owned ) {
+    lowlevel_owned = 0;
+    sound_lowlevel_end();
   }
+  libspectrum_free( samples );
+  libspectrum_free( frame_samples );
+  samples = frame_samples = NULL;
+  audio_position = 0;
+  frame_sample_count = 0;
+  sound_enabled = 0;
 }
 
 void

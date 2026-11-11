@@ -31,6 +31,7 @@
 
 #include "fuse.h"
 #include "options.h"
+#include "peripherals/disk/fdd.h"
 #include "ui/ui.h"
 #include "ui/uimedia.h"
 #include "utils.h"
@@ -57,6 +58,13 @@ ui_media_drive_register( ui_media_drive_info_t *drive )
 void
 ui_media_drive_end( void )
 {
+  GSList *entry;
+  /* Dispose loaded images without invoking save/eject decisions. The legacy
+     application has already handled quit decisions; rollback must not ask. */
+  for( entry = registered_drives; entry; entry = entry->next ) {
+    ui_media_drive_info_t *drive = entry->data;
+    if( drive->fdd ) disk_close( &drive->fdd->disk );
+  }
   g_slist_free( registered_drives );
   registered_drives = NULL;
 }

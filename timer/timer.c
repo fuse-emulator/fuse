@@ -121,7 +121,9 @@ timer_init( void *context )
 
   event_add( 0, timer_event );
 
-  return timer_estimate_reset();
+  int error = timer_estimate_reset();
+  if( error ) event_remove_type( timer_event );
+  return error;
 }
 
 static void

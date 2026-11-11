@@ -8,6 +8,7 @@
 */
 
 #include "config.h"
+#include "infrastructure/startup_test.h"
 
 #include <SDL.h>
 
@@ -124,6 +125,7 @@ ui_init( int *argc, char ***argv )
 
   error = SDL_Init( SDL_INIT_VIDEO );
   if( error ) {
+    SDL_Quit();
     ui_widget_end();
     return error;
   }
@@ -135,6 +137,10 @@ ui_init( int *argc, char ***argv )
   input_dispatch_set_popup_filter( sdl2ui_popup_key );
   keyboard_refresh_set_frontend( sdl2ui_refresh_input, NULL );
   ui_mouse_present = 1;
+  if( FUSE_STARTUP_FAIL( "sdl.ready" ) ) {
+    ui_end();
+    return 1;
+  }
 
   return 0;
 }
@@ -218,7 +224,6 @@ ui_end( void )
   input_dispatch_set_popup_filter( NULL );
   sdl2_events_end( &sdl2ui_events );
   error = uidisplay_end();
-  if( error ) return error;
 
   if( sdl2ui_blank_cursor ) {
     SDL_FreeCursor( sdl2ui_blank_cursor );
@@ -230,8 +235,9 @@ ui_end( void )
   sdl2keyboard_end();
   SDL_Quit();
   ui_widget_end();
+  ui_mouse_present = 0;
 
-  return 0;
+  return error;
 }
 
 int

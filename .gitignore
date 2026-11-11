@@ -113,6 +113,7 @@ tags
 /unittests/legacyenginesourcetest
 /unittests/startupmanagertest
 /unittests/startupownershiptest
+/unittests/startupunwindtest
 /unittests/sdl2eventstest
 /tools/__pycache__/
 /unittests/pcm_fifotest

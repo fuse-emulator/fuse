@@ -367,10 +367,16 @@ if1_end( void )
 {
   int m;
 
+  if( if1_ula.fd_r >= 0 ) close( if1_ula.fd_r );
+  if( if1_ula.fd_t >= 0 ) close( if1_ula.fd_t );
+  if( if1_ula.fd_net >= 0 ) close( if1_ula.fd_net );
+  if1_ula.fd_r = if1_ula.fd_t = if1_ula.fd_net = -1;
+
   for( m = 0; m < 8; m++ ) {
     libspectrum_error error =
       libspectrum_microdrive_free( microdrive[m].cartridge );
-    if( error ) return;
+    if( error ) ui_error( UI_ERROR_ERROR, "Could not release microdrive %d", m );
+    microdrive[m].cartridge = NULL;
   }
 }
 

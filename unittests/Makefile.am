@@ -410,3 +410,52 @@ else
 check-startup-ownership:
 	@echo "SKIP: startup ownership tests require a null-UI build"
 endif
+
+# A compile-time-instrumented source consumer; production has no failure switch.
+unittests_startupunwindtest_SOURCES = unittests/startupunwindtest.c \
+                                    $(libfuselegacy_la_SOURCES)
+unittests_startupunwindtest_CPPFLAGS = $(AM_CPPFLAGS) -DFUSE_STARTUP_TEST
+unittests_startupunwindtest_LDADD = $(libfuselegacy_la_LIBADD)
+unittests_startupunwindtest_DEPENDENCIES = $(libfuselegacy_la_DEPENDENCIES)
+$(unittests_startupunwindtest_OBJECTS): config.h
+.PHONY: check-startup-unwind
+
+if UI_NULL
+if ENABLE_AUTOMATION
+check_PROGRAMS += unittests/startupunwindtest
+LIFECYCLE_CHECK_TARGETS += check-startup-unwind
+check-startup-unwind: unittests/startupunwindtest
+	@set -e; program="$(abs_top_builddir)/unittests/startupunwindtest$(EXEEXT)"; \
+	  rom="$(abs_top_srcdir)/roms/48.rom"; \
+	  tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' 0 1 2 3 15; \
+	  cd "$$tmp"; export HOME=. XDG_CONFIG_HOME=. USERPROFILE=. WINDIR=. APPDATA=.; \
+	  run() { kind=$$1; target=$$2; shift 2; status=0; \
+	    "$$program" "$$kind" "$$target" "$$rom" "$$@" > /dev/null || status=$$?; \
+	    if test "$$status" -ne 0 && test "$$status" -ne 77; then \
+	      echo "FAILED: startup unwind $$kind $$target ($$status)" >&2; return 1; \
+	    fi; }; \
+	  count=$$("$$program" count); module=0; \
+	  while test $$module -lt $$count; do \
+	    run before $$module; run after $$module; module=$$((module + 1)); \
+	  done; \
+	  count=$$("$$program" models none "$$rom" | tail -n 1); test -n "$$count"; \
+	  test "$$count" -gt 0; model=1; \
+	  while test $$model -le $$count; do \
+	    run point machine.model $$model; model=$$((model + 1)); \
+	  done; \
+	  for point in display.ui display.ready machine.selected startup.files \
+	    sound.backend sound.left sound.right sound.mixer.buffers sound.samples; do \
+	    run point $$point; \
+	  done; \
+	  run media none; run record none; \
+	  for failure in rom scaler snapshot; do run natural $$failure; done; \
+	  test -z "$$(find . -type f \( -name fuserc -o -name fuse.cfg \) -print)"; \
+	  echo 'Manager acquisition/reverse-unwind, partial setup and repeated shutdown passed'
+else
+check-startup-unwind:
+	@echo "SKIP: startup unwind matrix requires automation"
+endif
+else
+check-startup-unwind:
+	@echo "SKIP: startup unwind matrix requires a null-UI build"
+endif

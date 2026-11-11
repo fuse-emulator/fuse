@@ -30,6 +30,7 @@
 #include "display.h"
 #include "display_internal.h"
 #include "infrastructure/startup_manager.h"
+#include "infrastructure/startup_test.h"
 #include "machine.h"
 #include "movie.h"
 #include "peripherals/scld.h"
@@ -57,6 +58,7 @@ libspectrum_word display_attr_start[ DISPLAY_HEIGHT ];
 
 /* Used to signify that we're redrawing the entire screen */
 static int display_redraw_all;
+static int display_owned;
 
 int
 display_init( int *argc, char ***argv )
@@ -64,8 +66,9 @@ display_init( int *argc, char ***argv )
   int i, j, k, y;
   int error;
 
-  if( ui_init( argc, argv ) )
+  if( FUSE_STARTUP_FAIL( "display.ui" ) || ui_init( argc, argv ) )
     return 1;
+  display_owned = 1;
 
   display_dirty_init();
 
@@ -86,9 +89,26 @@ display_init( int *argc, char ***argv )
 
   display_refresh_all();
 
-  error = display_border_init(); if( error ) return error;
+  error = display_border_init();
+  if( error || FUSE_STARTUP_FAIL( "display.ready" ) ) {
+    display_end();
+    return 1;
+  }
 
   return 0;
+}
+
+int
+display_end( void )
+{
+  int error = 0;
+  if( display_owned ) {
+    display_owned = 0;
+    error = ui_end();
+  }
+  display_border_end();
+  display_ui_initialised = 0;
+  return error;
 }
 
 static int

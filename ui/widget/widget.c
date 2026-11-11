@@ -506,6 +506,8 @@ int widget_end( void )
     }
     free( widget_filenames );
   }
+  widget_filenames = NULL;
+  widget_numfiles = 0;
 
   widget_free_font();
 
