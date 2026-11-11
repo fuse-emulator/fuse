@@ -228,6 +228,18 @@ fuse_legacy_main( int argc, char **argv )
   return 1;
 }
 
+/* One legacy dispatch iteration. Keep the CPU batch and all due events
+   together: a frame event also delivers its interrupt and runs the RZX, input
+   and UI companions before control returns here. This is not necessarily one
+   instruction or one frame, and callbacks may block. Application exit and
+   automation policy remain with the enclosing runner. */
+static void
+fuse_dispatch_once( void )
+{
+  z80_do_opcodes();
+  event_do_events();
+}
+
 int
 fuse_legacy_execute( int *exit_status )
 {
@@ -248,8 +260,7 @@ fuse_legacy_execute( int *exit_status )
     if( automation_active() ) automation_arm( spectrum_get_frame_count() );
 #endif
     while( !fuse_exiting ) {
-      z80_do_opcodes();
-      event_do_events();
+      fuse_dispatch_once();
 #ifdef ENABLE_AUTOMATION
       if( automation_active() &&
           automation_frame_limit_reached( spectrum_get_frame_count() ) )

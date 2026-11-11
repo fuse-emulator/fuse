@@ -45,7 +45,11 @@ Argument storage remains borrowed and may be modified/reordered by the parser or
 selected toolkit; keep it alive through shutdown.
 
 The compatibility wrapper preserves CLI exit mapping and the existing dispatch
-body. RNG seeding, core-managed libspectrum/XML and platform privilege handling
+order. A private `fuse_dispatch_once()` groups the CPU batch and due-event dispatch;
+frame callbacks, including their RZX/interrupt/input/UI companions, are unchanged.
+This helper adds no host execution entry or return-time guarantee. The legacy
+runner still owns the exit loop and automation arming, deadline checks and result
+finalization. RNG seeding, core-managed libspectrum/XML and platform privilege handling
 remain at their existing startup stages. No seeding hook, generic policy framework,
 borrowed-library mode or new frontend responsibility is introduced.
 
