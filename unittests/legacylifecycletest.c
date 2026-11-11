@@ -130,12 +130,55 @@ check_session( int argc, char **argv, int execute, int expected_status )
   check_closed();
 }
 
+static void
+check_preferences( const char *kind, char *rom )
+{
+  char program[] = "preference-test", machine[] = "--machine", model[] = "48";
+  char rom_option[] = "--rom-48", autosave[] = "--autosave-settings";
+  char no_save[] = "--no-autosave-settings", no_sound[] = "--no-sound";
+  char frequency[] = "--sound-freq", original[] = "12345", changed[] = "23456";
+  char *args[] = { program, machine, model, rom_option, rom, autosave,
+                  frequency, original, no_sound, NULL };
+
+  if( !strcmp( kind, "core-preferences" ) ||
+      !strcmp( kind, "core-executed-preferences" ) ) {
+    assert( fuse_legacy_prepare( 9, args ) == FUSE_LEGACY_INIT_READY );
+    /* The user's setting is retained; it does not grant the core permission
+       to persist settings. Mutate a value so an unwanted rewrite is observable. */
+    assert( settings_current.autosave_settings );
+    assert( settings_current.sound_freq == 12345 );
+    settings_current.sound_freq = 23456;
+    if( !strcmp( kind, "core-executed-preferences" ) ) {
+      int status = 73;
+      fuse_exiting = 1;
+      assert( !fuse_legacy_execute( &status ) && status == 0 );
+    }
+    fuse_legacy_shutdown();
+  } else {
+    if( !strcmp( kind, "app-no-preferences" ) ) {
+      args[5] = no_save;
+      args[7] = changed;
+    } else assert( !strcmp( kind, "app-preferences" ) );
+    /* Exercise the actual compatibility wrapper without unbounded execution.
+       The existing exit flag represents an exit requested during startup. */
+    fuse_exiting = 1;
+    assert( !fuse_legacy_main( 9, args ) );
+  }
+  check_closed();
+}
+
 int
 legacy_lifecycle_test( int argc, char **argv )
 {
   assert( argc >= 2 );
   libspectrum_error_function = preserved_error;
-  if( !strcmp( argv[1], "arguments" ) ) {
+  if( !strcmp( argv[1], "core-preferences" ) ||
+      !strcmp( argv[1], "core-executed-preferences" ) ||
+      !strcmp( argv[1], "app-preferences" ) ||
+      !strcmp( argv[1], "app-no-preferences" ) ) {
+    assert( argc == 3 );
+    check_preferences( argv[1], argv[2] );
+  } else if( !strcmp( argv[1], "arguments" ) ) {
     check_invalid_arguments();
     check_complete( "help" );
   } else if( !strcmp( argv[1], "zero" ) ) {

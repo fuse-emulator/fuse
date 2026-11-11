@@ -293,9 +293,24 @@ check-legacy-lifecycle: unittests/legacyenginelinktest unittests/legacyenginesou
 	      --no-autosave-settings > /dev/null; \
 	    $(LEGACY_LIFECYCLE_EXECUTION_CHECK) \
 	    test -z "$$(find . -type f \( -name fuserc -o -name fuse.cfg \) -print)"; \
-	    cd ..; \
+	    mkdir empty-preferences; cd empty-preferences; \
+	    "$$program" --lifecycle-test core-preferences "$$rom" > /dev/null; \
+	    "$$program" --lifecycle-test core-executed-preferences "$$rom" > /dev/null; \
+	    "$$program" --lifecycle-test app-no-preferences "$$rom" > /dev/null; \
+	    test -z "$$(find . -type f -print)"; cd ..; \
+	    mkdir saved-preferences; cd saved-preferences; \
+	    "$$program" --lifecycle-test app-preferences "$$rom" > /dev/null; \
+	    test -n "$$(find . -type f -print)"; \
+	    before=$$(find . -type f -exec cksum {} \;); \
+	    "$$program" --lifecycle-test core-preferences "$$rom" > /dev/null; \
+	    test "$$before" = "$$(find . -type f -exec cksum {} \;)"; \
+	    "$$program" --lifecycle-test core-executed-preferences "$$rom" > /dev/null; \
+	    test "$$before" = "$$(find . -type f -exec cksum {} \;)"; \
+	    "$$program" --lifecycle-test app-no-preferences "$$rom" > /dev/null; \
+	    test "$$before" = "$$(find . -type f -exec cksum {} \;)"; \
+	    cd ../..; \
 	  done; \
-	  echo 'Private lifecycle outcomes, guards and shutdown passed for both consumers'
+	  echo 'Private lifecycle, preference persistence and shutdown passed for both consumers'
 
 # Keep every preference read/write inside an isolated child-process sandbox.
 check-startup-ownership: unittests/startupownershiptest

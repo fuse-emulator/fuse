@@ -128,11 +128,11 @@ typedef enum legacy_phase {
   LEGACY_FINISHED, LEGACY_STOPPING, LEGACY_CLOSED
 } legacy_phase;
 
-/* Exclusive application ownership, not independent emulation contexts. */
+/* Configured legacy-engine ownership, not independent emulation contexts. */
 static struct {
   legacy_phase phase;
   int manager_started;
-  int initialized;
+  int save_settings;
   int xml_owned;
   int libspectrum_owned;
   int callback_owned;
@@ -170,8 +170,8 @@ fuse_legacy_prepare( int argc, char **argv )
     if( argv[argc] ) return FUSE_LEGACY_INIT_INVALID_ARGUMENT;
   }
 
-  /* Guard before any library/frontend callback. Preserve application policy
-     and its initialization ordering inside fuse_init for this private profile. */
+  /* Guard before any library/frontend callback. Preserve the existing RNG,
+     platform startup and library initialization ordering inside fuse_init. */
   legacy_ownership.phase = LEGACY_STARTING;
   legacy_ownership.previous_error_function = libspectrum_error_function;
   legacy_ownership.callback_owned = 1;
@@ -206,6 +206,9 @@ fuse_legacy_main( int argc, char **argv )
   int r = 1;
   switch( fuse_legacy_prepare( argc, argv ) ) {
   case FUSE_LEGACY_INIT_READY:
+    /* Automatic preference persistence belongs to the application wrapper,
+       not to core preparation or ordinary resource disposal. */
+    legacy_ownership.save_settings = 1;
     if( fuse_legacy_execute( &r ) ) r = 1;
     fuse_legacy_shutdown();
     return r;
@@ -299,7 +302,7 @@ libspectrum_register_startup( void )
 static void
 fuse_settings_end( void )
 {
-  settings_end( legacy_ownership.initialized );
+  settings_end( legacy_ownership.save_settings );
 }
 
 static int
@@ -508,7 +511,6 @@ static int fuse_init(int argc, char **argv)
   );
 #endif
 
-  legacy_ownership.initialized = 1;
   error = 0;
 
 cleanup:
@@ -1093,7 +1095,7 @@ static int fuse_end(void)
     legacy_ownership.libspectrum_owned = 0;
     libspectrum_end();
   }
-  legacy_ownership.initialized = 0;
+  legacy_ownership.save_settings = 0;
   if( legacy_ownership.callback_owned ) {
     legacy_ownership.callback_owned = 0;
     libspectrum_error_function = legacy_ownership.previous_error_function;

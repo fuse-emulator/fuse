@@ -19,7 +19,7 @@
 #ifndef FUSE_INTERNAL_H
 #define FUSE_INTERNAL_H
 
-/* Private, UI-bound, exclusive application-runtime lifecycle. Not a supported
+/* Private, UI-bound, exclusive legacy-runtime lifecycle. Not a supported
    embedding API: selected toolkit/fatal-error policy still applies. Calls must
    be serialized on the frontend owner thread; there is no restart promise.
    An accepted prepare (including help/version or failure) consumes one attempt.
@@ -35,7 +35,10 @@ typedef enum fuse_legacy_init_result {
   FUSE_LEGACY_INIT_INVALID_ARGUMENT
 } fuse_legacy_init_result;
 
-/* Help/version and failure return after cleanup, without a runnable session. */
+/* Help/version and failure return after cleanup, without a runnable session.
+   Core preparation/shutdown never authorize automatic preference saving, even
+   when the autosave setting is enabled. Explicit settings operations remain
+   available; RNG, platform startup and library management are unchanged. */
 fuse_legacy_init_result fuse_legacy_prepare( int argc, char **argv );
 
 /* Run the unchanged blocking legacy loop once after READY. Zero means accepted;
@@ -48,7 +51,8 @@ int fuse_legacy_execute( int *exit_status );
    existing frontend mechanisms rather than tearing down an active operation. */
 void fuse_legacy_shutdown( void );
 
-/* Compatible application runner, without a platform entry point. */
+/* Compatible application runner, without a platform entry point. Authorizes
+   the existing autosave preference behavior only after successful preparation. */
 int fuse_legacy_main( int argc, char **argv );
 
 #endif

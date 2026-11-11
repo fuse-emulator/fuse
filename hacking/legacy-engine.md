@@ -45,22 +45,27 @@ Argument storage remains borrowed and may be modified/reordered by the parser or
 selected toolkit; keep it alive through shutdown.
 
 The compatibility wrapper preserves CLI exit mapping and the existing dispatch
-body. Application RNG/library/privilege/preference policy remains at its existing
-initialization stages; a host-borrowing policy or public lifecycle surface is not
-introduced by this extraction. No frontend implementation is changed.
+body. RNG seeding, core-managed libspectrum/XML and platform privilege handling
+remain at their existing startup stages. No seeding hook, generic policy framework,
+borrowed-library mode or new frontend responsibility is introduced.
 
 Settings acquire their strings before configuration/argument parsing. Parse
-failure releases those strings, and `settings_end(save)` is repeatable. Preference
-saving requires explicit authorization as well as the user's autosave setting.
-Help/version and initialization failure do not save. Settings retain their
-manager callback position, with an idempotent fallback if that registration never
-completed. Process-global XML cleanup now follows SVG and automation disposal,
+failure releases those strings, and `settings_end(save)` is repeatable. Automatic
+preference saving requires authorization from `fuse_legacy_main()` after READY,
+as well as the user's autosave setting. Split core preparation/execution/shutdown
+does not grant that permission, even when the autosave setting is enabled; it does
+not change the setting or disable explicit settings-write operations. This keeps
+normal CLI/frontend persistence unchanged without making it a side effect of core
+resource disposal. Help/version and initialization failure do not save. Settings
+retain their manager callback position, with an idempotent fallback if that
+registration never completed. Process-global XML cleanup now follows SVG and automation disposal,
 rather than running inside settings teardown while other XML users may be alive.
 
-The application records successful libspectrum acquisition and restores the
+The core lifecycle records successful libspectrum acquisition and restores the
 previous libspectrum error callback only after owned teardown finishes, including
-when preparation returns HELP, VERSION or FAILED. This is still an
-exclusive application-runtime profile, not a host-borrowing library contract.
+when preparation returns HELP, VERSION or FAILED. Libraries remain managed behind
+the core boundary; callers are not required to initialize them. This is still an
+exclusive legacy-runtime profile, not a host-borrowing library contract.
 
 Temporary startup inputs are owned by `infrastructure/startup_files.[ch]`.
 File metadata/buffers and IDE paths have owned storage independent of settings;
@@ -174,7 +179,13 @@ execution with success/nonzero application exit status, and repeated shutdown. E
 accepted attempt uses a fresh process and isolated preference directory. Bounded
 execution cases require automation; preparation-only cases do not. Instrumented
 unwind tests additionally attempt reentrant prepare/execute/shutdown from
-STARTING, RUNNING and STOPPING, without disposing active operations.
+STARTING, RUNNING and STOPPING, without disposing active operations. Preference
+checks use both consumers in empty and pre-existing configuration directories:
+core shutdown neither creates nor rewrites preferences despite autosave being
+enabled, while the real compatibility wrapper still saves after startup and
+honors the user's no-autosave choice. A changed in-memory value makes unwanted
+rewrites observable; an existing exit request bounds these wrapper tests without
+changing production execution.
 
 The legacy ROM search uses the executable's location; these fixtures live under
 `unittests/`, not beside the source root's `roms/`. Supply explicit ROM paths for
