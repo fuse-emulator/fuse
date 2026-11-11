@@ -123,14 +123,20 @@ static const char * const LIBSPECTRUM_MIN_VERSION = "0.5.0";
 /* Context for the display startup routine */
 static display_startup_context display_context;
 
-/* Exclusive application-runner ownership, not independent emulation contexts. */
+typedef enum legacy_phase {
+  LEGACY_FRESH, LEGACY_STARTING, LEGACY_READY, LEGACY_RUNNING,
+  LEGACY_FINISHED, LEGACY_STOPPING, LEGACY_CLOSED
+} legacy_phase;
+
+/* Exclusive application ownership, not independent emulation contexts. */
 static struct {
-  int attempted;
+  legacy_phase phase;
   int manager_started;
   int initialized;
   int xml_owned;
   int libspectrum_owned;
-  int ended;
+  int callback_owned;
+  libspectrum_error_function_t previous_error_function;
 } legacy_ownership;
 
 static void fuse_settings_end( void );
@@ -149,32 +155,85 @@ static int do_start_files( fuse_start_files *start_files );
 
 static int fuse_end(void);
 
-int
-fuse_legacy_main( int argc, char **argv )
+fuse_legacy_init_result
+fuse_legacy_prepare( int argc, char **argv )
 {
-  int r;
-  libspectrum_error_function_t previous_error_function;
+  int i;
+  fuse_legacy_init_result result;
 
-  /* Global subsystem state has not been audited for restart or reentry. */
-  if( legacy_ownership.attempted ) {
-    fprintf( stderr, "Fuse legacy runner supports only one session attempt\n" );
-    return 1;
+  if( legacy_ownership.phase == LEGACY_CLOSED ) return FUSE_LEGACY_INIT_CLOSED;
+  if( legacy_ownership.phase != LEGACY_FRESH ) return FUSE_LEGACY_INIT_BUSY;
+  if( argc < 0 || ( argc && !argv ) ) return FUSE_LEGACY_INIT_INVALID_ARGUMENT;
+  if( argv ) {
+    for( i = 0; i < argc; i++ )
+      if( !argv[i] ) return FUSE_LEGACY_INIT_INVALID_ARGUMENT;
+    if( argv[argc] ) return FUSE_LEGACY_INIT_INVALID_ARGUMENT;
   }
-  legacy_ownership.attempted = 1;
-  previous_error_function = libspectrum_error_function;
+
+  /* Guard before any library/frontend callback. Preserve application policy
+     and its initialization ordering inside fuse_init for this private profile. */
+  legacy_ownership.phase = LEGACY_STARTING;
+  legacy_ownership.previous_error_function = libspectrum_error_function;
+  legacy_ownership.callback_owned = 1;
 
   if(fuse_init(argc,argv)) {
     fprintf(stderr,"%s: error initialising -- giving up!\n", fuse_progname);
     fuse_end();
-    libspectrum_error_function = previous_error_function;
-    return 1;
+    return FUSE_LEGACY_INIT_FAILED;
   }
 
   if( settings_current.show_help || settings_current.show_version ) {
+    result = settings_current.show_version ? FUSE_LEGACY_INIT_VERSION :
+                                            FUSE_LEGACY_INIT_HELP;
     fuse_end();
-    libspectrum_error_function = previous_error_function;
-    return 0;
+    return result;
   }
+
+  legacy_ownership.phase = LEGACY_READY;
+  return FUSE_LEGACY_INIT_READY;
+}
+
+void
+fuse_legacy_shutdown( void )
+{
+  if( legacy_ownership.phase == LEGACY_READY ||
+      legacy_ownership.phase == LEGACY_FINISHED ) fuse_end();
+}
+
+int
+fuse_legacy_main( int argc, char **argv )
+{
+  int r = 1;
+  switch( fuse_legacy_prepare( argc, argv ) ) {
+  case FUSE_LEGACY_INIT_READY:
+    if( fuse_legacy_execute( &r ) ) r = 1;
+    fuse_legacy_shutdown();
+    return r;
+  case FUSE_LEGACY_INIT_HELP:
+  case FUSE_LEGACY_INIT_VERSION:
+    return 0;
+  case FUSE_LEGACY_INIT_BUSY:
+  case FUSE_LEGACY_INIT_CLOSED:
+    fprintf( stderr, "Fuse legacy runner supports only one session attempt\n" );
+    return 1;
+  case FUSE_LEGACY_INIT_INVALID_ARGUMENT:
+    fprintf( stderr, "Invalid Fuse legacy startup arguments\n" );
+    return 1;
+  case FUSE_LEGACY_INIT_FAILED:
+    return 1;
+  }
+  return 1;
+}
+
+int
+fuse_legacy_execute( int *exit_status )
+{
+  int r;
+  if( legacy_ownership.phase != LEGACY_READY || !exit_status ) return 1;
+  legacy_ownership.phase = LEGACY_RUNNING;
+#ifdef FUSE_STARTUP_TEST
+  fuse_startup_test_running();
+#endif
 
 #ifdef UI_NULL
   if( settings_current.unittests ) {
@@ -203,10 +262,9 @@ fuse_legacy_main( int argc, char **argv )
 #ifdef ENABLE_AUTOMATION
   if( automation_active() && automation_write_result() ) r = 1;
 #endif
-  fuse_end();
-  libspectrum_error_function = previous_error_function;
-
-  return r;
+  legacy_ownership.phase = LEGACY_FINISHED;
+  *exit_status = r;
+  return 0;
 }
 
 static int
@@ -998,9 +1056,12 @@ do_start_files( fuse_start_files *start_files )
 /* Tidy-up function called at end of emulation */
 static int fuse_end(void)
 {
-  if( !legacy_ownership.attempted || legacy_ownership.ended ) return 0;
-  /* Disarm before invoking callbacks, including emergency shutdown reentry. */
-  legacy_ownership.ended = 1;
+  if( legacy_ownership.phase == LEGACY_FRESH ||
+      legacy_ownership.phase == LEGACY_STOPPING ||
+      legacy_ownership.phase == LEGACY_CLOSED ) return 0;
+  /* Internal unwind/emergency cleanup may end STARTING/RUNNING; the ordinary
+     shutdown entry deliberately cannot. Disarm before invoking callbacks. */
+  legacy_ownership.phase = LEGACY_STOPPING;
 
   movie_stop();
   /* Active trainer restoration needs live machine memory/maps. */
@@ -1033,6 +1094,12 @@ static int fuse_end(void)
     libspectrum_end();
   }
   legacy_ownership.initialized = 0;
+  if( legacy_ownership.callback_owned ) {
+    legacy_ownership.callback_owned = 0;
+    libspectrum_error_function = legacy_ownership.previous_error_function;
+    legacy_ownership.previous_error_function = NULL;
+  }
+  legacy_ownership.phase = LEGACY_CLOSED;
 
   return 0;
 }

@@ -263,16 +263,39 @@ check_PROGRAMS += unittests/legacyenginelinktest unittests/legacyenginesourcetes
                   unittests/startupownershiptest
 unittests_startupownershiptest_SOURCES = unittests/startupownershiptest.c
 unittests_startupownershiptest_LDADD = libfuselegacy.la
-unittests_legacyenginelinktest_SOURCES = unittests/legacyenginetest.c
+unittests_legacyenginelinktest_SOURCES = unittests/legacyenginetest.c \
+                                       unittests/legacylifecycletest.c
 unittests_legacyenginelinktest_LDADD = libfuselegacy.la
 unittests_legacyenginesourcetest_SOURCES = unittests/legacyenginetest.c \
+                                        unittests/legacylifecycletest.c \
                                         $(libfuselegacy_la_SOURCES)
 unittests_legacyenginesourcetest_CPPFLAGS = $(AM_CPPFLAGS)
 unittests_legacyenginesourcetest_LDADD = $(libfuselegacy_la_LIBADD)
 unittests_legacyenginesourcetest_DEPENDENCIES = $(libfuselegacy_la_DEPENDENCIES)
 $(unittests_legacyenginesourcetest_OBJECTS): config.h
 
-LIFECYCLE_CHECK_TARGETS += check-legacy-engine-link check-startup-ownership
+LIFECYCLE_CHECK_TARGETS += check-legacy-engine-link check-startup-ownership \
+                           check-legacy-lifecycle
+.PHONY: check-legacy-lifecycle
+
+check-legacy-lifecycle: unittests/legacyenginelinktest unittests/legacyenginesourcetest
+	@set -e; root="$(abs_top_builddir)/unittests"; \
+	  rom="$(abs_top_srcdir)/roms/48.rom"; \
+	  tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' 0 1 2 3 15; \
+	  cd "$$tmp"; export HOME=. XDG_CONFIG_HOME=. USERPROFILE=. WINDIR=. APPDATA=.; \
+	  for consumer in legacyenginelinktest legacyenginesourcetest; do \
+	    mkdir "$$consumer"; cd "$$consumer"; program="$$root/$$consumer$(EXEEXT)"; \
+	    for kind in arguments help version both failure; do \
+	      "$$program" --lifecycle-test $$kind > /dev/null; \
+	    done; \
+	    "$$program" --lifecycle-test zero "$$rom" > /dev/null; \
+	    "$$program" --lifecycle-test prepare --machine 48 --rom-48 "$$rom" \
+	      --no-autosave-settings > /dev/null; \
+	    $(LEGACY_LIFECYCLE_EXECUTION_CHECK) \
+	    test -z "$$(find . -type f \( -name fuserc -o -name fuse.cfg \) -print)"; \
+	    cd ..; \
+	  done; \
+	  echo 'Private lifecycle outcomes, guards and shutdown passed for both consumers'
 
 # Keep every preference read/write inside an isolated child-process sandbox.
 check-startup-ownership: unittests/startupownershiptest
@@ -289,11 +312,21 @@ check-startup-ownership: unittests/startupownershiptest
 	  echo 'Startup storage, settings policy and early-runner ownership passed'
 
 if ENABLE_AUTOMATION
+LEGACY_LIFECYCLE_EXECUTION_CHECK = mkdir prepared-output; \
+  "$$program" --lifecycle-test prepare --machine 48 --rom-48 "$$rom" \
+  --no-autosave-settings --automation-output prepared-output --automation-frames 1 > /dev/null; \
+  test -z "$$(find prepared-output -type f -print)"; mkdir output; \
+  "$$program" --lifecycle-test run --machine 48 --rom-48 "$$rom" \
+  --no-autosave-settings --automation-output output --automation-frames 1 > /dev/null; \
+  mkdir failed-output; "$$program" --lifecycle-test run-failure --machine 48 \
+  --rom-48 "$$rom" --no-autosave-settings --automation-output failed-output \
+  --automation-max-frames 1 --automation-success-pc 65535 > /dev/null;
 STARTUP_OWNERSHIP_FAILURE_CHECK = "$$program" settings-failure; \
   mkdir output; "$$program" session --machine 48 \
   --rom-48 "$(abs_top_srcdir)/roms/48.rom" \
   --automation-output output --automation-frames 1 > /dev/null;
 else
+LEGACY_LIFECYCLE_EXECUTION_CHECK =
 STARTUP_OWNERSHIP_FAILURE_CHECK =
 endif
 check-legacy-engine-link: unittests/legacyenginelinktest unittests/legacyenginesourcetest

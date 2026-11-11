@@ -9,16 +9,45 @@ an installed embedding SDK or a stable binary ABI.
 
 `fuse-main.c` owns normal/SDL entry and platform bootstrap. Win32's executable
 also includes `ui/win32/win32main.c` and its resources. The private
-`fuse_legacy_main()` runner remains inside the engine. Its guarded shutdown now
-unwinds completed manager registrations on startup failure, but the remaining
-frontend/backend partial-initialization audits below still prevent advertising a
-supported embedding lifecycle/execution API.
+`fuse_legacy_main()` compatibility wrapper remains inside the engine. It composes
+private preparation, blocking legacy execution and shutdown, with explicit startup
+outcomes. Guarded shutdown unwinds completed manager registrations on startup
+failure, but the remaining frontend/backend limitations below still prevent
+advertising a supported embedding lifecycle/execution API.
 
 ## Current ownership boundary
 
-The private application runner accepts only one session attempt per process. It
-rejects another attempt before changing settings or library callbacks; this is
-not thread-safe instance creation or restart support.
+The private lifecycle accepts only one session attempt per process. Its declarations
+are in `fuse-internal.h`, not an installed SDK header:
+
+- `fuse_legacy_prepare(argc, argv)` returns READY, HELP, VERSION, FAILED, BUSY,
+  CLOSED or INVALID_ARGUMENT. Help/version and failure clean up before returning;
+  only READY retains a session. Invalid vector shape is rejected without consuming
+  the attempt or changing callbacks/settings. Zero arguments with NULL argv is
+  permitted; otherwise argv must have non-NULL entries and a NULL terminator.
+- `fuse_legacy_execute(&status)` accepts READY once and runs the existing blocking
+  loop. Its return value reports acceptance; the separate output receives the
+  existing application exit code. Rejection leaves that output untouched.
+  Automation still arms at execution entry and writes results before shutdown.
+- `fuse_legacy_shutdown()` disposes a READY or completed session once. It is a
+  no-op in fresh/closed states and during preparation, execution or cleanup
+  callbacks. Internal failure unwind and fatal abort use the separate guarded
+  cleanup path; ordinary shutdown is not a stop request.
+
+The internal states are FRESH -> STARTING -> READY -> RUNNING -> FINISHED ->
+STOPPING -> CLOSED. READY can also go straight to shutdown without execution;
+help/version and failure go from STARTING through cleanup to CLOSED. Calls during
+an active attempt return BUSY; another attempt after closure returns CLOSED.
+Help/version and failed initialization also consume the supported lifetime.
+All calls remain serialized on the selected frontend owner thread. This is not
+thread-safe instance creation, restart, cooperative execution or a worker API.
+Argument storage remains borrowed and may be modified/reordered by the parser or
+selected toolkit; keep it alive through shutdown.
+
+The compatibility wrapper preserves CLI exit mapping and the existing dispatch
+body. Application RNG/library/privilege/preference policy remains at its existing
+initialization stages; a host-borrowing policy or public lifecycle surface is not
+introduced by this extraction. No frontend implementation is changed.
 
 Settings acquire their strings before configuration/argument parsing. Parse
 failure releases those strings, and `settings_end(save)` is repeatable. Preference
@@ -29,7 +58,8 @@ completed. Process-global XML cleanup now follows SVG and automation disposal,
 rather than running inside settings teardown while other XML users may be alive.
 
 The application records successful libspectrum acquisition and restores the
-previous libspectrum error callback when its runner returns. This is still an
+previous libspectrum error callback only after owned teardown finishes, including
+when preparation returns HELP, VERSION or FAILED. This is still an
 exclusive application-runtime profile, not a host-borrowing library contract.
 
 Temporary startup inputs are owned by `infrastructure/startup_files.[ch]`.
@@ -136,6 +166,16 @@ checks temporary storage, settings save permission, early runner cleanup and
 callback restoration in isolated child-process preference directories. These
 are internal build fixtures, not examples of a supported public API. The consumers also accept the existing runner's CLI,
 so automation-enabled builds can use them for bounded differential captures.
+`make check-legacy-lifecycle` uses those same two consumers to exercise the private
+split interface: vector validation without consuming the attempt, zero-argument
+startup, distinct help/version/failure outcomes, active/closed rejection,
+preparation without execution (including no false automation result), one-shot
+execution with success/nonzero application exit status, and repeated shutdown. Each
+accepted attempt uses a fresh process and isolated preference directory. Bounded
+execution cases require automation; preparation-only cases do not. Instrumented
+unwind tests additionally attempt reentrant prepare/execute/shutdown from
+STARTING, RUNNING and STOPPING, without disposing active operations.
+
 The legacy ROM search uses the executable's location; these fixtures live under
 `unittests/`, not beside the source root's `roms/`. Supply explicit ROM paths for
 uninstalled capture runs, for example `--rom-48 /path/to/roms/48.rom`, and the

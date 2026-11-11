@@ -33,6 +33,10 @@ int
 fuse_startup_test_checkpoint( startup_manager_module module, int completed,
                               int has_end )
 {
+  int status = 73;
+  assert( fuse_legacy_prepare( 0, NULL ) == FUSE_LEGACY_INIT_BUSY );
+  assert( fuse_legacy_execute( &status ) == 1 && status == 73 );
+  fuse_legacy_shutdown(); /* STARTING must not dispose an initializer's state. */
   if( natural_failure ) settings_current.autosave_settings = 1;
   if( media_test && completed && module == STARTUP_MANAGER_MODULE_MACHINE ) {
     media_drive = ui_media_drive_find( UI_MEDIA_CONTROLLER_PLUS3, 0 );
@@ -66,6 +70,8 @@ fuse_startup_test_cleanup( startup_manager_module module )
     }
     assert( creator_live && settings_live );
   }
+  assert( fuse_legacy_prepare( 0, NULL ) == FUSE_LEGACY_INIT_BUSY );
+  fuse_legacy_shutdown(); /* STOPPING must not recursively enter teardown. */
   /* A cleanup callback must not restart either teardown layer. */
   fuse_startup_test_shutdown();
   startup_manager_run_end();
@@ -82,6 +88,16 @@ fuse_startup_test_fail( const char *point )
     return 1;
   }
   return 0;
+}
+
+void
+fuse_startup_test_running( void )
+{
+  int status = 73;
+  assert( fuse_legacy_prepare( 0, NULL ) == FUSE_LEGACY_INIT_BUSY );
+  assert( fuse_legacy_execute( &status ) == 1 && status == 73 );
+  fuse_legacy_shutdown(); /* RUNNING must keep machine/settings alive. */
+  assert( machine_current && settings_current.rom_48 );
 }
 
 static libspectrum_error
