@@ -46,7 +46,9 @@ typedef enum fuse_legacy_run_result {
   FUSE_LEGACY_RUN_PAUSED,
   FUSE_LEGACY_RUN_EXITING,
   FUSE_LEGACY_RUN_BUSY,
-  FUSE_LEGACY_RUN_NOT_READY
+  FUSE_LEGACY_RUN_NOT_READY,
+  FUSE_LEGACY_RUN_INVALID_ARGUMENT,
+  FUSE_LEGACY_RUN_INTERRUPTED
 } fuse_legacy_run_result;
 
 /* Advance to the next completed frame boundary (not necessarily a whole frame
@@ -59,6 +61,24 @@ typedef enum fuse_legacy_run_result {
    Recursive calls are BUSY; before prepare/after legacy execute or shutdown,
    calls are NOT_READY. No automatic shutdown or application result writing. */
 fuse_legacy_run_result fuse_legacy_run_frame( void );
+
+/* Advance by a relative emulated T-state budget (1..0x7fffffff), completing
+   instructions and due-event/frame dispatch even if they overshoot the budget.
+   Frame rebasing and RZX clock normalization are accounted for, without adding
+   deadline events to RZX's forced event dispatch. Ordinary reset continues.
+   Machine selection, snapshot restoration or debugger clock assignment during
+   the call returns INTERRUPTED at a safe boundary; call again in the new state.
+   EXITING wins over INTERRUPTED, then PAUSED, then COMPLETED. A paused entry
+   advances nothing. Invalid budgets (or a clock >=0x7fffffff) are rejected without
+   execution. Phase rejection precedes argument validation; other lifecycle and
+   blocking rules are the same as run_frame. */
+fuse_legacy_run_result fuse_legacy_run_tstates( unsigned long budget );
+
+/* Internal budget-accounting hooks, not host operations. Coordinate changes
+   preserve elapsed time; clock replacement invalidates only an active budget.
+   These do nothing during legacy/frame execution or between calls. */
+void fuse_legacy_budget_rebase( unsigned long before, unsigned long after );
+void fuse_legacy_budget_interrupt( void );
 
 /* Run the blocking legacy loop once after READY, optionally after host turns.
    Zero means accepted; the application exit status is written separately.

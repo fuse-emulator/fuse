@@ -1,3 +1,4 @@
+SETUP_CHECK( budget, stop_tstates != NULL )
 SETUP_CHECK( profile, profile_active )
 SETUP_CHECK( rzx, rzx_playback )
 #ifdef ENABLE_AUTOMATION

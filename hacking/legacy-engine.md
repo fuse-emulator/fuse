@@ -31,11 +31,21 @@ are in `fuse-internal.h`, not an installed SDK header:
   PAUSED and COMPLETED. A paused entry advances no emulated time. Re-entry during
   startup, execution or shutdown returns BUSY; other non-READY phases return
   NOT_READY. It does not finalize application output or shut down the session.
+- `fuse_legacy_run_tstates(budget)` advances by a relative emulated T-state
+  budget, sharing the frame entry's lifecycle and blocking rules. Budgets must
+  be 1..0x7fffffff and the starting clock below 0x7fffffff; invalid requests do
+  not execute. Instructions and due-event/frame dispatch finish before returning,
+  so the budget is a minimum, not an exact cutoff or wall-clock deadline.
+  Normal frame/RZX clock rebasing is accounted for. Ordinary reset continues;
+  machine selection, snapshot restoration or debugger clock assignment during
+  a turn instead returns INTERRUPTED, without restarting the budget. Exit wins
+  over interruption, then pause, then completion. The next call uses the new
+  state normally; replacement between calls needs no special handling.
 - `fuse_legacy_execute(&status)` accepts READY once and runs the existing blocking
   loop. Its return value reports acceptance; the separate output receives the
   existing application exit code. Rejection leaves that output untouched.
-  It may follow frame turns. Automation arms once at the first actual execution
-  entry (frame or legacy), checks limits after dispatch, and writes results only
+  It may follow host turns. Automation arms once at the first actual execution
+  entry (frame, budget or legacy), checks limits after dispatch, and writes results only
   when the legacy runner finishes, before shutdown.
 - `fuse_legacy_shutdown()` disposes a READY or completed session once. It is a
   no-op in fresh/closed states and during preparation, execution or cleanup
@@ -43,7 +53,7 @@ are in `fuse-internal.h`, not an installed SDK header:
   cleanup path; ordinary shutdown is not a stop request.
 
 The internal states are FRESH -> STARTING -> READY -> RUNNING -> FINISHED ->
-STOPPING -> CLOSED. Frame turns instead go READY -> RUNNING -> READY, including
+STOPPING -> CLOSED. Host turns instead go READY -> RUNNING -> READY, including
 when they observe exit; the caller may then shut down or use the legacy runner
 for application result finalization. READY can also go straight to shutdown;
 help/version and failure go from STARTING through cleanup to CLOSED. Calls during
@@ -58,14 +68,25 @@ selected toolkit; keep it alive through shutdown.
 The compatibility wrapper preserves CLI exit mapping and the existing dispatch
 order. A private `fuse_dispatch_once()` groups the CPU batch and due-event dispatch;
 frame callbacks, including their RZX/interrupt/input/UI companions, are unchanged.
-Both execution entries use it, with automation limits checked after dispatch.
+All execution entries use it, with automation limits checked after dispatch.
 The frame entry clears a completion flag when starting a turn; the full frame
 callback sets it after its work finishes. Ordinary reset leaves the flag alone;
 no cumulative frame counter is needed. It returns after due events drain, not
-halfway through interrupt/RZX/UI
-processing. Ordinary reset does not cancel the turn; machine selection replaces
-its queued frame event and execution can proceed to a boundary. No T-state budget
-entry or clock-replacement budget semantics are provided yet.
+halfway through interrupt/RZX/UI processing. Ordinary reset does not cancel the
+turn; machine selection replaces its queued frame event and execution can proceed
+to a boundary.
+
+Budget turns limit CPU batches at the existing instruction boundary rather than
+queueing a timer event. This is important for RZX: its forced dispatch can consume
+future events and move the frame clock, so adding a deadline event can itself
+change playback chronology. The optional CPU limit uses the existing per-opcode
+check machinery; ordinary execution skips it. Per-dispatch accounting records
+only coordinate adjustments made by frame rebasing, RZX normalization and its
+long-frame sentinel. RZX's forced time advance may overshoot a requested budget,
+but complete frame/interrupt dispatch is preserved. No permanent emulation clock
+or generation counter is introduced. Clock-replacement hooks invalidate only the
+active budget and lower its CPU limit so a stale limit cannot strand execution.
+These hooks are internal bookkeeping, not new host scheduling/reset operations.
 
 Existing audio admission, debugger and UI callbacks may block inside execution;
 there is no wall-clock latency bound or cross-thread cancellation. Z80 HALT does
@@ -207,11 +228,16 @@ execution with success/nonzero application exit status, and repeated shutdown.
 Frame-contract tests also cover repeatable turns, direct shutdown after a turn,
 nested pause and paused commands, reset during/between turns, machine selection
 replacing the queue, HALT/interrupt delivery, debugger exit, and recursive entry.
-Those tests run with or without automation. Automation builds additionally compare
-legacy, frame-only and frame-then-legacy result JSON and exercise deadline exits.
+Budget-contract tests add subframe execution, instruction overshoot, multi-frame
+rebasing, reset preservation, clock/queue replacement interruption, invalid input
+and repeat entry after interruption. A breakpoint command that edits the clock
+and continues without opening a UI must interrupt before another opcode executes.
+A generated RZX covers its long-frame sentinel and mid-recording snapshot restore. Those tests run with or without automation.
+Automation builds additionally compare legacy, frame-only, budget-only and mixed
+result JSON and exercise deadline exits.
 Each accepted attempt uses a fresh process and isolated preference directory.
-Instrumented unwind tests additionally attempt reentrant prepare/frame/execute/
-shutdown from STARTING, RUNNING and STOPPING, without disposing active operations. Preference
+Instrumented unwind tests additionally attempt reentrant prepare/frame/budget/
+execute/shutdown from STARTING, RUNNING and STOPPING, without disposing active operations. Preference
 checks use both consumers in empty and pre-existing configuration directories:
 core shutdown neither creates nor rewrites preferences despite autosave being
 enabled, while the real compatibility wrapper still saves after startup and

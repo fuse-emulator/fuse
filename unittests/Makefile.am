@@ -289,7 +289,7 @@ check-legacy-lifecycle: unittests/legacyenginelinktest unittests/legacyenginesou
 	      "$$program" --lifecycle-test $$kind > /dev/null; \
 	    done; \
 	    "$$program" --lifecycle-test zero "$$rom" > /dev/null; \
-	    for kind in frame-contract frame-shutdown; do \
+	    for kind in frame-contract frame-shutdown budget-contract; do \
 	      "$$program" --lifecycle-test "$$kind" --machine 48 --rom-48 "$$rom" \
 	        --no-autosave-settings --no-sound > /dev/null; \
 	    done; \
@@ -343,7 +343,7 @@ LEGACY_LIFECYCLE_EXECUTION_CHECK = mkdir prepared-output; \
   mkdir frame-reference; "$$program" --lifecycle-test run --machine 48 \
   --rom-48 "$$rom" --no-autosave-settings --automation-output frame-reference \
   --automation-frames 10 > /dev/null; \
-  for mode in frames frames-prefix; do mkdir "$$mode"; \
+  for mode in frames frames-prefix budgets budgets-wide budgets-mixed budgets-prefix; do mkdir "$$mode"; \
     "$$program" --lifecycle-test "$$mode" --machine 48 --rom-48 "$$rom" \
     --no-autosave-settings --automation-output "$$mode" --automation-frames 10 > /dev/null; \
     cmp frame-reference/result.json "$$mode/result.json"; \
@@ -351,7 +351,19 @@ LEGACY_LIFECYCLE_EXECUTION_CHECK = mkdir prepared-output; \
   mkdir frame-failure; "$$program" --lifecycle-test frames-failure --machine 48 \
   --rom-48 "$$rom" --no-autosave-settings --automation-output frame-failure \
   --automation-max-frames 1 --automation-success-pc 65535 > /dev/null; \
-  cmp failed-output/result.json frame-failure/result.json;
+  cmp failed-output/result.json frame-failure/result.json; \
+  mkdir budget-failure; "$$program" --lifecycle-test budgets-failure --machine 48 \
+  --rom-48 "$$rom" --no-autosave-settings --automation-output budget-failure \
+  --automation-max-frames 1 --automation-success-pc 65535 > /dev/null; \
+  cmp failed-output/result.json budget-failure/result.json; \
+  "$$program" --lifecycle-test budget-rzx-fixture "$$rom" budget-fixture.rzx > /dev/null; \
+  for mode in run frames budgets-rzx budgets-wide budgets-mixed; do mkdir "rzx-$$mode"; \
+    "$$program" --lifecycle-test "$$mode" --machine 48 --rom-48 "$$rom" \
+    --no-autosave-settings --no-sound --playback budget-fixture.rzx \
+    --automation-output "rzx-$$mode" --automation-until-rzx-end \
+    --automation-max-frames 100 > /dev/null; \
+    cmp rzx-run/result.json "rzx-$$mode/result.json"; \
+  done;
 STARTUP_OWNERSHIP_FAILURE_CHECK = "$$program" settings-failure; \
   mkdir output; "$$program" session --machine 48 \
   --rom-48 "$(abs_top_srcdir)/roms/48.rom" \

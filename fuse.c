@@ -26,6 +26,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
@@ -140,6 +141,28 @@ static struct {
   libspectrum_error_function_t previous_error_function;
 } legacy_ownership;
 
+/* Only the current budget turn/dispatch, not a persistent machine clock. */
+static struct {
+  int active, interrupted;
+  libspectrum_dword deadline;
+  int64_t rebased;
+} legacy_budget;
+
+void
+fuse_legacy_budget_rebase( unsigned long before, unsigned long after )
+{
+  if( legacy_budget.active )
+    legacy_budget.rebased += (int64_t)before - (int64_t)after;
+}
+
+void
+fuse_legacy_budget_interrupt( void )
+{
+  if( !legacy_budget.active ) return;
+  legacy_budget.interrupted = 1;
+  legacy_budget.deadline = 0; /* End an active CPU batch after clock edits. */
+}
+
 static void fuse_settings_end( void );
 static int fuse_init(int argc, char **argv);
 
@@ -235,9 +258,9 @@ fuse_legacy_main( int argc, char **argv )
    instruction or one frame, and callbacks may block. Session limits are
    observed after dispatch; result finalization stays in the legacy runner. */
 static void
-fuse_dispatch_once( void )
+fuse_dispatch_once( const libspectrum_dword *deadline )
 {
-  z80_do_opcodes();
+  z80_do_opcodes_until( deadline );
   event_do_events();
 #ifdef ENABLE_AUTOMATION
   if( automation_active() &&
@@ -274,13 +297,69 @@ fuse_legacy_run_frame( void )
   fuse_execution_start();
   spectrum_frame_dispatch_complete = 0;
   do {
-    fuse_dispatch_once();
+    fuse_dispatch_once( NULL );
   } while( !fuse_exiting && !fuse_emulation_paused &&
            !spectrum_frame_dispatch_complete );
 
   result = fuse_exiting ? FUSE_LEGACY_RUN_EXITING :
            fuse_emulation_paused ? FUSE_LEGACY_RUN_PAUSED :
                                    FUSE_LEGACY_RUN_COMPLETED;
+  legacy_ownership.phase = LEGACY_READY;
+  return result;
+}
+
+fuse_legacy_run_result
+fuse_legacy_run_tstates( unsigned long budget )
+{
+  unsigned long remaining = budget;
+  fuse_legacy_run_result result;
+
+  if( legacy_ownership.phase == LEGACY_STARTING ||
+      legacy_ownership.phase == LEGACY_RUNNING ||
+      legacy_ownership.phase == LEGACY_STOPPING ) return FUSE_LEGACY_RUN_BUSY;
+  if( legacy_ownership.phase != LEGACY_READY ) return FUSE_LEGACY_RUN_NOT_READY;
+  if( !budget || budget > 0x7fffffffUL || tstates >= 0x7fffffffUL )
+    return FUSE_LEGACY_RUN_INVALID_ARGUMENT;
+  if( fuse_exiting ) return FUSE_LEGACY_RUN_EXITING;
+  if( fuse_emulation_paused ) return FUSE_LEGACY_RUN_PAUSED;
+
+  legacy_ownership.phase = LEGACY_RUNNING;
+  fuse_execution_start();
+  legacy_budget.active = 1;
+  legacy_budget.interrupted = 0;
+  do {
+    libspectrum_dword before = tstates;
+    int64_t elapsed;
+
+    /* Bound addition and leave headroom for instruction completion. Normal
+       frame/RZX coordinates stay far below this cap. */
+    if( tstates >= 0x7fffffffUL ) {
+      legacy_budget.interrupted = 1;
+      break;
+    }
+    legacy_budget.deadline = tstates +
+      ( remaining < 0x7fffffffUL - tstates ? remaining :
+                                            0x7fffffffUL - tstates );
+    legacy_budget.rebased = 0;
+    fuse_dispatch_once( &legacy_budget.deadline );
+    if( legacy_budget.interrupted ) break;
+    elapsed = (int64_t)tstates - before + legacy_budget.rebased;
+    if( elapsed < 0 ) {
+      legacy_budget.interrupted = 1;
+      break;
+    }
+    if( (uint64_t)elapsed >= remaining ) {
+      remaining = 0;
+    } else {
+      remaining -= (unsigned long)elapsed;
+    }
+  } while( remaining && !fuse_exiting && !fuse_emulation_paused );
+
+  result = fuse_exiting ? FUSE_LEGACY_RUN_EXITING :
+           legacy_budget.interrupted ? FUSE_LEGACY_RUN_INTERRUPTED :
+           fuse_emulation_paused ? FUSE_LEGACY_RUN_PAUSED :
+                                   FUSE_LEGACY_RUN_COMPLETED;
+  legacy_budget.active = 0;
   legacy_ownership.phase = LEGACY_READY;
   return result;
 }
@@ -303,7 +382,7 @@ fuse_legacy_execute( int *exit_status )
   {
     fuse_execution_start();
     while( !fuse_exiting ) {
-      fuse_dispatch_once();
+      fuse_dispatch_once( NULL );
     }
     r = debugger_get_exit_code();
 #ifdef ENABLE_AUTOMATION

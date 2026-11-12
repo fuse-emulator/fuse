@@ -113,9 +113,18 @@ enum {
 static libspectrum_byte opcode = 0x00;
 #endif
 
-/* Execute Z80 opcodes until the next event */
+/* Execute Z80 opcodes until the next event. */
 void
 z80_do_opcodes( void )
+{
+  z80_do_opcodes_until( NULL );
+}
+
+/* The optional limit is observed at instruction boundaries. Owner-thread
+   callbacks may lower it (to zero when replacing the clock), never another
+   thread. This adds no event that RZX's forced dispatch could consume. */
+void
+z80_do_opcodes_until( const libspectrum_dword *stop_tstates )
 {
 #ifdef HAVE_ENOUGH_MEMORY
   libspectrum_byte opcode = 0x00;
@@ -144,6 +153,12 @@ z80_do_opcodes( void )
 #endif				/* #ifdef __GNUC__ */
 
   while( tstates < event_next_event ) {
+
+    CHECK( budget, stop_tstates != NULL )
+
+    if( tstates >= *stop_tstates ) break;
+
+    END_CHECK
 
     /* Profiler */
     CHECK( profile, profile_active )
@@ -178,6 +193,8 @@ z80_do_opcodes( void )
 
     if( debugger_check( DEBUGGER_BREAKPOINT_TYPE_EXECUTE, PC ) )
       debugger_trap();
+    /* Breakpoint commands may replace the clock and continue without a trap. */
+    if( stop_tstates && tstates >= *stop_tstates ) break;
 
     END_CHECK
 

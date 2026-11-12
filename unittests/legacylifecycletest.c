@@ -10,9 +10,11 @@
 #include "fuse-internal.h"
 #include "event.h"
 #include "debugger/debugger.h"
+#include "debugger/debugger_internals.h"
 #include "machine.h"
 #include "memory.h"
 #include "spectrum.h"
+#include "snapshot.h"
 #include "z80/z80.h"
 #include "settings.h"
 #include "ui/ui.h"
@@ -33,6 +35,7 @@ check_closed( void )
 {
   int status = 73;
   assert( fuse_legacy_run_frame() == FUSE_LEGACY_RUN_NOT_READY );
+  assert( fuse_legacy_run_tstates( 1 ) == FUSE_LEGACY_RUN_NOT_READY );
   assert( !machine_current && !machine_types && !machine_count );
   assert( !settings_current.rom_48 && !settings_current.sound_device );
   assert( libspectrum_error_function == preserved_error );
@@ -138,6 +141,7 @@ check_session( int argc, char **argv, int execute, int expected_status )
 
 /* Exercise callbacks on the actual CPU/event path, not a second scheduler. */
 static int frame_callback_action, frame_callback_fired;
+static libspectrum_snap *budget_snapshot;
 
 static void
 frame_callback( libspectrum_dword when, int type, void *data )
@@ -146,6 +150,7 @@ frame_callback( libspectrum_dword when, int type, void *data )
   (void)when; (void)type; (void)data;
   frame_callback_fired++;
   assert( fuse_legacy_run_frame() == FUSE_LEGACY_RUN_BUSY );
+  assert( fuse_legacy_run_tstates( 0 ) == FUSE_LEGACY_RUN_BUSY );
   assert( fuse_legacy_execute( &status ) == 1 && status == 73 );
   assert( fuse_legacy_prepare( 0, NULL ) == FUSE_LEGACY_INIT_BUSY );
   fuse_legacy_shutdown(); /* Active dispatch must retain the session. */
@@ -154,6 +159,13 @@ frame_callback( libspectrum_dword when, int type, void *data )
   if( frame_callback_action == 2 ) assert( !fuse_emulation_pause() );
   if( frame_callback_action == 3 ) debugger_exit_emulator( NULL );
   if( frame_callback_action == 4 ) assert( !machine_select_id( "48" ) );
+  if( frame_callback_action == 5 ) assert( !snapshot_copy_from( budget_snapshot ) );
+  if( frame_callback_action == 6 )
+    debugger_command_evaluate( "set ula:tstates 12345" );
+  if( frame_callback_action == 7 ) {
+    assert( !machine_select_id( "48" ) );
+    debugger_exit_emulator( NULL );
+  }
 }
 
 static void
@@ -248,6 +260,184 @@ check_frame_contract( int argc, char **argv, int shutdown_only )
 }
 
 static void
+check_budget_contract( int argc, char **argv )
+{
+  int type, i;
+  unsigned long before, frames, length, elapsed;
+  assert( fuse_legacy_run_tstates( 0 ) == FUSE_LEGACY_RUN_NOT_READY );
+  assert( fuse_legacy_prepare( argc, argv ) == FUSE_LEGACY_INIT_READY );
+#ifdef ENABLE_AUTOMATION
+  assert( !automation_active() );
+#endif
+  type = event_register( frame_callback, "budget-contract" );
+  assert( fuse_legacy_run_tstates( 0 ) == FUSE_LEGACY_RUN_INVALID_ARGUMENT );
+  assert( fuse_legacy_run_tstates( 0x80000000UL ) == FUSE_LEGACY_RUN_INVALID_ARGUMENT );
+  before = tstates;
+  for( i = 0; i < 32; i++ ) writebyte_internal( 0x8000 + i, 0 );
+  z80.pc.w = 0x8000; z80.iff1 = z80.iff2 = 0;
+  assert( fuse_legacy_run_tstates( 1 ) == FUSE_LEGACY_RUN_COMPLETED );
+  assert( tstates - before == 4 && z80.pc.w == 0x8001 );
+  assert( !spectrum_get_frame_count() );
+  before = tstates;
+  assert( fuse_legacy_run_tstates( 7 ) == FUSE_LEGACY_RUN_COMPLETED );
+  assert( tstates - before == 8 && z80.pc.w == 0x8003 );
+
+  assert( !fuse_emulation_pause() && !fuse_emulation_pause() );
+  before = tstates;
+  assert( fuse_legacy_run_tstates( 1 ) == FUSE_LEGACY_RUN_PAUSED );
+  assert( !fuse_emulation_unpause() );
+  assert( fuse_legacy_run_tstates( 1 ) == FUSE_LEGACY_RUN_PAUSED );
+  assert( tstates == before );
+  assert( !fuse_emulation_unpause() );
+
+  /* HALT still consumes time, and a budget spans ordinary frame rebasing. */
+  writebyte_internal( 0x8000, 0x76 ); z80.pc.w = 0x8000;
+  before = tstates; frames = spectrum_get_frame_count();
+  length = machine_current->timings.tstates_per_frame;
+  assert( fuse_legacy_run_tstates( 2 * length + 29 ) == FUSE_LEGACY_RUN_COMPLETED );
+  elapsed = ( spectrum_get_frame_count() - frames ) * length + tstates - before;
+  assert( z80.halted && elapsed >= 2 * length + 29 && elapsed < 2 * length + 33 );
+  budget_snapshot = libspectrum_snap_alloc();
+  assert( budget_snapshot && !snapshot_copy_to( budget_snapshot ) );
+
+  /* Ordinary reset does not remove/cancel the outstanding budget. */
+  frame_callback_action = 1; before = tstates;
+  event_add( tstates + 1, type );
+  assert( fuse_legacy_run_tstates( 100 ) == FUSE_LEGACY_RUN_COMPLETED );
+  assert( frame_callback_fired == 1 && tstates - before >= 100 );
+  /* Also reset after a frame callback while this budget still has work left. */
+  event_add( length, type );
+  assert( fuse_legacy_run_tstates( length - tstates + 100 ) == FUSE_LEGACY_RUN_COMPLETED );
+  assert( frame_callback_fired == 2 && !spectrum_get_frame_count() );
+  assert( tstates >= 100 && tstates < 200 );
+
+  frame_callback_action = 2; before = tstates;
+  event_add( tstates + 1, type );
+  assert( fuse_legacy_run_tstates( 1000 ) == FUSE_LEGACY_RUN_PAUSED );
+  assert( frame_callback_fired == 3 && tstates - before < 1000 );
+  assert( !fuse_emulation_unpause() );
+
+  /* Replaced queues/clocks end this turn, not a fresh budget on the new state. */
+  frame_callback_action = 4;
+  event_add( tstates + 1, type );
+  assert( fuse_legacy_run_tstates( 1000 ) == FUSE_LEGACY_RUN_INTERRUPTED );
+  assert( frame_callback_fired == 4 );
+  assert( fuse_legacy_run_tstates( 8 ) == FUSE_LEGACY_RUN_COMPLETED );
+  frame_callback_action = 5;
+  event_add( tstates + 1, type );
+  assert( fuse_legacy_run_tstates( 1000 ) == FUSE_LEGACY_RUN_INTERRUPTED );
+  assert( frame_callback_fired == 5 );
+  assert( fuse_legacy_run_tstates( 8 ) == FUSE_LEGACY_RUN_COMPLETED );
+  assert( !snapshot_copy_from( budget_snapshot ) ); /* Between calls is normal. */
+  assert( fuse_legacy_run_tstates( 8 ) == FUSE_LEGACY_RUN_COMPLETED );
+  frame_callback_action = 6;
+  event_add( tstates + 1, type );
+  assert( fuse_legacy_run_tstates( 1000 ) == FUSE_LEGACY_RUN_INTERRUPTED );
+  assert( frame_callback_fired == 6 && tstates == 12345 );
+  assert( fuse_legacy_run_tstates( 8 ) == FUSE_LEGACY_RUN_COMPLETED );
+  assert( tstates == 12353 );
+  /* A breakpoint command can replace the clock inside the CPU batch and
+     continue without opening a debugger UI. Do not execute one extra opcode. */
+  z80.pc.w = 0x8000;
+  assert( !debugger_breakpoint_add_address( DEBUGGER_BREAKPOINT_TYPE_EXECUTE,
+           memory_source_any, 0, 0x8000, 0, DEBUGGER_BREAKPOINT_LIFE_PERMANENT, NULL ) );
+  assert( !debugger_breakpoint_set_commands( 1,
+           "set ula:tstates 23456\ncontinue" ) );
+  assert( !debugger_run() );
+  assert( fuse_legacy_run_tstates( 1000 ) == FUSE_LEGACY_RUN_INTERRUPTED );
+  assert( tstates == 23456 && z80.pc.w == 0x8000 );
+  assert( !debugger_breakpoint_remove_all() );
+  assert( fuse_legacy_run_tstates( 8 ) == FUSE_LEGACY_RUN_COMPLETED );
+  /* Rejection does not consume READY or change the machine clock. */
+  before = tstates; tstates = 0x80000000UL;
+  assert( fuse_legacy_run_tstates( 1 ) == FUSE_LEGACY_RUN_INVALID_ARGUMENT );
+  assert( tstates == 0x80000000UL ); tstates = before;
+  assert( fuse_legacy_run_frame() == FUSE_LEGACY_RUN_COMPLETED );
+
+  frame_callback_action = 7;
+  event_add( tstates + 1, type );
+  assert( fuse_legacy_run_tstates( 1000 ) == FUSE_LEGACY_RUN_EXITING );
+  assert( frame_callback_fired == 7 );
+  before = tstates;
+  assert( fuse_legacy_run_tstates( 1 ) == FUSE_LEGACY_RUN_EXITING );
+  assert( tstates == before );
+  assert( !libspectrum_snap_free( budget_snapshot ) ); budget_snapshot = NULL;
+  fuse_legacy_shutdown();
+  check_closed();
+}
+
+/* A portable generated recording exercises both RZX's long-frame sentinel and
+   a snapshot/clock replacement between input blocks, without archive fixtures. */
+static void
+make_budget_rzx( char *rom, const char *filename )
+{
+  char program[] = "budget-rzx-fixture", model[] = "--machine", machine[] = "48";
+  char rom_option[] = "--rom-48", no_save[] = "--no-autosave-settings";
+  char no_sound[] = "--no-sound";
+  char *args[] = { program, model, machine, rom_option, rom, no_save, no_sound, NULL };
+  libspectrum_rzx *recording;
+  libspectrum_byte *buffer = NULL;
+  size_t length = 0;
+  FILE *file;
+  int block;
+  assert( fuse_legacy_prepare( 7, args ) == FUSE_LEGACY_INIT_READY );
+  memset( RAM, 0, sizeof( RAM ) );
+  writebyte_internal( 0x8000, 0x76 ); z80.pc.w = 0x8000;
+  z80.iff1 = z80.iff2 = 0;
+  recording = libspectrum_rzx_alloc();
+  assert( recording );
+  for( block = 0; block < 2; block++ ) {
+    libspectrum_snap *snap = libspectrum_snap_alloc();
+    assert( snap && !snapshot_copy_to( snap ) );
+    libspectrum_snap_set_tstates( snap, block ? 123 : 0 );
+    assert( !libspectrum_rzx_add_snap( recording, snap, 0 ) );
+    libspectrum_rzx_start_input( recording, block ? 123 : 0 );
+    assert( !libspectrum_rzx_store_frame( recording, block ? 13 : 21000, 0, NULL ) );
+    assert( !libspectrum_rzx_store_frame( recording, 23, 0, NULL ) );
+  }
+  assert( !libspectrum_rzx_write( &buffer, &length, recording,
+                                 LIBSPECTRUM_ID_SNAPSHOT_SZX, NULL, 0, NULL ) );
+  file = fopen( filename, "wb" );
+  assert( file && fwrite( buffer, 1, length, file ) == length && !fclose( file ) );
+  libspectrum_free( buffer );
+  assert( !libspectrum_rzx_free( recording ) );
+  fuse_legacy_shutdown();
+  check_closed();
+}
+
+static void
+check_budget_run( int argc, char **argv, const char *kind )
+{
+#ifdef ENABLE_AUTOMATION
+  static const unsigned long slices[] = { 1, 97, 997, 17500, 70013, 210001 };
+  int status = 73, turns = 0, interruptions = 0;
+  int prefix = !strcmp( kind, "budgets-prefix" );
+  fuse_legacy_run_result result;
+  assert( fuse_legacy_prepare( argc, argv ) == FUSE_LEGACY_INIT_READY );
+  assert( automation_active() );
+  do {
+    unsigned long slice = !strcmp( kind, "budgets-wide" ) ? 210001 :
+                          !strcmp( kind, "budgets-tiny" ) ? 1 :
+                          !strcmp( kind, "budgets-mixed" ) ? slices[turns % 6] : 997;
+    result = fuse_legacy_run_tstates( slice );
+    if( result == FUSE_LEGACY_RUN_INTERRUPTED ) interruptions++;
+    turns++;
+  } while( ( result == FUSE_LEGACY_RUN_COMPLETED ||
+             result == FUSE_LEGACY_RUN_INTERRUPTED ) && ( !prefix || turns < 7 ) );
+  assert( result == FUSE_LEGACY_RUN_EXITING ||
+          ( prefix && turns == 7 && result == FUSE_LEGACY_RUN_COMPLETED ) );
+  if( !strcmp( kind, "budgets-rzx" ) ) assert( interruptions > 0 );
+  assert( !fuse_legacy_execute( &status ) );
+  assert( status == ( !strcmp( kind, "budgets-failure" ) ? 2 : 0 ) );
+  fuse_legacy_shutdown();
+  check_closed();
+#else
+  (void)argc; (void)argv; (void)kind;
+  assert( 0 );
+#endif
+}
+
+static void
 check_frame_run( int argc, char **argv, int expected_status, int prefix_only )
 {
 #ifdef ENABLE_AUTOMATION
@@ -314,7 +504,14 @@ legacy_lifecycle_test( int argc, char **argv )
 {
   assert( argc >= 2 );
   libspectrum_error_function = preserved_error;
-  if( !strcmp( argv[1], "frame-contract" ) ||
+  if( !strcmp( argv[1], "budget-rzx-fixture" ) ) {
+    assert( argc == 4 );
+    make_budget_rzx( argv[2], argv[3] );
+  } else if( !strcmp( argv[1], "budget-contract" ) ) {
+    check_budget_contract( argc - 1, argv + 1 );
+  } else if( !strncmp( argv[1], "budgets", 7 ) ) {
+    check_budget_run( argc - 1, argv + 1, argv[1] );
+  } else if( !strcmp( argv[1], "frame-contract" ) ||
       !strcmp( argv[1], "frame-shutdown" ) ) {
     check_frame_contract( argc - 1, argv + 1,
                           !strcmp( argv[1], "frame-shutdown" ) );

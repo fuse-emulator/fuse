@@ -29,6 +29,7 @@
 #include "debugger/debugger.h"
 #include "display.h"
 #include "event.h"
+#include "fuse-internal.h"
 #include "keyboard.h"
 #include "input.h"
 #include "keyboard_refresh.h"
@@ -160,6 +161,7 @@ spectrum_frame( void )
   event_frame( frame_length );
   debugger_breakpoint_reduce_tstates( frame_length );
   specplus3_bus_frame( frame_length, tstates );
+  fuse_legacy_budget_rebase( tstates, tstates - frame_length );
   tstates -= frame_length;
   if( z80.interrupts_enabled_at >= 0 )
     z80.interrupts_enabled_at -= frame_length;
