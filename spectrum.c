@@ -65,8 +65,9 @@ libspectrum_dword tstates;
 static int contention_pattern_65432100[] = { 5, 4, 3, 2, 1, 0, 0, 6 };
 static int contention_pattern_76543210[] = { 5, 4, 3, 2, 1, 0, 7, 6 };
 
-/* Event */
+/* Event and private host-turn completion flag. */
 int spectrum_frame_event;
+int spectrum_frame_dispatch_complete;
 
 /* Debugger variable prefix */
 static const char * const debugger_type_string = "spectrum";
@@ -108,6 +109,7 @@ spectrum_frame_event_fn( libspectrum_dword last_tstates, int type,
   debugger_add_time_events();
   ui_event();
   ui_error_frame();
+  spectrum_frame_dispatch_complete = 1;
 }
 
 libspectrum_dword

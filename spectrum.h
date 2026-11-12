@@ -81,6 +81,10 @@ extern int spectrum_frame_event;
 
 void spectrum_register_startup( void );
 libspectrum_dword spectrum_get_frame_count( void );
+/* Private host-turn handshake: the runner clears this when starting a frame
+   turn; the full frame callback, including UI, sets it on completion. Ordinary
+   machine reset leaves it alone. Not an emulated machine-state flag. */
+extern int spectrum_frame_dispatch_complete;
 int spectrum_frame( void );
 
 #endif			/* #ifndef FUSE_SPECTRUM_H */

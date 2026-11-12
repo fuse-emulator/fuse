@@ -289,6 +289,10 @@ check-legacy-lifecycle: unittests/legacyenginelinktest unittests/legacyenginesou
 	      "$$program" --lifecycle-test $$kind > /dev/null; \
 	    done; \
 	    "$$program" --lifecycle-test zero "$$rom" > /dev/null; \
+	    for kind in frame-contract frame-shutdown; do \
+	      "$$program" --lifecycle-test "$$kind" --machine 48 --rom-48 "$$rom" \
+	        --no-autosave-settings --no-sound > /dev/null; \
+	    done; \
 	    "$$program" --lifecycle-test prepare --machine 48 --rom-48 "$$rom" \
 	      --no-autosave-settings > /dev/null; \
 	    $(LEGACY_LIFECYCLE_EXECUTION_CHECK) \
@@ -335,7 +339,19 @@ LEGACY_LIFECYCLE_EXECUTION_CHECK = mkdir prepared-output; \
   --no-autosave-settings --automation-output output --automation-frames 1 > /dev/null; \
   mkdir failed-output; "$$program" --lifecycle-test run-failure --machine 48 \
   --rom-48 "$$rom" --no-autosave-settings --automation-output failed-output \
-  --automation-max-frames 1 --automation-success-pc 65535 > /dev/null;
+  --automation-max-frames 1 --automation-success-pc 65535 > /dev/null; \
+  mkdir frame-reference; "$$program" --lifecycle-test run --machine 48 \
+  --rom-48 "$$rom" --no-autosave-settings --automation-output frame-reference \
+  --automation-frames 10 > /dev/null; \
+  for mode in frames frames-prefix; do mkdir "$$mode"; \
+    "$$program" --lifecycle-test "$$mode" --machine 48 --rom-48 "$$rom" \
+    --no-autosave-settings --automation-output "$$mode" --automation-frames 10 > /dev/null; \
+    cmp frame-reference/result.json "$$mode/result.json"; \
+  done; \
+  mkdir frame-failure; "$$program" --lifecycle-test frames-failure --machine 48 \
+  --rom-48 "$$rom" --no-autosave-settings --automation-output frame-failure \
+  --automation-max-frames 1 --automation-success-pc 65535 > /dev/null; \
+  cmp failed-output/result.json frame-failure/result.json;
 STARTUP_OWNERSHIP_FAILURE_CHECK = "$$program" settings-failure; \
   mkdir output; "$$program" session --machine 48 \
   --rom-48 "$(abs_top_srcdir)/roms/48.rom" \

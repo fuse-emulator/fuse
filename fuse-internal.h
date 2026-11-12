@@ -41,9 +41,29 @@ typedef enum fuse_legacy_init_result {
    available; RNG, platform startup and library management are unchanged. */
 fuse_legacy_init_result fuse_legacy_prepare( int argc, char **argv );
 
-/* Run the unchanged blocking legacy loop once after READY. Zero means accepted;
-   the application exit status is written separately. Rejection leaves it alone.
-   This is not frame-step, cooperative execution or a public worker API. */
+typedef enum fuse_legacy_run_result {
+  FUSE_LEGACY_RUN_COMPLETED,
+  FUSE_LEGACY_RUN_PAUSED,
+  FUSE_LEGACY_RUN_EXITING,
+  FUSE_LEGACY_RUN_BUSY,
+  FUSE_LEGACY_RUN_NOT_READY
+} fuse_legacy_run_result;
+
+/* Advance to the next completed frame boundary (not necessarily a whole frame
+   from the current position). Repeatable after READY, on the owner thread only.
+   Returns after CPU/due-event dispatch, including the frame's interrupt/RZX/UI
+   companions. Existing services/debugger may block without a latency bound.
+   EXITING takes precedence over PAUSED, then COMPLETED. A paused call advances
+   no emulated time; the host owns command handling and waiting between calls.
+   Ordinary reset may occur during dispatch and does not cancel the turn.
+   Recursive calls are BUSY; before prepare/after legacy execute or shutdown,
+   calls are NOT_READY. No automatic shutdown or application result writing. */
+fuse_legacy_run_result fuse_legacy_run_frame( void );
+
+/* Run the blocking legacy loop once after READY, optionally after host turns.
+   Zero means accepted; the application exit status is written separately.
+   Rejection leaves it alone. This finalizes application automation output once;
+   subsequent frame/legacy execution is rejected. Not cooperative execution. */
 int fuse_legacy_execute( int *exit_status );
 
 /* End a prepared/completed session. No-op before preparation or after shutdown,

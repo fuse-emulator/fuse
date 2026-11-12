@@ -133,6 +133,7 @@ static struct {
   legacy_phase phase;
   int manager_started;
   int save_settings;
+  int execution_started;
   int xml_owned;
   int libspectrum_owned;
   int callback_owned;
@@ -231,13 +232,57 @@ fuse_legacy_main( int argc, char **argv )
 /* One legacy dispatch iteration. Keep the CPU batch and all due events
    together: a frame event also delivers its interrupt and runs the RZX, input
    and UI companions before control returns here. This is not necessarily one
-   instruction or one frame, and callbacks may block. Application exit and
-   automation policy remain with the enclosing runner. */
+   instruction or one frame, and callbacks may block. Session limits are
+   observed after dispatch; result finalization stays in the legacy runner. */
 static void
 fuse_dispatch_once( void )
 {
   z80_do_opcodes();
   event_do_events();
+#ifdef ENABLE_AUTOMATION
+  if( automation_active() &&
+      automation_frame_limit_reached( spectrum_get_frame_count() ) )
+    fuse_exiting = 1;
+#endif
+}
+
+/* Host turns and the legacy runner share one automation session. Resuming
+   through the legacy runner must not re-arm its deadline after host turns. */
+static void
+fuse_execution_start( void )
+{
+  if( legacy_ownership.execution_started ) return;
+  legacy_ownership.execution_started = 1;
+#ifdef ENABLE_AUTOMATION
+  if( automation_active() ) automation_arm( spectrum_get_frame_count() );
+#endif
+}
+
+fuse_legacy_run_result
+fuse_legacy_run_frame( void )
+{
+  fuse_legacy_run_result result;
+
+  if( legacy_ownership.phase == LEGACY_STARTING ||
+      legacy_ownership.phase == LEGACY_RUNNING ||
+      legacy_ownership.phase == LEGACY_STOPPING ) return FUSE_LEGACY_RUN_BUSY;
+  if( legacy_ownership.phase != LEGACY_READY ) return FUSE_LEGACY_RUN_NOT_READY;
+  if( fuse_exiting ) return FUSE_LEGACY_RUN_EXITING;
+  if( fuse_emulation_paused ) return FUSE_LEGACY_RUN_PAUSED;
+
+  legacy_ownership.phase = LEGACY_RUNNING;
+  fuse_execution_start();
+  spectrum_frame_dispatch_complete = 0;
+  do {
+    fuse_dispatch_once();
+  } while( !fuse_exiting && !fuse_emulation_paused &&
+           !spectrum_frame_dispatch_complete );
+
+  result = fuse_exiting ? FUSE_LEGACY_RUN_EXITING :
+           fuse_emulation_paused ? FUSE_LEGACY_RUN_PAUSED :
+                                   FUSE_LEGACY_RUN_COMPLETED;
+  legacy_ownership.phase = LEGACY_READY;
+  return result;
 }
 
 int
@@ -256,16 +301,9 @@ fuse_legacy_execute( int *exit_status )
   } else
 #endif
   {
-#ifdef ENABLE_AUTOMATION
-    if( automation_active() ) automation_arm( spectrum_get_frame_count() );
-#endif
+    fuse_execution_start();
     while( !fuse_exiting ) {
       fuse_dispatch_once();
-#ifdef ENABLE_AUTOMATION
-      if( automation_active() &&
-          automation_frame_limit_reached( spectrum_get_frame_count() ) )
-        fuse_exiting = 1;
-#endif
     }
     r = debugger_get_exit_code();
 #ifdef ENABLE_AUTOMATION

@@ -25,31 +25,55 @@ are in `fuse-internal.h`, not an installed SDK header:
   only READY retains a session. Invalid vector shape is rejected without consuming
   the attempt or changing callbacks/settings. Zero arguments with NULL argv is
   permitted; otherwise argv must have non-NULL entries and a NULL terminator.
+- `fuse_legacy_run_frame()` accepts READY repeatedly and advances to the next
+  completed frame boundary, which may be less than a full frame from the current
+  position. It returns COMPLETED, PAUSED or EXITING; EXITING takes precedence over
+  PAUSED and COMPLETED. A paused entry advances no emulated time. Re-entry during
+  startup, execution or shutdown returns BUSY; other non-READY phases return
+  NOT_READY. It does not finalize application output or shut down the session.
 - `fuse_legacy_execute(&status)` accepts READY once and runs the existing blocking
   loop. Its return value reports acceptance; the separate output receives the
   existing application exit code. Rejection leaves that output untouched.
-  Automation still arms at execution entry and writes results before shutdown.
+  It may follow frame turns. Automation arms once at the first actual execution
+  entry (frame or legacy), checks limits after dispatch, and writes results only
+  when the legacy runner finishes, before shutdown.
 - `fuse_legacy_shutdown()` disposes a READY or completed session once. It is a
   no-op in fresh/closed states and during preparation, execution or cleanup
   callbacks. Internal failure unwind and fatal abort use the separate guarded
   cleanup path; ordinary shutdown is not a stop request.
 
 The internal states are FRESH -> STARTING -> READY -> RUNNING -> FINISHED ->
-STOPPING -> CLOSED. READY can also go straight to shutdown without execution;
+STOPPING -> CLOSED. Frame turns instead go READY -> RUNNING -> READY, including
+when they observe exit; the caller may then shut down or use the legacy runner
+for application result finalization. READY can also go straight to shutdown;
 help/version and failure go from STARTING through cleanup to CLOSED. Calls during
 an active attempt return BUSY; another attempt after closure returns CLOSED.
 Help/version and failed initialization also consume the supported lifetime.
 All calls remain serialized on the selected frontend owner thread. This is not
-thread-safe instance creation, restart, cooperative execution or a worker API.
+thread-safe instance creation, restart, cooperative execution or a toolkit-free
+worker API.
 Argument storage remains borrowed and may be modified/reordered by the parser or
 selected toolkit; keep it alive through shutdown.
 
 The compatibility wrapper preserves CLI exit mapping and the existing dispatch
 order. A private `fuse_dispatch_once()` groups the CPU batch and due-event dispatch;
 frame callbacks, including their RZX/interrupt/input/UI companions, are unchanged.
-This helper adds no host execution entry or return-time guarantee. The legacy
-runner still owns the exit loop and automation arming, deadline checks and result
-finalization. RNG seeding, core-managed libspectrum/XML and platform privilege handling
+Both execution entries use it, with automation limits checked after dispatch.
+The frame entry clears a completion flag when starting a turn; the full frame
+callback sets it after its work finishes. Ordinary reset leaves the flag alone;
+no cumulative frame counter is needed. It returns after due events drain, not
+halfway through interrupt/RZX/UI
+processing. Ordinary reset does not cancel the turn; machine selection replaces
+its queued frame event and execution can proceed to a boundary. No T-state budget
+entry or clock-replacement budget semantics are provided yet.
+
+Existing audio admission, debugger and UI callbacks may block inside execution;
+there is no wall-clock latency bound or cross-thread cancellation. Z80 HALT does
+not stop frame execution or interrupt delivery. Hosts service commands and choose
+when to wait between calls, including while paused; no polling sleep is imposed.
+Legacy frontend modal/nested-loop handling remains intact. The legacy runner owns
+its exit loop and application result finalization. RNG seeding, core-managed
+libspectrum/XML and platform privilege handling
 remain at their existing startup stages. No seeding hook, generic policy framework,
 borrowed-library mode or new frontend responsibility is introduced.
 
@@ -179,11 +203,15 @@ so automation-enabled builds can use them for bounded differential captures.
 split interface: vector validation without consuming the attempt, zero-argument
 startup, distinct help/version/failure outcomes, active/closed rejection,
 preparation without execution (including no false automation result), one-shot
-execution with success/nonzero application exit status, and repeated shutdown. Each
-accepted attempt uses a fresh process and isolated preference directory. Bounded
-execution cases require automation; preparation-only cases do not. Instrumented
-unwind tests additionally attempt reentrant prepare/execute/shutdown from
-STARTING, RUNNING and STOPPING, without disposing active operations. Preference
+execution with success/nonzero application exit status, and repeated shutdown.
+Frame-contract tests also cover repeatable turns, direct shutdown after a turn,
+nested pause and paused commands, reset during/between turns, machine selection
+replacing the queue, HALT/interrupt delivery, debugger exit, and recursive entry.
+Those tests run with or without automation. Automation builds additionally compare
+legacy, frame-only and frame-then-legacy result JSON and exercise deadline exits.
+Each accepted attempt uses a fresh process and isolated preference directory.
+Instrumented unwind tests additionally attempt reentrant prepare/frame/execute/
+shutdown from STARTING, RUNNING and STOPPING, without disposing active operations. Preference
 checks use both consumers in empty and pre-existing configuration directories:
 core shutdown neither creates nor rewrites preferences despite autosave being
 enabled, while the real compatibility wrapper still saves after startup and
