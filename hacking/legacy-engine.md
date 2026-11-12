@@ -34,8 +34,9 @@ are in `fuse-internal.h`, not an installed SDK header:
 - `fuse_legacy_run_tstates(budget)` advances by a relative emulated T-state
   budget, sharing the frame entry's lifecycle and blocking rules. Budgets must
   be 1..0x7fffffff and the starting clock below 0x7fffffff; invalid requests do
-  not execute. Instructions and due-event/frame dispatch finish before returning,
-  so the budget is a minimum, not an exact cutoff or wall-clock deadline.
+  not execute. Instructions and due-event/frame dispatch finish before returning.
+  COMPLETED means at least the requested budget; PAUSED, INTERRUPTED and EXITING
+  may return earlier. This is not an exact cutoff or wall-clock deadline.
   Normal frame/RZX clock rebasing is accounted for. Ordinary reset continues;
   machine selection, snapshot restoration or debugger clock assignment during
   a turn instead returns INTERRUPTED, without restarting the budget. Exit wins
@@ -165,6 +166,113 @@ classification before a supported non-terminating lifecycle API is exposed. No
 public lifecycle capability, host-borrowing profile or restart support is
 advertised.
 
+## Private host execution recipe
+
+This is a source-local, selected-UI-bound worker-compatible profile. Build the
+host and engine from the same configured revision, using `fuse-internal.h` and
+one of the linking styles below. No installed SDK, feature/version negotiation,
+new thread, command queue or toolkit-free initialization is provided. Preparation
+still initializes the selected UI and reads legacy configuration; only automatic
+preference saving is excluded from the split lifecycle.
+
+Keep all calls on one owner thread compatible with that UI's threading rules.
+Retain the host's existing command transport and scheduling. The following is a
+sketch for a session **without CLI automation**; `host_*` names are placeholders,
+not additional Fuse APIs:
+
+```c
+fuse_legacy_init_result init = fuse_legacy_prepare( argc, argv );
+if( init != FUSE_LEGACY_INIT_READY ) {
+  host_handle_startup_result( init );
+  return; /* Do not shut down someone else's session after BUSY. */
+}
+
+for( ;; ) {
+  host_service_commands();             /* On the owner thread, between turns. */
+  if( host_stop_requested() ) break;
+  if( !host_turn_due() ) {
+    host_wait_for_work();              /* Wake for commands or the next turn. */
+    continue;
+  }
+
+  fuse_legacy_run_result result = host_use_frame_turn()
+    ? fuse_legacy_run_frame()
+    : fuse_legacy_run_tstates( host_tstate_budget() );
+
+  switch( result ) {
+  case FUSE_LEGACY_RUN_COMPLETED:
+  case FUSE_LEGACY_RUN_INTERRUPTED:
+    host_reconsider_schedule();
+    break;
+  case FUSE_LEGACY_RUN_PAUSED:
+    host_wait_for_work();              /* Do not busy-retry a paused core. */
+    break;
+  case FUSE_LEGACY_RUN_EXITING:
+    goto finished;
+  default:                            /* BUSY / NOT_READY / INVALID_ARGUMENT */
+    host_report_usage_error( result );
+    goto finished;
+  }
+}
+finished:
+fuse_legacy_shutdown();
+```
+
+- Choose a frame turn when the host needs the next complete frame boundary,
+  independently of audio delivery. A budget turn may end within a frame; its
+  COMPLETED result does not mean a frame completed. Frame and budget turns may
+  be mixed in one prepared session.
+- For elapsed-time scheduling, convert the host's desired interval using the
+  current machine clock/speed and pass a positive budget in the documented
+  range. Retain native timers, audio pacing and fastload wall-time policy in the
+  host; do not turn those policies into emulated scheduler events. Account for
+  instruction/event overshoot rather than treating each call as an exact slice.
+- INTERRUPTED applies to a budget whose clock/state was replaced during the
+  call. Reconsider the next request in the new state; do not assume the original
+  budget completed or silently restart it. An ordinary reset does not interrupt
+  the budget. Reset/replacement between calls starts the next turn normally.
+- For host pause commands, use balanced owner-thread calls to the existing
+  `fuse_emulation_pause()` / `fuse_emulation_unpause()` in `fuse.h`. Release only
+  pauses the host owns; PAUSED is not a request to decrement somebody else's
+  pause count. Do not introduce an independent core pause counter. Legacy menu
+  and debugger nested loops retain their existing interaction behaviour.
+- A host stop handled between calls can go directly to shutdown, even while
+  paused. EXITING instead reports an exit already requested inside the engine.
+  Neither permits recursive execution or shutdown from an active callback.
+  Cross-thread requests must use the host's transport, not concurrent core calls.
+
+The host owns waits between turns and must wake them for commands. An active
+call may still block in audio, UI or debugger services; long prefix chains, tape
+traps and complete event batches also prevent a hard response-time bound. There
+is no cross-thread cancellation API. A queued stop cannot be promised immediate
+service while such work is active. Explicit debugger-stop outcomes and removal
+of synchronous waits belong to later milestones.
+
+### Adopting the entries without replacing the host
+
+Keep `fuse_legacy_main()` for the unchanged application path. To adopt host turns,
+replace the one continuous `fuse_legacy_execute()` call with owner-thread turns
+after READY, leaving initialization, native scheduling, command handling and
+presentation intact. Preserve mutable startup argument storage through shutdown.
+The continuous runner remains available, including after host turns, but once it
+finishes further execution calls are rejected.
+
+For an existing host with custom frame/timer helpers, replace its CPU loop and
+associated frame-end flags/dispatch as one coherent group. Do not compile both
+implementations or keep a deferred frame-end patch alongside the upstream frame
+callback. Retain host-native timing and reconcile its existing pause bridge; no
+Cocoa build, rebase or adoption is required to use these entries in this repo.
+Adopting none remains valid.
+
+For **CLI automation**, the test fixtures demonstrate one session across host and
+legacy calls. After a turn returns EXITING, call `fuse_legacy_execute(&status)`
+before shutdown if application result writing and exit-status mapping are wanted.
+Because exit is already requested, that finalization does not execute another
+CPU batch. Do not call it merely to finish an arbitrary host slice: without an
+exit request it resumes continuous execution. Direct shutdown after host turns
+does not write an automation result. See `check_frame_run()` / `check_budget_run()`
+in `unittests/legacylifecycletest.c` for the concrete in-repo consumers.
+
 ## Canonical configured inputs
 
 The included Automake fragments append engine sources to
@@ -232,9 +340,10 @@ Budget-contract tests add subframe execution, instruction overshoot, multi-frame
 rebasing, reset preservation, clock/queue replacement interruption, invalid input
 and repeat entry after interruption. A breakpoint command that edits the clock
 and continues without opening a UI must interrupt before another opcode executes.
-A generated RZX covers its long-frame sentinel and mid-recording snapshot restore. Those tests run with or without automation.
-Automation builds additionally compare legacy, frame-only, budget-only and mixed
-result JSON and exercise deadline exits.
+These frame/budget contract tests run with or without automation. Automation
+builds additionally generate an RZX covering its long-frame sentinel and
+mid-recording snapshot restore, compare legacy/frame/budget/mixed result JSON,
+and exercise deadline exits.
 Each accepted attempt uses a fresh process and isolated preference directory.
 Instrumented unwind tests additionally attempt reentrant prepare/frame/budget/
 execute/shutdown from STARTING, RUNNING and STOPPING, without disposing active operations. Preference
@@ -249,7 +358,10 @@ The legacy ROM search uses the executable's location; these fixtures live under
 `unittests/`, not beside the source root's `roms/`. Supply explicit ROM paths for
 uninstalled capture runs, for example `--rom-48 /path/to/roms/48.rom`, and the
 corresponding options for other machines. Packaging does not introduce a new
-resource-search policy.
+resource-search policy. Preserve a meaningful program path in argv[0] when
+reusing startup parsing. For tape-autoload checks, prefer standard ROM filenames
+resolved from the usual search directories: a different `--rom-*` filename marks
+that ROM custom and suppresses autoload, even when its bytes match the default.
 
 With null UI and automation, `make check-startup-unwind` builds a separate source
 consumer with `FUSE_STARTUP_TEST`. It injects failures before/after configured
