@@ -87,15 +87,9 @@ display_last_screen[ DISPLAY_SCREEN_WIDTH_COLS * DISPLAY_SCREEN_HEIGHT ];
 extern libspectrum_word display_line_start[ DISPLAY_HEIGHT ];
 extern libspectrum_word display_attr_start[ DISPLAY_HEIGHT ];
 
-typedef struct display_startup_context {
-  int *argc;
-  char ***argv;
-} display_startup_context;
-
-int display_init( int *argc, char ***argv );
-/* Ends only successfully acquired UI/display state; safe to repeat. */
-int display_end( void );
-void display_register_startup( display_startup_context *context );
+/* Renderer state only; frontend startup and teardown are separate. */
+int display_init( void );
+void display_end( void ); /* Safe to repeat. */
 
 typedef void (*display_dirty_fn)( libspectrum_word offset );
 /* Function to use to mark as 'dirty' the pixels which have been changed by a

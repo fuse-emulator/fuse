@@ -29,14 +29,11 @@
 
 #include "display.h"
 #include "display_internal.h"
-#include "infrastructure/startup_manager.h"
-#include "infrastructure/startup_test.h"
 #include "machine.h"
 #include "movie.h"
 #include "peripherals/scld.h"
 #include "rectangle.h"
 #include "settings.h"
-#include "ui/ui.h"
 #include "ui/uidisplay.h"
 
 /* Set once we have initialised the UI */
@@ -58,17 +55,12 @@ libspectrum_word display_attr_start[ DISPLAY_HEIGHT ];
 
 /* Used to signify that we're redrawing the entire screen */
 static int display_redraw_all;
-static int display_owned;
 
 int
-display_init( int *argc, char ***argv )
+display_init( void )
 {
   int i, j, k, y;
   int error;
-
-  if( FUSE_STARTUP_FAIL( "display.ui" ) || ui_init( argc, argv ) )
-    return 1;
-  display_owned = 1;
 
   display_dirty_init();
 
@@ -90,7 +82,7 @@ display_init( int *argc, char ***argv )
   display_refresh_all();
 
   error = display_border_init();
-  if( error || FUSE_STARTUP_FAIL( "display.ready" ) ) {
+  if( error ) {
     display_end();
     return 1;
   }
@@ -98,37 +90,10 @@ display_init( int *argc, char ***argv )
   return 0;
 }
 
-int
+void
 display_end( void )
 {
-  int error = 0;
-  if( display_owned ) {
-    display_owned = 0;
-    error = ui_end();
-  }
   display_border_end();
-  display_ui_initialised = 0;
-  return error;
-}
-
-static int
-display_init_wrapper( void *context )
-{
-  display_startup_context *typed_context =
-    (display_startup_context *)context;
-
-  return display_init( typed_context->argc, typed_context->argv );
-}
-
-void
-display_register_startup( display_startup_context *context )
-{
-  /* The Wii has an explicit call to display_init for now */
-#ifndef GEKKO
-  startup_manager_register_no_dependencies( STARTUP_MANAGER_MODULE_DISPLAY,
-                                            display_init_wrapper, context,
-                                            NULL );
-#endif                          /* #ifndef GEKKO */
 }
 
 /* Send the updated screen to the UI-specific code */

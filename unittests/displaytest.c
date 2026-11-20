@@ -1267,14 +1267,12 @@ static const struct test_t tests[] = {
 #undef main
 #endif
 
-static int ui_end_calls;
-
 int
-main( int argc, char *argv[] )
+main( void )
 {
   const struct test_t *test;
 
-  if( display_init( &argc, &argv ) ) {
+  if( display_init() ) {
     fprintf( stderr, "Error from display_init()\n");
     return 1;
   }
@@ -1290,22 +1288,15 @@ main( int argc, char *argv[] )
     }
   }
 
-  if( display_end() || display_end() || ui_end_calls != 1 ) return 1;
-  /* Reacquiring the display must also reset border allocation bookkeeping. */
-  if( display_init( &argc, &argv ) ) return 1;
-  if( display_end() || ui_end_calls != 2 ) return 1;
+  display_end();
+  display_end();
+  /* Renderer teardown and reacquisition need no frontend lifecycle hooks. */
+  if( display_init() ) return 1;
+  display_end();
   return 0;
 }
 
 /* Dummy code for the rest of the UI */
-
-int
-ui_init( int *argc, char ***argv )
-{
-  return 0;
-}
-
-int ui_end( void ) { ui_end_calls++; return 0; }
 
 void uidisplay_area( int x, int y, int w, int h ) {}
 void uidisplay_frame_end( void ) {}

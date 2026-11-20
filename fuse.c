@@ -123,8 +123,11 @@ libspectrum_creator *fuse_creator;
 /* The earliest version of libspectrum we need */
 static const char * const LIBSPECTRUM_MIN_VERSION = "0.5.0";
 
-/* Context for the display startup routine */
-static display_startup_context display_context;
+/* The selected UI may rewrite the application's argument list. */
+static struct {
+  int *argc;
+  char ***argv;
+} display_context;
 
 typedef enum legacy_phase {
   LEGACY_FRESH, LEGACY_STARTING, LEGACY_READY, LEGACY_RUNNING,
@@ -135,6 +138,7 @@ typedef enum legacy_phase {
 static struct {
   legacy_phase phase;
   int manager_started;
+  int ui_owned;
   int save_settings;
   int execution_started;
   int xml_owned;
@@ -558,6 +562,33 @@ setuid_register_startup( void )
                             NULL );
 }
 
+static void
+fuse_ui_end( void )
+{
+  if( legacy_ownership.ui_owned ) {
+    legacy_ownership.ui_owned = 0;
+    ui_end();
+  }
+  display_ui_initialised = 0;
+}
+
+/* Keep desktop startup order without giving the renderer UI ownership. */
+static int
+fuse_display_startup( void *context GCC_UNUSED )
+{
+  if( FUSE_STARTUP_FAIL( "display.ui" ) ||
+      ui_init( display_context.argc, display_context.argv ) ) return 1;
+  legacy_ownership.ui_owned = 1;
+
+  if( display_init() || FUSE_STARTUP_FAIL( "display.ready" ) ) {
+    fuse_ui_end();
+    display_end();
+    return 1;
+  }
+
+  return 0;
+}
+
 static int
 run_startup_manager( int *argc, char ***argv )
 {
@@ -575,7 +606,10 @@ run_startup_manager( int *argc, char ***argv )
   debugger_register_startup();
   didaktik80_register_startup();
   disciple_register_startup();
-  display_register_startup( &display_context );
+#ifndef GEKKO
+  startup_manager_register_no_dependencies( STARTUP_MANAGER_MODULE_DISPLAY,
+                                            fuse_display_startup, NULL, NULL );
+#endif
   divide_register_startup();
   divmmc_register_startup();
   event_register_startup();
@@ -656,7 +690,9 @@ fuse_init( int argc, char **argv, const fuse_host_config *config )
 #ifdef GEKKO
   /* On the Wii, init the display first so we have a way of outputting
      messages */
-  if( display_init(&argc,&argv) ) return 1;
+  display_context.argc = &argc;
+  display_context.argv = &argv;
+  if( fuse_display_startup( NULL ) ) return 1;
 #endif
 
   /* Config parsing can initialize XML before its manager registration runs. */
@@ -1294,6 +1330,7 @@ static int fuse_end(void)
   fuse_settings_end();
 
   periph_end();
+  fuse_ui_end();
   display_end();
   ui_media_drive_end();
   module_end();
