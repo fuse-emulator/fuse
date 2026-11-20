@@ -21,6 +21,7 @@
 
 extern Blip_Buffer *left_buf, *right_buf;
 extern blip_sample_t *samples;
+extern int null_ui_init_calls, null_ui_end_calls;
 
 #define MODULE_COUNT (STARTUP_MANAGER_MODULE_ZXMMC + 1)
 static startup_manager_module expected[MODULE_COUNT];
@@ -115,6 +116,42 @@ preserved_error( libspectrum_error error, const char *format, va_list ap )
   return error;
 }
 
+static int
+acquire_host_rom( void *context, const char *name, fuse_host_rom *rom )
+{
+  assert( !strcmp( name, "48.rom" ) );
+  rom->data = context;
+  rom->length = 16384;
+  return 0;
+}
+
+static void
+test_host_ui_lifetime( const char *path, const char *point )
+{
+  unsigned char bytes[16384];
+  FILE *file = fopen( path, "rb" );
+  fuse_host_resources resources = { bytes, acquire_host_rom };
+  fuse_host_config *config = fuse_host_config_alloc();
+  fuse_init_result result;
+
+  assert( file );
+  assert( fread( bytes, 1, sizeof( bytes ), file ) == sizeof( bytes ) );
+  assert( !fclose( file ) );
+  assert( !fuse_host_config_set_machine( config, "48" ) );
+  assert( !fuse_host_config_set_sound( config, 0 ) );
+  target_point = strcmp( point, "none" ) ? point : NULL;
+  libspectrum_error_function = preserved_error;
+  result = fuse_host_prepare( config, &resources );
+  fuse_host_config_free( config );
+  assert( result == ( target_point ? FUSE_INIT_FAILED : FUSE_INIT_READY ) );
+  assert( injected == !!target_point );
+  if( !target_point ) assert( fuse_run_frame() == FUSE_RUN_COMPLETED );
+  fuse_shutdown();
+  fuse_shutdown();
+  assert( !depth && !null_ui_init_calls && !null_ui_end_calls );
+  assert( libspectrum_error_function == preserved_error );
+}
+
 int
 main( int argc, char **argv )
 {
@@ -124,6 +161,10 @@ main( int argc, char **argv )
   }
   assert( argc == 4 || argc == 5 );
   const char *kind = argv[1], *target = argv[2];
+  if( !strcmp( kind, "host-ui" ) ) {
+    test_host_ui_lifetime( argv[3], target );
+    return 0;
+  }
   char program[] = "startup-unwind", machine[] = "--machine", model[] = "48";
   char rom[] = "--rom-48", no_save[] = "--no-autosave-settings";
   char output[] = "--automation-output", directory[] = ".";
@@ -195,6 +236,12 @@ main( int argc, char **argv )
   fuse_startup_test_shutdown();
   fuse_startup_test_shutdown();
   assert( !depth );
+
+  assert( null_ui_end_calls == null_ui_init_calls );
+  if( target_point && !strcmp( target_point, "display.ui" ) )
+    assert( injected && !null_ui_init_calls );
+  if( ( target_point && !strcmp( target_point, "display.ready" ) ) ||
+      !strcmp( kind, "models" ) ) assert( null_ui_init_calls == 1 );
 
   if( !strcmp( kind, "models" ) ) {
     assert( !result );

@@ -42,7 +42,9 @@ typedef enum fuse_init_result {
   FUSE_INIT_INVALID_ARGUMENT
 } fuse_init_result;
 
-/* Host preparation uses the selected UI/output adapters. Configuration
+/* Host preparation uses the linked UI/output hooks but does not initialize
+   or tear down the application UI. The host must have its hooks ready before
+   preparation and keep them usable through engine shutdown. Configuration
    owns its strings and may be freed after prepare returns. Only one preparation
    attempt is supported, shared with the legacy entry. No CLI or preference I/O.
    This subset configures machine ID, sound, autoload and input mappings; other

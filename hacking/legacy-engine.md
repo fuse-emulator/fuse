@@ -121,8 +121,14 @@ is provider policy. A reported ROM failure fails host preparation/reset/selectio
 even when an optional-peripheral callback would otherwise disable itself and
 return success. The legacy adapter can disable those peripherals and continue.
 
-Host preparation still initializes the selected UI/output adapters and retains
-internal defaults, RNG seeding and process-global library/error handling. It does
+The host owns application UI setup and teardown; Fuse does not call `ui_init()`
+or `ui_end()` on the host path, including on failure. Linked hooks must be usable
+before preparation and through shutdown. The engine still initializes its
+renderer and notifies the linked display of machine geometry. The legacy runner
+owns application UI startup and shutdown.
+
+Host preparation retains internal defaults, RNG seeding and process-global
+library/error handling. It does
 not process application startup files/debugger commands, print the application
 banner or drop process privileges. Preparation and resource access may block.
 Only ROM acquisition uses this provider: media persistence, IDE, serial/network,

@@ -820,6 +820,9 @@ check-startup-unwind: unittests/startupunwindtest
 	    sound.backend sound.left sound.right sound.mixer.buffers sound.samples; do \
 	    run point $$point; \
 	  done; \
+	  for point in none display.ready machine.selected; do \
+	    "$$program" host-ui "$$point" "$$rom" > /dev/null; \
+	  done; \
 	  run media none; run record none; \
 	  for failure in rom scaler snapshot; do run natural $$failure; done; \
 	  test -z "$$(find . -type f \( -name fuserc -o -name fuse.cfg \) -print)"; \

@@ -118,9 +118,13 @@ ui_debugger_update( void )
   return 0;
 }
 
+/* Lifecycle counters for the null adapter's ownership tests. */
+int null_ui_init_calls, null_ui_end_calls;
+
 int
 ui_end( void )
 {
+  null_ui_end_calls++;
   /* No error */
   return 0;
 }
@@ -165,6 +169,7 @@ ui_get_save_filename( const char *title )
 int
 ui_init( int *argc, char ***argv )
 {
+  null_ui_init_calls++;
   /* No error */
   return 0;
 }

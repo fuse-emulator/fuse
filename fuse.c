@@ -124,10 +124,10 @@ libspectrum_creator *fuse_creator;
 static const char * const LIBSPECTRUM_MIN_VERSION = "0.5.0";
 
 /* The selected UI may rewrite the application's argument list. */
-static struct {
+typedef struct {
   int *argc;
   char ***argv;
-} display_context;
+} display_startup_context;
 
 typedef enum legacy_phase {
   LEGACY_FRESH, LEGACY_STARTING, LEGACY_READY, LEGACY_RUNNING,
@@ -574,11 +574,16 @@ fuse_ui_end( void )
 
 /* Keep desktop startup order without giving the renderer UI ownership. */
 static int
-fuse_display_startup( void *context GCC_UNUSED )
+fuse_display_startup( void *context )
 {
-  if( FUSE_STARTUP_FAIL( "display.ui" ) ||
-      ui_init( display_context.argc, display_context.argv ) ) return 1;
-  legacy_ownership.ui_owned = 1;
+  display_startup_context *ui = context;
+
+  /* A host supplies a ready frontend and does not transfer its ownership. */
+  if( ui ) {
+    if( FUSE_STARTUP_FAIL( "display.ui" ) || ui_init( ui->argc, ui->argv ) )
+      return 1;
+    legacy_ownership.ui_owned = 1;
+  }
 
   if( display_init() || FUSE_STARTUP_FAIL( "display.ready" ) ) {
     fuse_ui_end();
@@ -590,13 +595,10 @@ fuse_display_startup( void *context GCC_UNUSED )
 }
 
 static int
-run_startup_manager( int *argc, char ***argv )
+run_startup_manager( display_startup_context *ui GCC_UNUSED )
 {
   startup_manager_init();
   legacy_ownership.manager_started = 1;
-
-  display_context.argc = argc;
-  display_context.argv = argv;
 
   /* Get every module to register its init function */
   ay_register_startup();
@@ -608,7 +610,7 @@ run_startup_manager( int *argc, char ***argv )
   disciple_register_startup();
 #ifndef GEKKO
   startup_manager_register_no_dependencies( STARTUP_MANAGER_MODULE_DISPLAY,
-                                            fuse_display_startup, NULL, NULL );
+                                            fuse_display_startup, ui, NULL );
 #endif
   divide_register_startup();
   divmmc_register_startup();
@@ -664,8 +666,8 @@ static int
 fuse_init( int argc, char **argv, const fuse_host_config *config )
 {
   int error, first_arg = 0;
-  static char adapter_program[] = "fuse";
-  static char *adapter_argv[] = { adapter_program, NULL };
+  display_startup_context desktop = { &argc, &argv };
+  display_startup_context *ui = config ? NULL : &desktop;
   char *start_scaler;
   fuse_start_files start_files = { 0 };
 
@@ -681,18 +683,10 @@ fuse_init( int argc, char **argv, const fuse_host_config *config )
   
   libspectrum_error_function = ui_libspectrum_error;
 
-  /* Selected adapters may require argv even without application CLI policy. */
-  if( config ) {
-    argc = 1;
-    argv = adapter_argv;
-  }
-
 #ifdef GEKKO
   /* On the Wii, init the display first so we have a way of outputting
      messages */
-  display_context.argc = &argc;
-  display_context.argv = &argv;
-  if( fuse_display_startup( NULL ) ) return 1;
+  if( fuse_display_startup( ui ) ) return 1;
 #endif
 
   /* Config parsing can initialize XML before its manager registration runs. */
@@ -725,7 +719,7 @@ fuse_init( int argc, char **argv, const fuse_host_config *config )
 
   if( !config ) fuse_show_copyright();
 
-  error = run_startup_manager( &argc, &argv );
+  error = run_startup_manager( ui );
   if( error ) goto cleanup;
 
   error = machine_select_id( settings_current.start_machine );
