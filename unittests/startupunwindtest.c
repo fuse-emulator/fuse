@@ -13,6 +13,7 @@
 #include "fuse-legacy.h"
 #include "infrastructure/startup_test.h"
 #include "machine.h"
+#include "spectrum.h"
 #include "settings.h"
 #include "sound.h"
 #include "sound/blipbuffer.h"
@@ -21,7 +22,7 @@
 
 extern Blip_Buffer *left_buf, *right_buf;
 extern blip_sample_t *samples;
-extern int null_ui_init_calls, null_ui_end_calls;
+extern int null_ui_init_calls, null_ui_end_calls, null_ui_event_calls;
 
 #define MODULE_COUNT (STARTUP_MANAGER_MODULE_ZXMMC + 1)
 static startup_manager_module expected[MODULE_COUNT];
@@ -145,7 +146,23 @@ test_host_ui_lifetime( const char *path, const char *point )
   fuse_host_config_free( config );
   assert( result == ( target_point ? FUSE_INIT_FAILED : FUSE_INIT_READY ) );
   assert( injected == !!target_point );
-  if( !target_point ) assert( fuse_run_frame() == FUSE_RUN_COMPLETED );
+  if( !target_point ) {
+    const input_event_t popup = {
+      .type = INPUT_EVENT_KEYPRESS,
+      .types.key = { INPUT_KEY_F5, INPUT_KEY_NONE },
+    };
+    unsigned long budget = machine_current->timings.tstates_per_frame;
+    assert( input_event_dispatch( &popup, INPUT_DISPATCH_READ_TIME ) ==
+            INPUT_DISPATCH_DEFERRED );
+    assert( fuse_run_frame() == FUSE_RUN_COMPLETED );
+    assert( !input_dispatch_pending() && !null_ui_event_calls );
+    libspectrum_dword frames = spectrum_get_frame_count();
+    assert( input_event_dispatch( &popup, INPUT_DISPATCH_READ_TIME ) ==
+            INPUT_DISPATCH_DEFERRED );
+    assert( fuse_run_tstates( budget ) == FUSE_RUN_COMPLETED );
+    assert( spectrum_get_frame_count() == frames + 1 );
+    assert( !input_dispatch_pending() && !null_ui_event_calls );
+  }
   fuse_shutdown();
   fuse_shutdown();
   assert( !depth && !null_ui_init_calls && !null_ui_end_calls );
@@ -245,6 +262,7 @@ main( int argc, char **argv )
 
   if( !strcmp( kind, "models" ) ) {
     assert( !result );
+    assert( null_ui_event_calls == 1 );
     printf( "%d\n", model_visits );
     return 0;
   }

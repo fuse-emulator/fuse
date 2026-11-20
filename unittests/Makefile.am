@@ -362,6 +362,7 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	  "$$root/legacyenginelinktest$(EXEEXT)" --host-operations-test disk-fixture "$$roms"; \
 	  cp "$$roms/48.rom" 48.rom; cp "$$roms/48.rom" only48/48.rom; \
 	  printf '%s\n' 'host: prepared 48' \
+	    'host: driving execution and handling input between turns' \
 	    'host: holding execution; delivering Space and joystick 1 fire' \
 	    'host: resuming execution' 'host: focus lost; inputs released' \
 	    'host: completed relative 997-T-state budget' 'host: reset 48' \

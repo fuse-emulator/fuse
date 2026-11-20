@@ -325,16 +325,25 @@ fuse_legacy_main( int argc, char **argv )
   return 1;
 }
 
-/* One legacy dispatch iteration. Keep the CPU batch and all due events
-   together: a frame event also delivers its interrupt and runs the RZX, input
-   and UI companions before control returns here. This is not necessarily one
-   instruction or one frame, and callbacks may block. Session limits are
-   observed after dispatch; result finalization stays in the legacy runner. */
-static void
-fuse_dispatch_once( const libspectrum_dword *deadline )
+/* Only the continuous runner opts in, for the duration of a dispatch. */
+static int pump_frame_ui;
+
+int
+fuse_engine_pumps_frame_ui( void )
 {
+  return pump_frame_ui;
+}
+
+/* Keep the CPU batch and all due events together. Dispatch can span more than
+   one instruction or frame, and callbacks may block. Observe session limits
+   afterward; result finalization stays in the legacy runner. */
+static void
+fuse_dispatch_once( const libspectrum_dword *deadline, int legacy_pump )
+{
+  pump_frame_ui = legacy_pump;
   z80_do_opcodes_until( deadline );
   event_do_events();
+  pump_frame_ui = 0;
 #ifdef ENABLE_AUTOMATION
   if( automation_active() &&
       automation_frame_limit_reached( spectrum_get_frame_count() ) )
@@ -371,7 +380,7 @@ fuse_run_frame( void )
   fuse_execution_start();
   spectrum_frame_dispatch_complete = 0;
   do {
-    fuse_dispatch_once( NULL );
+    fuse_dispatch_once( NULL, 0 );
   } while( !fuse_exiting && !fuse_emulation_paused &&
            !spectrum_frame_dispatch_complete );
 
@@ -416,7 +425,7 @@ fuse_run_tstates( unsigned long budget )
       ( remaining < 0x7fffffffUL - tstates ? remaining :
                                             0x7fffffffUL - tstates );
     legacy_budget.rebased = 0;
-    fuse_dispatch_once( &legacy_budget.deadline );
+    fuse_dispatch_once( &legacy_budget.deadline, 0 );
     if( legacy_budget.interrupted ) break;
     elapsed = (int64_t)tstates - before + legacy_budget.rebased;
     if( elapsed < 0 ) {
@@ -457,7 +466,7 @@ fuse_legacy_execute( int *exit_status )
   {
     fuse_execution_start();
     while( !fuse_exiting ) {
-      fuse_dispatch_once( NULL );
+      fuse_dispatch_once( NULL, 1 );
     }
     r = debugger_get_exit_code();
 #ifdef ENABLE_AUTOMATION

@@ -30,6 +30,7 @@
 #include "display.h"
 #include "event.h"
 #include "fuse.h"
+#include "fuse-engine.h"
 #include "keyboard.h"
 #include "input.h"
 #include "keyboard_refresh.h"
@@ -105,10 +106,10 @@ spectrum_frame_event_fn( libspectrum_dword last_tstates, int type,
   z80_interrupt();
   rzx_frame_interrupt_complete();
   input_dispatch_deferred();
-  ui_joystick_poll();
+  if( fuse_engine_pumps_frame_ui() ) ui_joystick_poll();
   timer_estimate_speed();
   debugger_add_time_events();
-  ui_event();
+  if( fuse_engine_pumps_frame_ui() ) ui_event();
   ui_error_frame();
   spectrum_frame_dispatch_complete = 1;
 }

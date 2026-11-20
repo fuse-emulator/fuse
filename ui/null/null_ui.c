@@ -119,7 +119,7 @@ ui_debugger_update( void )
 }
 
 /* Lifecycle counters for the null adapter's ownership tests. */
-int null_ui_init_calls, null_ui_end_calls;
+int null_ui_init_calls, null_ui_end_calls, null_ui_event_calls;
 
 int
 ui_end( void )
@@ -141,6 +141,7 @@ ui_error_specific( ui_error_level severity, const char *message )
 int
 ui_event( void )
 {
+  null_ui_event_calls++;
   /* No error */
   return 0;
 }

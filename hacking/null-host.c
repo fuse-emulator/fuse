@@ -332,10 +332,13 @@ main( int argc, char **argv )
     status = EXIT_SUCCESS;
     goto cleanup; /* Insertion does not start playback or program autoload. */
   }
+  /* The host drives this sequence: run, handle host events, then run again.
+     Frame completion does not poll native joysticks or pump the linked UI. */
+  puts( "host: driving execution and handling input between turns" );
   if( frames( 2, &frame_turns ) ) goto cleanup;
 
-  /* The host holds execution simply by not calling a run entry. Input can be
-     delivered at this boundary. This is NOT the core's nested pause counter. */
+  /* These scripted events stand in for input from the host's event loop.
+     Holding execution just means not calling a run entry. */
   puts( "host: holding execution; delivering Space and joystick 1 fire" );
   if( operation( "key press", fuse_host_keyboard_event( INPUT_KEY_space, 1 ) ) ||
       operation( "joystick press", fuse_host_joystick_event( FUSE_HOST_JOYSTICK_1,

@@ -158,6 +158,10 @@ a whole frame from the current position. `fuse_run_tstates(budget)` advances by 
 relative emulated T-state budget. Both return `fuse_run_result` (`FUSE_RUN_*`) and
 are repeatable after READY. Ordinary returns leave the session available for
 commands or another turn; they do not finalize application output or shut down.
+Only `fuse_legacy_execute()` polls native joysticks and pumps the linked UI at
+frame completion. Host turns still deliver the emulated frame interrupt and
+service deferred input. This does not disable synchronous UI interactions or
+change input refresh at emulated port reads.
 
 | Result | Meaning |
 | --- | --- |
@@ -426,7 +430,9 @@ in `--divmmc CARD_FILE`, using the same RAM filesystem for both workflows.
 [null-host.c](null-host.c) has its own `main` and uses `fuse-internal.h` directly.
 It configures a 48K machine, supplies a directory ROM provider, runs frame/budget
 turns, delivers input, handles focus loss, resets, selects 128 and shuts down.
-The directory needs `48.rom`, `128-0.rom` and `128-1.rom`.
+The host drives the loop; the scripted key, joystick and focus events stand in
+for events collected by the host between turns. Fuse does not pump frontend
+events at frame completion on this path. The directory needs `48.rom`, `128-0.rom` and `128-1.rom`.
 
 An optional tape filename selects a separate scenario: insert on 48K with the
 deck stopped, run five frame turns and shut down. This mode needs only `48.rom`;

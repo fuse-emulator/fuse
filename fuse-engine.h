@@ -29,6 +29,9 @@ void fuse_engine_begin_operation( void );
 fuse_host_operation_result fuse_engine_end_machine_operation( int error );
 void fuse_engine_end_operation( void );
 
+/* Only continuous legacy execution pumps the linked UI at frame completion. */
+int fuse_engine_pumps_frame_ui( void );
+
 /* Apply the opaque engine configuration at initialization. */
 void fuse_engine_apply_config( const fuse_host_config *config );
 
