@@ -117,6 +117,12 @@ zxcf_backing_attached( void )
   return backing_attached;
 }
 
+int
+zxcf_has_dirty_media( void )
+{
+  return backing_attached && libspectrum_ide_dirty( zxcf_idechn, LIBSPECTRUM_IDE_MASTER );
+}
+
 static int
 zxcf_init( void *context )
 {

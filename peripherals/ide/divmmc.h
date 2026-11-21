@@ -44,6 +44,7 @@ int divmmc_insert( const char *filename );
 void divmmc_commit( void );
 int divmmc_eject( void );
 int divmmc_backing_attached( void );
+int divmmc_has_dirty_media( void );
 
 int divmmc_unittest( void );
 

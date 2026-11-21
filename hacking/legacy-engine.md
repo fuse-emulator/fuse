@@ -241,6 +241,24 @@ NMI event; it is not delivered inline.
 Existing reset/module semantics apply. No input-sampling policy or owned state
 query is provided; do not read live globals concurrently from a UI thread.
 
+## Host Quit
+
+`fuse_host_request_quit(&request)` checks for dirty Microdrive and IDE/MMC
+media before closing anything. If found, it returns UNSUPPORTED_DIRTY_MEDIA;
+this workflow does not save or discard those changes. An existing media
+decision returns BUSY and must be resolved first.
+
+Quit closes the tape, then walks floppies in registration order. Each dirty
+item returns NEEDS_DECISION with its ID and, for floppies, controller and slot.
+Use `fuse_host_answer_quit()` to answer; it may return the next decision. While
+waiting, run turns are blocked and other host operations return BUSY. Cancel or
+a failed Save stops the walk and retains the current item, but does not restore
+media already ejected. Existing pauses are preserved.
+
+READY_TO_SHUT_DOWN prevents further execution. The host then calls
+`fuse_shutdown()`, which is unconditional teardown, including if called while
+a decision is pending. Legacy Quit keeps its existing modal workflow.
+
 ## File → Open
 
 `fuse_host_open_file(path,&id)` invokes the existing general Open dispatcher with

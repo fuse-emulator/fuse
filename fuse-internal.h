@@ -103,7 +103,9 @@ typedef enum fuse_host_operation_result {
   FUSE_HOST_OPERATION_MEDIA_ERROR,
   FUSE_HOST_OPERATION_NEEDS_DECISION,
   FUSE_HOST_OPERATION_CANCELLED,
-  FUSE_HOST_OPERATION_STALE
+  FUSE_HOST_OPERATION_STALE,
+  FUSE_HOST_OPERATION_UNSUPPORTED_DIRTY_MEDIA,
+  FUSE_HOST_OPERATION_READY_TO_SHUT_DOWN
 } fuse_host_operation_result;
 
 /* Nonzero, single-use decision IDs are shared across media operations. */
@@ -113,6 +115,24 @@ typedef enum fuse_media_decision_choice {
   FUSE_MEDIA_DECISION_DISCARD,
   FUSE_MEDIA_DECISION_SAVE
 } fuse_media_decision_choice;
+
+/* A quit decision names either the tape deck or a floppy controller/slot.
+   On NEEDS_DECISION only, id is nonzero. OK is not a quit outcome. */
+typedef struct fuse_quit_request {
+  fuse_media_decision_id id;
+  int floppy;
+  fuse_disk_controller controller;
+  int slot;
+} fuse_quit_request;
+
+/* Resolve tape then floppies. Refuses dirty Microdrive/IDE/MMC before any
+   eject. READY_TO_SHUT_DOWN prevents more execution; call fuse_shutdown(). */
+fuse_host_operation_result fuse_host_request_quit( fuse_quit_request *request );
+/* A reply may return the next decision. Other host operations are BUSY while
+   Quit awaits a reply; shutdown remains unconditional teardown. */
+fuse_host_operation_result fuse_host_answer_quit(
+  fuse_media_decision_id id, fuse_media_decision_choice choice, const char *path,
+  fuse_quit_request *next );
 
 typedef enum fuse_host_reset_kind {
   FUSE_HOST_RESET_SOFT, FUSE_HOST_RESET_HARD

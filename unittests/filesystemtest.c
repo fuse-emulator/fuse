@@ -240,6 +240,13 @@ filesystem_tests( void )
     writeport_internal( 0x07b4, 0x30 );
     for( int i = 0; i < 512; i++ ) writeport_internal( 0x00b4, 0x5a );
     {
+      fuse_quit_request request;
+      int tape_was_present = tape_present();
+      assert( tape_was_present );
+      assert( fuse_host_request_quit( &request ) == FUSE_HOST_OPERATION_UNSUPPORTED_DIRTY_MEDIA );
+      assert( !request.id && tape_present() == tape_was_present );
+    }
+    {
       fuse_mass_storage_info *still_mounted;
       size_t opened = filesystem.opens, closed_before = filesystem.closes;
       ui_null_confirm_save_test_hook = cancel_dirty_drive;
@@ -295,7 +302,10 @@ filesystem_tests( void )
     writeport_internal( 0xe7, 3 );
     {
       fuse_mass_storage_info *mounted;
+      fuse_quit_request request;
       size_t opened = filesystem.opens, closed_before = filesystem.closes;
+      assert( fuse_host_request_quit( &request ) == FUSE_HOST_OPERATION_UNSUPPORTED_DIRTY_MEDIA );
+      assert( !request.id && filesystem.opens == opened && filesystem.closes == closed_before );
       cancel_count = 0;
       ui_null_confirm_save_test_hook = cancel_dirty_drive;
       assert( fuse_host_insert_mass_storage( PERIPH_TYPE_DIVMMC, LIBSPECTRUM_IDE_MASTER, "media/missing.hdf" ) == ERROR );

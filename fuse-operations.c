@@ -34,6 +34,7 @@
 #include "peripherals/ide/divide.h"
 #include "peripherals/ide/zxmmc.h"
 #include "peripherals/ide/zxcf.h"
+#include "peripherals/if1.h"
 #include "peripherals/joystick.h"
 #include "peripherals/kempmouse.h"
 #include "settings.h"
@@ -98,6 +99,76 @@ fuse_host_open_file( const char *filename, fuse_media_decision_id *request )
   fuse_engine_end_operation();
   if( error ) return FUSE_HOST_OPERATION_MEDIA_ERROR;
   return *request ? FUSE_HOST_OPERATION_NEEDS_DECISION : FUSE_HOST_OPERATION_OK;
+}
+
+static fuse_quit_request pending_quit;
+
+int
+fuse_host_quit_pending( void )
+{
+  return pending_quit.id != 0;
+}
+
+void
+fuse_host_clear_quit( void )
+{
+  pending_quit = (fuse_quit_request){ 0 };
+}
+
+static fuse_host_operation_result
+continue_quit( fuse_quit_request *next, int check_tape )
+{
+  fuse_host_operation_result result = FUSE_HOST_OPERATION_OK;
+
+  if( check_tape ) result = fuse_host_request_tape_eject( &next->id );
+  if( result == FUSE_HOST_OPERATION_OK ) result = fuse_disk_quit_next( next );
+  if( result == FUSE_HOST_OPERATION_NEEDS_DECISION ) pending_quit = *next;
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+
+  fuse_exiting = 1;
+  return FUSE_HOST_OPERATION_READY_TO_SHUT_DOWN;
+}
+
+fuse_host_operation_result
+fuse_host_request_quit( fuse_quit_request *request )
+{
+  fuse_host_operation_result result;
+  if( !request ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *request = (fuse_quit_request){ 0 };
+  result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( fuse_engine_pending_decision() != FUSE_DECISION_NONE )
+    return FUSE_HOST_OPERATION_BUSY;
+  if( if1_has_dirty_media() || simpleide_has_dirty_media() ||
+      zxatasp_has_dirty_media() || divide_has_dirty_media() ||
+      zxcf_has_dirty_media() || divmmc_has_dirty_media() || zxmmc_has_dirty_media() )
+    return FUSE_HOST_OPERATION_UNSUPPORTED_DIRTY_MEDIA;
+  return continue_quit( request, 1 );
+}
+
+fuse_host_operation_result
+fuse_host_answer_quit( fuse_media_decision_id id, fuse_media_decision_choice choice,
+                       const char *path, fuse_quit_request *next )
+{
+  fuse_quit_request current = pending_quit;
+  fuse_host_operation_result result;
+
+  if( !next ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *next = (fuse_quit_request){ 0 };
+  if( !id || id != current.id ) {
+    result = fuse_engine_check_operation();
+    return result == FUSE_HOST_OPERATION_OK || current.id ?
+      FUSE_HOST_OPERATION_STALE : result;
+  }
+
+  /* The existing guarded media entry owns this synchronous step. */
+  fuse_host_clear_quit();
+  result = current.floppy ? fuse_host_answer_disk_eject( id, choice, path ) :
+                           fuse_host_answer_tape_eject( id, choice, path );
+  if( result == FUSE_HOST_OPERATION_INVALID_ARGUMENT || result == FUSE_HOST_OPERATION_BUSY )
+    pending_quit = current;
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  return continue_quit( next, 0 );
 }
 
 static int

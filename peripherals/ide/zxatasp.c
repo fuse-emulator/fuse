@@ -175,6 +175,13 @@ zxatasp_backing_attached( libspectrum_ide_unit unit )
   return ( unit == LIBSPECTRUM_IDE_MASTER || unit == LIBSPECTRUM_IDE_SLAVE ) && attached[unit];
 }
 
+int
+zxatasp_has_dirty_media( void )
+{
+  return ( attached[0] && libspectrum_ide_dirty( zxatasp_idechn0, LIBSPECTRUM_IDE_MASTER ) ) ||
+         ( attached[1] && libspectrum_ide_dirty( zxatasp_idechn0, LIBSPECTRUM_IDE_SLAVE ) );
+}
+
 static int
 zxatasp_init( void *context )
 {

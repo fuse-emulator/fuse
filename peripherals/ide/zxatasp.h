@@ -31,6 +31,7 @@ int zxatasp_insert( const char *filename, libspectrum_ide_unit unit );
 int zxatasp_commit( libspectrum_ide_unit unit );
 int zxatasp_eject( libspectrum_ide_unit unit );
 int zxatasp_backing_attached( libspectrum_ide_unit unit );
+int zxatasp_has_dirty_media( void );
 
 int zxatasp_unittest( void );
 

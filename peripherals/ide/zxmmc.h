@@ -31,5 +31,6 @@ int zxmmc_insert( const char *filename );
 void zxmmc_commit( void );
 int zxmmc_eject( void );
 int zxmmc_backing_attached( void );
+int zxmmc_has_dirty_media( void );
 
 #endif			/* #ifndef FUSE_ZXMMC_H */

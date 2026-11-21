@@ -101,6 +101,13 @@ divide_backing_attached( libspectrum_ide_unit unit )
   return ( unit == LIBSPECTRUM_IDE_MASTER || unit == LIBSPECTRUM_IDE_SLAVE ) && attached[unit];
 }
 
+int
+divide_has_dirty_media( void )
+{
+  return ( attached[0] && libspectrum_ide_dirty( divide_idechn0, LIBSPECTRUM_IDE_MASTER ) ) ||
+         ( attached[1] && libspectrum_ide_dirty( divide_idechn0, LIBSPECTRUM_IDE_SLAVE ) );
+}
+
 static int
 divide_init( void *context )
 {

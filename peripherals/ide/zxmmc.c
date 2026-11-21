@@ -99,6 +99,12 @@ zxmmc_backing_attached( void )
   return backing_attached;
 }
 
+int
+zxmmc_has_dirty_media( void )
+{
+  return backing_attached && libspectrum_mmc_dirty( card );
+}
+
 static int
 zxmmc_init( void *context )
 {

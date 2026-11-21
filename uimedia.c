@@ -52,7 +52,7 @@ typedef enum disk_change {
 } disk_change;
 static disk_change pending_disk_change;
 static utils_file pending_disk_file;
-static int pending_disk_autoload, pending_disk_file_open;
+static int pending_disk_autoload, pending_disk_file_open, pending_disk_quit;
 
 static void
 retire_disk_eject( void )
@@ -60,7 +60,7 @@ retire_disk_eject( void )
   pending_eject_drive = NULL;
   if( pending_disk_change == DISK_CHANGE_INSERT ) utils_file_free( &pending_disk_file );
   pending_disk_change = DISK_CHANGE_EJECT;
-  pending_disk_autoload = pending_disk_file_open = 0;
+  pending_disk_autoload = pending_disk_file_open = pending_disk_quit = 0;
   fuse_engine_retire_decision( FUSE_DECISION_FLOPPY );
 }
 
@@ -647,13 +647,38 @@ fuse_host_eject_disk( fuse_disk_controller controller, int slot,
 }
 
 fuse_host_operation_result
+fuse_disk_quit_next( fuse_quit_request *request )
+{
+  GSList *item;
+  fuse_host_operation_result result = FUSE_HOST_OPERATION_OK;
+
+  fuse_engine_begin_operation();
+  for( item = registered_drives; item; item = item->next ) {
+    const ui_media_drive_info_t *drive = item->data;
+    if( !drive->fdd || !drive->fdd->loaded ) continue;
+    result = request_disk_change( drive, DISK_CHANGE_EJECT, NULL, 0, 0, &request->id );
+    if( result != FUSE_HOST_OPERATION_OK ) {
+      if( result == FUSE_HOST_OPERATION_NEEDS_DECISION ) {
+        pending_disk_quit = 1;
+        request->floppy = 1;
+        request->controller = drive->controller_index;
+        request->slot = drive->drive_index;
+      }
+      break;
+    }
+  }
+  fuse_engine_end_operation();
+  return result;
+}
+
+fuse_host_operation_result
 fuse_host_answer_disk_eject( fuse_media_decision_id request,
                             fuse_media_decision_choice choice, const char *path )
 {
   const ui_media_drive_info_t *drive;
   disk_change change;
   utils_file file;
-  int autoload, file_open;
+  int autoload, file_open, quit;
   fuse_host_operation_result result = fuse_engine_check_operation();
 
   if( result != FUSE_HOST_OPERATION_OK ) return result;
@@ -666,6 +691,7 @@ fuse_host_answer_disk_eject( fuse_media_decision_id request,
   change = pending_disk_change;
   autoload = pending_disk_autoload;
   file_open = pending_disk_file_open;
+  quit = pending_disk_quit;
   if( change == DISK_CHANGE_INSERT ) {
     file = pending_disk_file;
     pending_disk_change = DISK_CHANGE_EJECT;
@@ -674,8 +700,9 @@ fuse_host_answer_disk_eject( fuse_media_decision_id request,
   retire_disk_eject();
   if( choice == FUSE_MEDIA_DECISION_CANCEL ) {
     result = FUSE_HOST_OPERATION_CANCELLED;
-  } else if( !drive->is_available || !drive->is_available() ||
-             drive->fdd->type == FDD_TYPE_NONE || !drive->fdd->loaded ) {
+  } else if( !drive->fdd->loaded ||
+             ( !quit && ( !drive->is_available || !drive->is_available() ||
+                          drive->fdd->type == FDD_TYPE_NONE ) ) ) {
     result = FUSE_HOST_OPERATION_STALE;
   } else if( choice == FUSE_MEDIA_DECISION_SAVE && !path && !drive->fdd->disk.filename ) {
     result = FUSE_HOST_OPERATION_MEDIA_ERROR;

@@ -1042,6 +1042,59 @@ check_open_floppy( void )
 }
 
 static void
+check_host_quit( int shutdown_pending )
+{
+  const fuse_disk_controller controller = FUSE_DISK_CONTROLLER_PLUS3;
+  fuse_quit_request request;
+  fuse_media_decision_id id, tape_id;
+  ui_media_drive_info_t *a = ui_media_drive_find( controller, 0 );
+  ui_media_drive_info_t *b = ui_media_drive_find( controller, 1 );
+  static const unsigned char tap[] = { 2, 0, 0xff, 0xff };
+
+  assert( fuse_host_select_machine( "plus3" ) == OK );
+  assert( new_disk_without_decision( controller, 0 ) == OK );
+  assert( new_disk_without_decision( controller, 1 ) == OK );
+  assert( !utils_write_file( "quit.tap", tap, sizeof( tap ) ) );
+  assert( insert_tape_without_decision( "quit.tap" ) == OK );
+  assert( !remove( "quit.tap" ) );
+  tape_modified = 1;
+  assert( fuse_host_request_tape_eject( &id ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
+  assert( fuse_host_request_quit( &request ) == FUSE_HOST_OPERATION_BUSY && !request.id );
+  assert( fuse_host_answer_tape_eject( id, FUSE_MEDIA_DECISION_CANCEL, NULL ) == FUSE_HOST_OPERATION_CANCELLED );
+  assert( !fuse_emulation_pause() );
+  assert( fuse_host_request_quit( &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION && !request.floppy );
+  tape_id = request.id;
+  if( shutdown_pending ) {
+    fuse_shutdown();
+    assert( fuse_run_frame() == FUSE_RUN_NOT_READY );
+    assert( fuse_host_answer_quit( tape_id, FUSE_MEDIA_DECISION_DISCARD, NULL,
+                                  &request ) == FUSE_HOST_OPERATION_NOT_READY );
+    return;
+  }
+  assert( fuse_run_frame() == FUSE_RUN_NEEDS_DECISION && fuse_run_tstates( 1 ) == FUSE_RUN_NEEDS_DECISION );
+  assert( fuse_host_answer_tape_eject( tape_id, FUSE_MEDIA_DECISION_DISCARD, NULL ) == FUSE_HOST_OPERATION_BUSY );
+  assert( fuse_host_answer_quit( tape_id, FUSE_MEDIA_DECISION_SAVE, NULL, &request ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_host_answer_quit( tape_id, FUSE_MEDIA_DECISION_DISCARD, NULL, &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
+  assert( request.floppy && request.controller == controller && request.slot == 0 && !tape_present() );
+  id = request.id;
+  assert( fuse_host_answer_quit( tape_id, FUSE_MEDIA_DECISION_CANCEL, NULL, &request ) == FUSE_HOST_OPERATION_STALE );
+  assert( fuse_host_answer_quit( id, FUSE_MEDIA_DECISION_DISCARD, NULL, &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
+  assert( request.floppy && request.slot == 1 && !a->fdd->loaded && b->fdd->loaded );
+  assert( fuse_host_answer_quit( request.id, FUSE_MEDIA_DECISION_CANCEL, NULL, &request ) == FUSE_HOST_OPERATION_CANCELLED );
+  assert( !request.id && b->fdd->loaded && b->fdd->disk.dirty && fuse_run_frame() == FUSE_RUN_PAUSED );
+  assert( fuse_host_request_quit( &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION && request.slot == 1 );
+  assert( fuse_host_answer_quit( request.id, FUSE_MEDIA_DECISION_SAVE,
+    "missing-directory/out.udi", &request ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( b->fdd->loaded && b->fdd->disk.dirty );
+  assert( fuse_host_request_quit( &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION && request.slot == 1 );
+  assert( fuse_host_answer_quit( request.id, FUSE_MEDIA_DECISION_SAVE,
+    "quit.udi", &request ) == FUSE_HOST_OPERATION_READY_TO_SHUT_DOWN );
+  assert( !request.id && !b->fdd->loaded && fuse_run_frame() == FUSE_RUN_EXITING );
+  assert( !remove( "quit.udi" ) );
+  assert( !fuse_emulation_unpause() );
+}
+
+static void
 check_lifecycle_disk_file( void )
 {
   disk_t disk = { 0 };
@@ -1365,6 +1418,8 @@ host_operations_test( int argc, char **argv )
     check_lifecycle_disk_file();
   } else if( !strcmp( argv[1], "disk-save" ) || !strcmp( argv[1], "disk-save-beta" ) ) {
     check_disk_save( !strcmp( argv[1], "disk-save" ) ? FUSE_DISK_CONTROLLER_PLUS3 : FUSE_DISK_CONTROLLER_BETA );
+  } else if( !strcmp( argv[1], "host-quit" ) || !strcmp( argv[1], "host-quit-shutdown" ) ) {
+    check_host_quit( !strcmp( argv[1], "host-quit-shutdown" ) );
   } else if( !strcmp( argv[1], "open-floppy" ) ) {
     check_open_floppy();
   } else if( !strncmp( argv[1], "open-", 5 ) ) {

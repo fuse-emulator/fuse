@@ -1227,6 +1227,16 @@ if1_mdr_insert_loaded( int which, const utils_file *file )
 }
 
 int
+if1_has_dirty_media( void )
+{
+  int i;
+  for( i = 0; i < 8; i++ ) {
+    if( microdrive[i].inserted && microdrive[i].modified ) return 1;
+  }
+  return 0;
+}
+
+int
 if1_mdr_eject( int which )
 {
   microdrive_t *mdr;

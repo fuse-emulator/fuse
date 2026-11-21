@@ -263,6 +263,7 @@ fuse_engine_check_operation( void )
       legacy_ownership.phase == LEGACY_STOPPING ) return FUSE_HOST_OPERATION_BUSY;
   if( legacy_ownership.phase != LEGACY_READY ) return FUSE_HOST_OPERATION_NOT_READY;
   if( fuse_exiting ) return FUSE_HOST_OPERATION_EXITING;
+  if( fuse_host_quit_pending() ) return FUSE_HOST_OPERATION_BUSY;
   return FUSE_HOST_OPERATION_OK;
 }
 
@@ -1370,6 +1371,7 @@ static int fuse_end(void)
   /* Internal unwind/emergency cleanup may end STARTING/RUNNING; the ordinary
      shutdown entry deliberately cannot. Disarm before invoking callbacks. */
   legacy_ownership.phase = LEGACY_STOPPING;
+  fuse_host_clear_quit();
 
   movie_stop();
   /* Active trainer restoration needs live machine memory/maps. */

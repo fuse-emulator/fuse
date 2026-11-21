@@ -43,6 +43,10 @@ fuse_host_operation_result fuse_engine_validate_decision(
   fuse_media_decision_choice choice, const char *path, int save_requires_path );
 void fuse_engine_retire_decision( fuse_decision_owner owner );
 
+int fuse_host_quit_pending( void );
+void fuse_host_clear_quit( void );
+fuse_host_operation_result fuse_disk_quit_next( fuse_quit_request *request );
+
 /* General File Open with host decisions for tapes and floppies. */
 int utils_open_file_with_decision( const char *filename, int autoload,
                                    fuse_media_decision_id *request );
