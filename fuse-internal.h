@@ -235,28 +235,26 @@ fuse_host_operation_result fuse_host_stop_tape_recording( void );
    or authorization for later commands. Recording can be active on an empty deck.
    Archive-info panels/raw block metadata are not represented by these rows. */
 fuse_host_operation_result fuse_host_copy_tape_info( fuse_tape_info **info );
-/* Zero-based slots. Explicit Media insert, without File Open's autoload/machine
-   selection. Existing replacement questions remain; OK can mean cancelled
-   replacement. Save takes a borrowed chosen target, or NULL for the retained
-   target, and never chooses
-   a filename. Existing overwrite questions may block. Unavailable/disabled or
-   empty-to-save drives return MEDIA_ERROR; unknown controller/slot is invalid.
-   No rollback/atomic-write guarantee; failure does not add an eject or retry. */
+/* Zero-based slots. Insert reads the image before handling the outgoing disk;
+   it does not autoload. Insert and New return NEEDS_DECISION with a nonzero ID
+   for dirty media; other results clear it. Reply with answer_disk_eject.
+   Unavailable/disabled drives return MEDIA_ERROR; unknown slots are invalid. */
 fuse_host_operation_result fuse_host_insert_disk_file( fuse_disk_controller controller,
-                                                      int slot, const char *filename );
+  int slot, const char *filename, fuse_media_decision_id *request );
+/* Save uses a borrowed target, or NULL for the retained target. Existing
+   overwrite questions may block; there is no atomic-write guarantee. */
 fuse_host_operation_result fuse_host_save_disk_file( fuse_disk_controller controller,
                                                     int slot, const char *filename );
 /* New uses configured geometry and controller insertion hooks (including +3
-   preformat), with existing replacement decisions: OK can mean cancellation.
-   Eject uses Save/Discard/Cancel and succeeds on an already empty available drive. Flip/WP require
-   loaded media and accept flags 0 or 1. WP is emulated write protection, not
-   filesystem permissions; changing it does not itself dirty a floppy image. */
-fuse_host_operation_result fuse_host_new_disk( fuse_disk_controller controller, int slot );
+   preformat). */
+fuse_host_operation_result fuse_host_new_disk( fuse_disk_controller controller,
+  int slot, fuse_media_decision_id *request );
 /* Prompt-free eject: NEEDS_DECISION sets a nonzero ID; otherwise clears it. */
 fuse_host_operation_result fuse_host_eject_disk( fuse_disk_controller controller,
                                                   int slot, fuse_media_decision_id *request );
 /* SAVE uses the existing target if path is NULL, or a host-authorized path.
-   Other choices require NULL. A valid reply consumes the ID. */
+   Other choices require NULL. A valid reply consumes the ID. After successful
+   eject, a pending Insert or New installs the requested media. */
 fuse_host_operation_result fuse_host_answer_disk_eject(
   fuse_media_decision_id request, fuse_media_decision_choice choice, const char *path );
 fuse_host_operation_result fuse_host_set_disk_flipped( fuse_disk_controller controller,

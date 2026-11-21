@@ -376,7 +376,8 @@ filesystem_tests( void )
     filesystem.fail_write = 0;
     disk_close( &disk );
   }
-  assert( fuse_host_new_disk( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == OK );
+  fuse_media_decision_id disk_request;
+  assert( fuse_host_new_disk( FUSE_DISK_CONTROLLER_PLUS3, 0, &disk_request ) == OK && !disk_request );
   assert( fuse_host_save_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, "media/disk.udi" ) == OK );
   file = memory_find( "media/disk.udi" ); assert( file && file->length > 16 );
   filesystem.fail_write_at = file->length - 4;
@@ -384,9 +385,8 @@ filesystem_tests( void )
   assert( fuse_host_save_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, "media/fail.udi" ) == ERROR );
   assert( filesystem.closes == closed + 1 );
   filesystem.fail_write_at = 0;
-  fuse_media_decision_id disk_request;
   assert( fuse_host_eject_disk( FUSE_DISK_CONTROLLER_PLUS3, 0, &disk_request ) == OK && !disk_request );
-  assert( fuse_host_insert_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, "media/disk.udi" ) == OK );
+  assert( fuse_host_insert_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, "media/disk.udi", &disk_request ) == OK && !disk_request );
   { fuse_disk_drive_info *info;
     assert( fuse_host_copy_disk_drive_info( FUSE_DISK_CONTROLLER_PLUS3, 0, &info ) == OK );
     assert( info->loaded && !info->write_protected ); fuse_disk_drive_info_free( info ); }

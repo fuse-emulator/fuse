@@ -384,14 +384,15 @@ These remain selected-UI-bound implementation mechanics, not host-facing mutable
 drive descriptors. Overwrite questions can block, and existing cancellation/type
 mutation and non-atomic file-write behaviour remain.
 
-`fuse_host_insert_disk_file(controller,slot,path)` supplies the existing explicit
-Media insert intent, without autoload or machine selection.
+`fuse_host_insert_disk_file(controller,slot,path,&id)` supplies the explicit
+Media insert intent, without autoload or machine selection. It reads and retains
+the incoming image before asking about a dirty outgoing disk; an unreadable
+input leaves the old disk untouched.
 `fuse_host_save_disk_file(controller,slot,path)` calls the chosen-target save seam;
 NULL saves to the retained filename. Controllers are emulated identities and slots
 are zero-based, not menu IDs. Unavailable/disabled controllers and empty-to-save
 drives return MEDIA_ERROR; invalid controller/slot/arguments are rejected before
-I/O. Occupied/modified insertion still uses existing replacement decisions, not
-BUSY. `fuse-disk.h` defines the single engine-owned `fuse_disk_controller` type
+I/O. `fuse-disk.h` defines the single engine-owned `fuse_disk_controller` type
 used by host operations, registration, lookup and File Open dispatch. There is
 no host/UI controller enum translation. Packed menu action numbers, including
 the separate Microdrive group, are decoded only in `menu.c`.
@@ -400,8 +401,14 @@ Disk operation entries in the media implementation own admission through
 completion, including drive lookup, FDD preconditions and result translation.
 There is no duplicate host/engine disk delegate API. Drive descriptors remain private.
 
-`fuse_host_new_disk` uses configured geometry, controller insertion hooks (including
-+3 preformat) and the same replacement questions; zero can mean cancellation.
+`fuse_host_new_disk(controller,slot,&id)` uses configured geometry and controller
+insertion hooks, including +3 preformatting. Insert and New complete immediately
+if the drive is empty or clean, or return NEEDS_DECISION for a dirty disk. A new
+Insert or New returns BUSY while another media decision is pending. Use
+`fuse_host_answer_disk_eject()` to answer either request: only after Discard or
+successful Save does Fuse eject and install the replacement. An image decode
+failure after eject does not restore the old disk. Legacy Insert, New, and general
+File → Open keep their synchronous behavior.
 `fuse_host_eject_disk(controller,slot,&id)` ejects clean media, succeeds on an
 empty available drive, or returns NEEDS_DECISION for dirty media without a
 prompt. The request applies only to the current attachment in that drive.

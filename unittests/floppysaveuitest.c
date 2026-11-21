@@ -136,7 +136,20 @@ new_disk( void )
 #ifdef FUSE_MEDIA_SAVE_BASELINE
   return ui_media_drive_insert( &drive, NULL, 0 );
 #else
-  return legacy_result( fuse_host_new_disk( TEST_CONTROLLER, TEST_SLOT ) );
+  fuse_media_decision_id request;
+  fuse_host_operation_result result = fuse_host_new_disk( TEST_CONTROLLER, TEST_SLOT, &request );
+  if( result == FUSE_HOST_OPERATION_NEEDS_DECISION ) {
+    fuse_media_decision_choice reply = eject_choice == UI_CONFIRM_SAVE_SAVE ? FUSE_MEDIA_DECISION_SAVE :
+      eject_choice == UI_CONFIRM_SAVE_CANCEL ? FUSE_MEDIA_DECISION_CANCEL : FUSE_MEDIA_DECISION_DISCARD;
+    assert( request && !eject_questions );
+    result = fuse_host_answer_disk_eject( request, reply, NULL );
+    assert( result == ( reply == FUSE_MEDIA_DECISION_CANCEL ? FUSE_HOST_OPERATION_CANCELLED :
+              reply == FUSE_MEDIA_DECISION_SAVE && fail_write ? FUSE_HOST_OPERATION_MEDIA_ERROR :
+                                                                FUSE_HOST_OPERATION_OK ) );
+    return 0; /* Match the legacy lifecycle report, not the host result. */
+  }
+  assert( !request );
+  return legacy_result( result );
 #endif
 }
 
@@ -321,13 +334,13 @@ check_lifecycle( void )
   assert( !set_write_protected( 0 ) && !fdd.wrprot && !fdd.disk.dirty );
   modify( 0x42 ); data = fdd.disk.data;
   reset_counts(); eject_choice = UI_CONFIRM_SAVE_CANCEL;
-  assert( !new_disk() && !writes && eject_questions == 1 );
+  assert( !new_disk() && !writes && eject_questions == eject_prompt_count() );
   check_retained( data, "life.udi", 0x42 ); report( "new-cancel-retained", 0 );
   reset_counts(); eject_choice = UI_CONFIRM_SAVE_SAVE; fail_write = 1;
-  assert( !new_disk() && writes == 1 && eject_questions == 1 );
+  assert( !new_disk() && writes == 1 && eject_questions == eject_prompt_count() );
   check_retained( data, "life.udi", 0x42 ); report( "new-save-failed-retained", 0 );
   reset_counts(); eject_choice = UI_CONFIRM_SAVE_DONTSAVE; fail_write = 0;
-  assert( !new_disk() && !writes && eject_questions == 1 );
+  assert( !new_disk() && !writes && eject_questions == eject_prompt_count() );
   assert( fdd.loaded && fdd.disk.dirty && !fdd.disk.filename );
   check_written( "life.udi", 0x31 );
   assert( !save_to( "new.udi" ) && !fdd.disk.dirty );

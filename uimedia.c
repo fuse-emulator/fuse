@@ -46,11 +46,18 @@ static GSList *registered_drives = NULL;
 /* Registry entries live until drive teardown. Retire the token before their
    attachment is unloaded, or after a successful separate save. */
 static const ui_media_drive_info_t *pending_eject_drive;
+typedef enum disk_change {
+  DISK_CHANGE_EJECT, DISK_CHANGE_INSERT, DISK_CHANGE_NEW
+} disk_change;
+static disk_change pending_disk_change;
+static utils_file pending_disk_file;
 
 static void
 retire_disk_eject( void )
 {
   pending_eject_drive = NULL;
+  if( pending_disk_change == DISK_CHANGE_INSERT ) utils_file_free( &pending_disk_file );
+  pending_disk_change = DISK_CHANGE_EJECT;
   fuse_engine_retire_decision( FUSE_DECISION_FLOPPY );
 }
 
@@ -384,20 +391,13 @@ ui_media_drive_insert( const ui_media_drive_info_t *drive,
   return error;
 }
 
-int
-ui_media_drive_insert_file( const ui_media_drive_info_t *drive,
-                            const utils_file *file, int autoload )
+static int
+drive_install( const ui_media_drive_info_t *drive, const utils_file *file,
+               int autoload )
 {
   int error;
   const fdd_params_t *dt;
   const char *filename = file ? file->filename : NULL;
-
-  /* Eject any disk already in the drive */
-  if( drive->fdd->loaded ) {
-    /* Abort the insert if we want to keep the current disk */
-    if( drive_eject( drive ) )
-      return 0;
-  }
 
   if( filename ) {
     error = disk_open_loaded( &drive->fdd->disk, file, 0,
@@ -433,6 +433,15 @@ ui_media_drive_insert_file( const ui_media_drive_info_t *drive,
   }
 
   return 0;
+}
+
+int
+ui_media_drive_insert_file( const ui_media_drive_info_t *drive,
+                            const utils_file *file, int autoload )
+{
+  /* Legacy cancellation or save failure also returns zero here. */
+  if( drive->fdd->loaded && drive_eject( drive ) ) return 0;
+  return drive_install( drive, file, autoload );
 }
 
 /* Own admission through completion here, including lookup/availability callbacks.
@@ -508,21 +517,61 @@ fuse_host_copy_disk_drive_info( fuse_disk_controller controller, int slot,
   return FUSE_HOST_OPERATION_OK;
 }
 
-fuse_host_operation_result
-fuse_host_insert_disk_file( fuse_disk_controller controller, int slot,
-                            const char *filename )
+static fuse_host_operation_result
+request_disk_change( const ui_media_drive_info_t *drive, disk_change change,
+                     utils_file *file, fuse_media_decision_id *request )
 {
-  int error;
+  if( drive->fdd->loaded ) {
+    if( drive->fdd->disk.dirty ) {
+      *request = fuse_engine_request_decision( FUSE_DECISION_FLOPPY );
+      pending_eject_drive = drive;
+      pending_disk_change = change;
+      if( file ) {
+        pending_disk_file = *file;
+        utils_file_init( file, NULL );
+      }
+      return FUSE_HOST_OPERATION_NEEDS_DECISION;
+    }
+    drive_finish_eject( drive );
+  }
+  if( change != DISK_CHANGE_EJECT && drive_install( drive, file, 0 ) )
+    return FUSE_HOST_OPERATION_MEDIA_ERROR;
+  return FUSE_HOST_OPERATION_OK;
+}
+
+static fuse_host_operation_result
+host_replace_disk( fuse_disk_controller controller, int slot, disk_change change,
+                   const char *filename, fuse_media_decision_id *request )
+{
   const ui_media_drive_info_t *drive;
-  fuse_host_operation_result result = begin_disk_operation( controller, slot, &drive );
+  fuse_host_operation_result result;
+
+  if( !request ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *request = 0;
+  result = begin_disk_operation( controller, slot, &drive );
   if( result != FUSE_HOST_OPERATION_OK ) return result;
-  if( !filename || !*filename ) result = FUSE_HOST_OPERATION_INVALID_ARGUMENT;
-  else {
-    error = ui_media_drive_insert( drive, filename, 0 );
-    result = error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+  if( change == DISK_CHANGE_INSERT && ( !filename || !*filename ) ) {
+    result = FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  } else if( fuse_engine_pending_decision() != FUSE_DECISION_NONE ) {
+    result = FUSE_HOST_OPERATION_BUSY;
+  } else if( change == DISK_CHANGE_INSERT ) {
+    utils_file file;
+    utils_file_init( &file, filename );
+    result = utils_file_read( &file ) ? FUSE_HOST_OPERATION_MEDIA_ERROR :
+      request_disk_change( drive, change, &file, request );
+    if( file.filename ) utils_file_free( &file );
+  } else {
+    result = request_disk_change( drive, change, NULL, request );
   }
   fuse_engine_end_operation();
   return result;
+}
+
+fuse_host_operation_result
+fuse_host_insert_disk_file( fuse_disk_controller controller, int slot,
+                            const char *filename, fuse_media_decision_id *request )
+{
+  return host_replace_disk( controller, slot, DISK_CHANGE_INSERT, filename, request );
 }
 
 fuse_host_operation_result
@@ -548,15 +597,10 @@ fuse_host_save_disk_file( fuse_disk_controller controller, int slot,
 }
 
 fuse_host_operation_result
-fuse_host_new_disk( fuse_disk_controller controller, int slot )
+fuse_host_new_disk( fuse_disk_controller controller, int slot,
+                    fuse_media_decision_id *request )
 {
-  int error;
-  const ui_media_drive_info_t *drive;
-  fuse_host_operation_result result = begin_disk_operation( controller, slot, &drive );
-  if( result != FUSE_HOST_OPERATION_OK ) return result;
-  error = ui_media_drive_insert_file( drive, NULL, 0 );
-  fuse_engine_end_operation();
-  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+  return host_replace_disk( controller, slot, DISK_CHANGE_NEW, NULL, request );
 }
 
 fuse_host_operation_result
@@ -572,16 +616,11 @@ fuse_host_eject_disk( fuse_disk_controller controller, int slot,
   if( result != FUSE_HOST_OPERATION_OK ) return result;
 
   if( fuse_engine_pending_decision() == FUSE_DECISION_TAPE ||
-      ( pending_eject_drive && pending_eject_drive != drive ) ) {
+      ( pending_eject_drive && ( pending_eject_drive != drive ||
+                                 pending_disk_change != DISK_CHANGE_EJECT ) ) ) {
     result = FUSE_HOST_OPERATION_BUSY;
-  } else if( drive->fdd->loaded ) {
-    if( drive->fdd->disk.dirty ) {
-      *request = fuse_engine_request_decision( FUSE_DECISION_FLOPPY );
-      pending_eject_drive = drive;
-      result = FUSE_HOST_OPERATION_NEEDS_DECISION;
-    } else {
-      drive_finish_eject( drive );
-    }
+  } else {
+    result = request_disk_change( drive, DISK_CHANGE_EJECT, NULL, request );
   }
   fuse_engine_end_operation();
   return result;
@@ -592,6 +631,8 @@ fuse_host_answer_disk_eject( fuse_media_decision_id request,
                             fuse_media_decision_choice choice, const char *path )
 {
   const ui_media_drive_info_t *drive;
+  disk_change change;
+  utils_file file;
   fuse_host_operation_result result = fuse_engine_check_operation();
 
   if( result != FUSE_HOST_OPERATION_OK ) return result;
@@ -601,6 +642,12 @@ fuse_host_answer_disk_eject( fuse_media_decision_id request,
 
   fuse_engine_begin_operation();
   drive = pending_eject_drive;
+  change = pending_disk_change;
+  if( change == DISK_CHANGE_INSERT ) {
+    file = pending_disk_file;
+    pending_disk_change = DISK_CHANGE_EJECT;
+    utils_file_init( &pending_disk_file, NULL );
+  }
   retire_disk_eject();
   if( choice == FUSE_MEDIA_DECISION_CANCEL ) {
     result = FUSE_HOST_OPERATION_CANCELLED;
@@ -617,8 +664,14 @@ fuse_host_answer_disk_eject( fuse_media_decision_id request,
       fuse_emulation_unpause();
       if( drive_save_finish( drive, error ) ) result = FUSE_HOST_OPERATION_MEDIA_ERROR;
     }
-    if( result == FUSE_HOST_OPERATION_OK ) drive_finish_eject( drive );
+    if( result == FUSE_HOST_OPERATION_OK ) {
+      drive_finish_eject( drive );
+      if( change != DISK_CHANGE_EJECT &&
+          drive_install( drive, change == DISK_CHANGE_INSERT ? &file : NULL, 0 ) )
+        result = FUSE_HOST_OPERATION_MEDIA_ERROR;
+    }
   }
+  if( change == DISK_CHANGE_INSERT ) utils_file_free( &file );
   fuse_engine_end_operation();
   return result;
 }

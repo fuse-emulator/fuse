@@ -86,6 +86,25 @@ eject_tape_discarding_changes( void )
 }
 
 static fuse_host_operation_result
+insert_disk_file_without_decision( fuse_disk_controller controller, int slot,
+                                   const char *filename )
+{
+  fuse_media_decision_id request = 1;
+  fuse_host_operation_result result = fuse_host_insert_disk_file( controller, slot, filename, &request );
+  assert( !request );
+  return result;
+}
+
+static fuse_host_operation_result
+new_disk_without_decision( fuse_disk_controller controller, int slot )
+{
+  fuse_media_decision_id request = 1;
+  fuse_host_operation_result result = fuse_host_new_disk( controller, slot, &request );
+  assert( !request );
+  return result;
+}
+
+static fuse_host_operation_result
 eject_disk_without_decision( fuse_disk_controller controller, int slot )
 {
   fuse_media_decision_id request = 1;
@@ -129,11 +148,11 @@ acquire_rom( void *context, const char *name, fuse_host_rom *rom )
   assert( fuse_host_release_all() == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_keyboard_event( INPUT_KEY_a, 1 ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_nmi() == FUSE_HOST_OPERATION_BUSY );
-  assert( fuse_host_new_disk( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_BUSY );
+  assert( new_disk_without_decision( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_BUSY );
   assert( eject_disk_without_decision( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_set_disk_flipped( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_set_disk_write_protected( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_BUSY );
-  assert( fuse_host_insert_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, "not-opened.udi" ) == FUSE_HOST_OPERATION_BUSY );
+  assert( insert_disk_file_without_decision( FUSE_DISK_CONTROLLER_PLUS3, 0, "not-opened.udi" ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_save_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, NULL ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_open_file( "not-opened.tap" ) == FUSE_HOST_OPERATION_BUSY );
   assert( insert_tape_without_decision( "not-opened.tap" ) == FUSE_HOST_OPERATION_BUSY );
@@ -983,12 +1002,12 @@ check_disk_available( void )
   /* Even legacy lookup/availability runs inside host-owned admission. */
   assert( fuse_engine_check_operation() == FUSE_HOST_OPERATION_BUSY );
   check_disk_info_blocked( FUSE_HOST_OPERATION_BUSY );
-  assert( fuse_host_new_disk( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_BUSY );
+  assert( new_disk_without_decision( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_BUSY );
   assert( eject_disk_without_decision( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_set_disk_flipped( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_set_disk_write_protected( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_save_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, NULL ) == FUSE_HOST_OPERATION_BUSY );
-  assert( fuse_host_insert_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, "not-opened.udi" ) == FUSE_HOST_OPERATION_BUSY );
+  assert( insert_disk_file_without_decision( FUSE_DISK_CONTROLLER_PLUS3, 0, "not-opened.udi" ) == FUSE_HOST_OPERATION_BUSY );
   disk_available_calls++;
   return disk_available();
 }
@@ -1018,7 +1037,7 @@ check_disk_save( fuse_disk_controller controller )
   assert( fuse_host_set_disk_write_protected( controller, 0, 1 ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
   assert( fuse_host_set_disk_flipped( controller, 0, 2 ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
   assert( fuse_host_set_disk_write_protected( controller, 0, -1 ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
-  assert( fuse_host_new_disk( (fuse_disk_controller)99, 0 ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( new_disk_without_decision( (fuse_disk_controller)99, 0 ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
   assert( eject_disk_without_decision( controller, 99 ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
   for( length = 0; length < 20; length++ ) {
     utils_file truncated;
@@ -1035,24 +1054,24 @@ check_disk_save( fuse_disk_controller controller )
   assert( fuse_host_save_disk_file( controller, -1, NULL ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
   assert( fuse_host_save_disk_file( controller, 99, NULL ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
   assert( fuse_host_save_disk_file( controller, 0, "" ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
-  assert( fuse_host_insert_disk_file( controller, 0, NULL ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
-  assert( fuse_host_insert_disk_file( controller, 0, "" ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( insert_disk_file_without_decision( controller, 0, NULL ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( insert_disk_file_without_decision( controller, 0, "" ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
   if( controller == FUSE_DISK_CONTROLLER_PLUS3 ) {
     assert( fuse_host_copy_disk_drive_info( FUSE_DISK_CONTROLLER_BETA, 0, &info ) == OK );
     assert( !info->available ); fuse_disk_drive_info_free( info ); info = NULL;
-    assert( fuse_host_insert_disk_file( FUSE_DISK_CONTROLLER_BETA, 0, "not-opened.udi" ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
+    assert( insert_disk_file_without_decision( FUSE_DISK_CONTROLLER_BETA, 0, "not-opened.udi" ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
     assert( fuse_host_save_disk_file( FUSE_DISK_CONTROLLER_BETA, 0, "not-created.udi" ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
-    assert( fuse_host_new_disk( FUSE_DISK_CONTROLLER_BETA, 0 ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
+    assert( new_disk_without_decision( FUSE_DISK_CONTROLLER_BETA, 0 ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
     assert( eject_disk_without_decision( FUSE_DISK_CONTROLLER_BETA, 0 ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
   }
   write_disk_fixture( "api-input.udi" );
   type = drive->fdd->type; drive->fdd->type = FDD_TYPE_NONE;
   assert( fuse_host_copy_disk_drive_info( controller, 0, &info ) == OK );
   assert( info->available && !info->enabled ); fuse_disk_drive_info_free( info ); info = NULL;
-  assert( fuse_host_insert_disk_file( controller, 0, "api-input.udi" ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( insert_disk_file_without_decision( controller, 0, "api-input.udi" ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
   assert( !drive->fdd->loaded );
   drive->fdd->type = type;
-  assert( fuse_host_insert_disk_file( controller, 0, "api-input.udi" ) == OK );
+  assert( insert_disk_file_without_decision( controller, 0, "api-input.udi" ) == OK );
   assert( fuse_host_save_disk_file( controller, 0, "missing-directory/out.udi" ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
   assert( drive->fdd->loaded && !strcmp( drive->fdd->disk.filename, "api-input.udi" ) );
   assert( fuse_host_save_disk_file( controller, 0, output ) == OK );
@@ -1086,7 +1105,7 @@ check_disk_save( fuse_disk_controller controller )
   drive->fdd->selected = selected; drive->fdd->ready = ready; drive->fdd->loadhead = loadhead;
   assert( fuse_host_set_disk_write_protected( controller, 0, 0 ) == OK && !drive->fdd->wrprot );
   assert( eject_disk_without_decision( controller, 0 ) == OK && !drive->fdd->loaded );
-  assert( fuse_host_new_disk( controller, 0 ) == OK );
+  assert( new_disk_without_decision( controller, 0 ) == OK );
   assert( drive->fdd->loaded && !drive->fdd->disk.filename && drive->fdd->disk.dirty );
   assert( drive->fdd->disk.sides == drive->get_params()->heads &&
           drive->fdd->disk.cylinders == drive->get_params()->cylinders );
@@ -1095,7 +1114,7 @@ check_disk_save( fuse_disk_controller controller )
     fuse_media_decision_id tape_request;
     int has_second = controller == FUSE_DISK_CONTROLLER_PLUS3;
     if( has_second )
-      assert( fuse_host_insert_disk_file( controller, 1, "api-input.udi" ) == OK );
+      assert( insert_disk_file_without_decision( controller, 1, "api-input.udi" ) == OK );
     assert( fuse_host_eject_disk( controller, 0, &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
     assert( fuse_host_eject_disk( controller, 0, &other ) == FUSE_HOST_OPERATION_NEEDS_DECISION && other == request );
     assert( fuse_run_frame() == FUSE_RUN_NEEDS_DECISION &&
@@ -1114,12 +1133,51 @@ check_disk_save( fuse_disk_controller controller )
     assert( drive->fdd->loaded && drive->fdd->disk.dirty );
     assert( fuse_host_eject_disk( controller, 0, &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
     assert( fuse_host_save_disk_file( controller, 0, "api-eject.udi" ) == OK );
-    assert( fuse_host_new_disk( controller, 0 ) == OK );
+    assert( new_disk_without_decision( controller, 0 ) == OK );
     assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL ) == FUSE_HOST_OPERATION_STALE );
     assert( drive->fdd->loaded && drive->fdd->disk.dirty );
     assert( fuse_host_eject_disk( controller, 0, &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
     assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_SAVE, "api-eject.udi" ) == OK );
     assert( !drive->fdd->loaded && !remove( "api-eject.udi" ) );
+    {
+      char path[] = "api-staged.udi";
+      libspectrum_byte *outgoing;
+      assert( new_disk_without_decision( controller, 0 ) == OK );
+      outgoing = drive->fdd->disk.data;
+      assert( insert_disk_file_without_decision( controller, 0, "missing.udi" ) ==
+              FUSE_HOST_OPERATION_MEDIA_ERROR );
+      assert( drive->fdd->loaded && drive->fdd->disk.data == outgoing );
+      write_disk_fixture( path );
+      assert( fuse_host_insert_disk_file( controller, 0, path, &request ) ==
+              FUSE_HOST_OPERATION_NEEDS_DECISION );
+      assert( fuse_run_frame() == FUSE_RUN_NEEDS_DECISION );
+      assert( new_disk_without_decision( controller, 0 ) == FUSE_HOST_OPERATION_BUSY );
+      assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_CANCEL, NULL ) ==
+              FUSE_HOST_OPERATION_CANCELLED );
+      assert( drive->fdd->loaded && drive->fdd->disk.data == outgoing );
+      assert( fuse_host_insert_disk_file( controller, 0, path, &request ) ==
+              FUSE_HOST_OPERATION_NEEDS_DECISION );
+      assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_SAVE,
+                                           "missing-directory/out.udi" ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
+      assert( drive->fdd->loaded && drive->fdd->disk.dirty && drive->fdd->disk.data == outgoing );
+      assert( fuse_host_insert_disk_file( controller, 0, path, &request ) ==
+              FUSE_HOST_OPERATION_NEEDS_DECISION );
+      assert( !remove( path ) ); path[0] = 'X';
+      assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL ) == OK );
+      assert( drive->fdd->loaded && !strcmp( drive->fdd->disk.filename, "api-staged.udi" ) );
+      assert( new_disk_without_decision( controller, 0 ) == OK );
+      assert( fuse_host_new_disk( controller, 0, &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
+      assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_SAVE,
+                                           "api-outgoing.udi" ) == OK );
+      assert( !remove( "api-outgoing.udi" ) );
+      assert( drive->fdd->loaded && drive->fdd->disk.dirty && !drive->fdd->disk.filename );
+      assert( !utils_write_file( "api-bad.udi", (const unsigned char *)"UDI!", 4 ) );
+      assert( fuse_host_insert_disk_file( controller, 0, "api-bad.udi", &request ) ==
+              FUSE_HOST_OPERATION_NEEDS_DECISION );
+      assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL ) ==
+              FUSE_HOST_OPERATION_MEDIA_ERROR );
+      assert( !drive->fdd->loaded && !remove( "api-bad.udi" ) );
+    }
     if( has_second ) {
       assert( fuse_host_copy_disk_drive_info( controller, 1, &info ) == OK );
       assert( info->loaded && !strcmp( info->filename, "api-input.udi" ) );
@@ -1138,7 +1196,7 @@ active_callback( libspectrum_dword ts, int type, void *data )
   (void)ts; (void)type; (void)data;
   check_disk_info_blocked( FUSE_HOST_OPERATION_BUSY );
   check_tape_deck_blocked( FUSE_HOST_OPERATION_BUSY );
-  assert( fuse_host_insert_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, "not-opened.udi" ) == FUSE_HOST_OPERATION_BUSY );
+  assert( insert_disk_file_without_decision( FUSE_DISK_CONTROLLER_PLUS3, 0, "not-opened.udi" ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_save_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, NULL ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_nmi() == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_reset( FUSE_HOST_RESET_SOFT ) == FUSE_HOST_OPERATION_BUSY );
@@ -1161,7 +1219,7 @@ host_operations_test( int argc, char **argv )
   assert( fuse_host_release_all() == FUSE_HOST_OPERATION_NOT_READY );
   check_disk_info_blocked( FUSE_HOST_OPERATION_NOT_READY );
   check_tape_deck_blocked( FUSE_HOST_OPERATION_NOT_READY );
-  assert( fuse_host_new_disk( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_NOT_READY );
+  assert( new_disk_without_decision( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_NOT_READY );
   assert( eject_disk_without_decision( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_NOT_READY );
   assert( fuse_host_set_disk_flipped( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_NOT_READY );
   assert( fuse_host_set_disk_write_protected( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_NOT_READY );
@@ -1278,7 +1336,7 @@ host_operations_test( int argc, char **argv )
     check_disk_info_blocked( FUSE_HOST_OPERATION_EXITING );
     check_tape_deck_blocked( FUSE_HOST_OPERATION_EXITING );
     assert( fuse_host_keyboard_event( INPUT_KEY_a, 1 ) == FUSE_HOST_OPERATION_EXITING );
-    assert( fuse_host_new_disk( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_EXITING );
+    assert( new_disk_without_decision( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_EXITING );
     assert( eject_disk_without_decision( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_EXITING );
     assert( fuse_host_set_disk_flipped( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_EXITING );
     assert( fuse_host_set_disk_write_protected( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_EXITING );

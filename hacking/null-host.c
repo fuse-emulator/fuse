@@ -540,14 +540,14 @@ main( int argc, char **argv )
     goto cleanup;
   }
   if( disk_save ) {
-    if( operation( "disk insertion", fuse_host_insert_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, argv[3] ) ) ||
+    if( operation( "disk insertion", fuse_host_insert_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, argv[3], &disk_request ) ) ||
         operation( "disk save", fuse_host_save_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, argv[4] ) ) ) goto cleanup;
     puts( "host: saved disk through plus3 drive 0" );
     status = EXIT_SUCCESS;
     goto cleanup; /* Core codecs handle both input and output; no CPU turn needed. */
   }
   if( disk_lifecycle ) {
-    if( operation( "new disk", fuse_host_new_disk( FUSE_DISK_CONTROLLER_PLUS3, 0 ) ) ||
+    if( operation( "new disk", fuse_host_new_disk( FUSE_DISK_CONTROLLER_PLUS3, 0, &disk_request ) ) ||
         operation( "drive info", fuse_host_copy_disk_drive_info( FUSE_DISK_CONTROLLER_PLUS3, 0, &disk ) ) ) goto cleanup;
     print_disk_info( "new disk copy", disk );
     if( operation( "flip", fuse_host_set_disk_flipped( disk->controller, disk->slot, 1 ) ) ||
