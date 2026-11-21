@@ -351,10 +351,13 @@ fuse_run_result fuse_run_frame( void );
    argument validation; other lifecycle and blocking rules match run_frame. */
 fuse_run_result fuse_run_tstates( unsigned long budget );
 
-/* Available at a host execute-breakpoint stop. Output is a by-value copy. */
+/* Available at a host breakpoint or single-step stop. Copy by value. */
 fuse_host_operation_result fuse_host_debugger_copy_registers( processor *registers );
 /* Leave the stop and bypass the current execute check once. Does not run. */
 fuse_host_operation_result fuse_host_debugger_continue( void );
+/* Arm a stop at the next opcode boundary after bypassing the current check.
+   Does not run. A frame or budget limit can return before the step stops. */
+fuse_host_operation_result fuse_host_debugger_step( void );
 
 /* End a prepared, completed or failed-operation session. No-op before preparation,
    after shutdown or during active preparation/execution/cleanup callbacks.

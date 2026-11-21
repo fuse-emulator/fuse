@@ -520,7 +520,7 @@ fuse_legacy_execute( int *exit_status )
 {
   int r;
   if( legacy_ownership.phase != LEGACY_READY || !exit_status ||
-      decision_owner != FUSE_DECISION_NONE || debugger_host_stopped() ) return 1;
+      decision_owner != FUSE_DECISION_NONE || debugger_host_pending() ) return 1;
   legacy_ownership.phase = LEGACY_RUNNING;
 #ifdef FUSE_STARTUP_TEST
   fuse_startup_test_running();

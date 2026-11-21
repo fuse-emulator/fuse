@@ -167,7 +167,7 @@ change input refresh at emulated port reads.
 | --- | --- |
 | COMPLETED | Requested frame boundary or budget reached. Budget completion does not imply a completed frame. |
 | NEEDS_DECISION | A pending media decision blocks execution. No emulated time advances. |
-| DEBUGGER_STOPPED | Host execution hit an execute breakpoint before its opcode, or already awaits Continue. |
+| DEBUGGER_STOPPED | Host execution stopped at an opcode boundary for a breakpoint or single-step, or already awaits a debugger command. |
 | PAUSED | No execution on paused entry, or execution paused during dispatch. |
 | INTERRUPTED | An active budget's machine/clock state was replaced; reconsider the next request in the new state. |
 | EXITING | Exit requested inside the engine. |
@@ -245,13 +245,18 @@ query is provided; do not read live globals concurrently from a UI thread.
 ## Host debugger stops
 
 An execute breakpoint can end a frame or T-state turn before the trapped
-opcode and without opening the debugger window. Further turns do not advance
-until the host calls `fuse_host_debugger_continue()`. The host can copy the
-registers with `fuse_host_debugger_copy_registers()` or shut down while stopped.
-Continue schedules no execution itself and bypasses the execute check once if
-the next opcode is at the stopped address; the breakpoint stays installed.
-Legacy execution retains its debugger UI. Host single-step and read/write
-watchpoint stops are not covered by this API.
+opcode and without opening the debugger window. While stopped, the host can
+copy the registers with `fuse_host_debugger_copy_registers()`, choose Continue
+or Step, or shut down. Neither debugger command runs the CPU itself. Continue
+bypasses the execute check once if the next opcode is at the stopped address;
+the breakpoint stays installed.
+
+`fuse_host_debugger_step()` arms a stop at the next opcode boundary after the
+one-shot bypass, as in legacy Step. Due events and interrupts can run before
+that boundary, so the new PC may be in an interrupt handler. A frame or T-state
+limit can end a turn first; Step stays armed for the next turn. A halted CPU
+can step without changing PC. Legacy execution retains its debugger UI;
+host read/write watchpoint stops are not covered by this API.
 
 ## Host Quit
 
@@ -501,6 +506,11 @@ turns, delivers input, handles focus loss, resets, selects 128 and shuts down.
 The host drives the loop; the scripted key, joystick and focus events stand in
 for events collected by the host between turns. Fuse does not pump frontend
 events at frame completion on this path. The directory needs `48.rom`, `128-0.rom` and `128-1.rom`.
+
+`--debugger-step` uses a synthetic ROM (no ROM files required). It stops at an
+execute breakpoint, copies the registers, steps across a T-state budget boundary,
+and continues until the same breakpoint fires again. Breakpoint setup uses the
+existing internal debugger API; the host drives execution, inspection and Step.
 
 `--queued-input` demonstrates optional keyboard-read refresh using the existing
 private `keyboard_refresh.h` hook. The host queues a Space press before the first

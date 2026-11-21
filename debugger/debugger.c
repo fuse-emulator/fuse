@@ -40,7 +40,7 @@
 /* The current activity state of the debugger */
 enum debugger_mode_t debugger_mode;
 static struct z80_host_debug {
-  int stopped, skip_execute;
+  int stopped, skip_execute, stepping;
   libspectrum_word pc;
 } host_debug;
 
@@ -113,12 +113,18 @@ debugger_trap( void )
   return ui_debugger_activate();
 }
 
+static void
+debugger_arm_step( void )
+{
+  keyboard_refresh_invalidate();
+  debugger_mode = DEBUGGER_MODE_HALTED;
+}
+
 /* Step one instruction */
 int
 debugger_step( void )
 {
-  keyboard_refresh_invalidate();
-  debugger_mode = DEBUGGER_MODE_HALTED;
+  debugger_arm_step();
   ui_debugger_deactivate( 0 );
   return 0;
 }
@@ -171,8 +177,9 @@ debugger_before_opcode( libspectrum_word pc, struct z80_host_debug *host )
     if( host->pc == pc ) return 0;
   }
   if( !debugger_check( DEBUGGER_BREAKPOINT_TYPE_EXECUTE, pc ) ) return 0;
-  if( host && execute_check ) {
+  if( host && ( execute_check || host->stepping ) ) {
     host->pc = PC;
+    host->stepping = 0;
     host->stopped = 1;
     return 1;
   }
@@ -192,6 +199,12 @@ int
 debugger_host_stopped( void )
 {
   return host_debug.stopped;
+}
+
+int
+debugger_host_pending( void )
+{
+  return host_debug.stopped || host_debug.stepping;
 }
 
 fuse_host_operation_result
@@ -214,6 +227,19 @@ fuse_host_debugger_continue( void )
   host_debug.stopped = 0;
   debugger_resume_execution();
   host_debug.skip_execute = debugger_mode == DEBUGGER_MODE_ACTIVE;
+  return FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_debugger_step( void )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !host_debug.stopped ) return FUSE_HOST_OPERATION_NOT_READY;
+  debugger_arm_step();
+  host_debug.stopped = 0;
+  host_debug.skip_execute = 1;
+  host_debug.stepping = 1;
   return FUSE_HOST_OPERATION_OK;
 }
 

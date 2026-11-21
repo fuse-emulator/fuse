@@ -59,6 +59,7 @@ int debugger_before_opcode( libspectrum_word pc, struct z80_host_debug *host );
 /* Host CPU dispatch and its stop condition, without the legacy debugger UI. */
 void debugger_host_run_batch( const libspectrum_dword *deadline );
 int debugger_host_stopped( void );
+int debugger_host_pending( void );
 int debugger_trap( void );	/* Activate the debugger */
 
 int debugger_step( void );	/* Single step */

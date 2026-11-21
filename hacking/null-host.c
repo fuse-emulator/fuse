@@ -5,14 +5,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "config.h"
 #include "fuse-internal.h"
+#include "debugger/debugger.h"
 #include "keyboard_refresh.h"
 
 typedef struct rom_provider {
   const char *directory;
   unsigned char *pending;
   unsigned int requests, releases;
-  int queued_input;
+  int queued_input, debugger_step;
 } rom_provider;
 
 static void
@@ -39,6 +41,15 @@ acquire_rom( void *context, const char *name, fuse_host_rom *rom )
   provider->requests++;
   rom->context = provider;
   rom->release = release_rom; /* Called even when acquisition/validation fails. */
+  if( provider->debugger_step ) {
+    /* INC A; INC A; JP 0 */
+    static const unsigned char probe[16384] = { 0x3c, 0x3c, 0xc3, 0, 0 };
+    if( strcmp( name, "48.rom" ) ) return 1;
+    rom->data = probe;
+    rom->length = sizeof( probe );
+    rom->custom = 1;
+    return 0;
+  }
   if( provider->queued_input ) {
     /* Read Space once. Halt if it is up; otherwise keep reading the row.
        A refresh on the next frame proves the first read saw the queued press. */
@@ -217,6 +228,41 @@ done:
   return error;
 }
 
+static int
+debugger_step_demo( unsigned int *budget_turns )
+{
+  processor before, after;
+
+  /* Breakpoint setup still uses the existing internal debugger API. */
+  if( debugger_breakpoint_add_address( DEBUGGER_BREAKPOINT_TYPE_EXECUTE,
+        memory_source_any, 0, 0, 0, DEBUGGER_BREAKPOINT_LIFE_PERMANENT, NULL ) ||
+      fuse_run_frame() != FUSE_RUN_DEBUGGER_STOPPED ||
+      operation( "inspect breakpoint", fuse_host_debugger_copy_registers( &before ) ) ||
+      before.pc.w != 0 ) goto fail;
+  puts( "host: debugger stopped at PC 0000" );
+
+  if( operation( "arm single-step", fuse_host_debugger_step() ) ||
+      fuse_run_tstates( 1 ) != FUSE_RUN_COMPLETED ) goto fail;
+  (*budget_turns)++;
+  if( fuse_run_frame() != FUSE_RUN_DEBUGGER_STOPPED ||
+      operation( "inspect step", fuse_host_debugger_copy_registers( &after ) ) ||
+      after.pc.w != 1 || ( after.af.w >> 8 ) != (unsigned char)( ( before.af.w >> 8 ) + 1 ) )
+    goto fail;
+  puts( "host: one instruction stepped; PC 0001 after budget boundary" );
+
+  if( operation( "continue", fuse_host_debugger_continue() ) ||
+      fuse_run_frame() != FUSE_RUN_DEBUGGER_STOPPED ||
+      operation( "inspect next breakpoint", fuse_host_debugger_copy_registers( &after ) ) ||
+      after.pc.w != 0 || ( after.af.w >> 8 ) != (unsigned char)( ( before.af.w >> 8 ) + 2 ) )
+    goto fail;
+  puts( "host: Continue reached the same breakpoint again" );
+  return 0;
+
+fail:
+  fputs( "host: debugger step probe did not complete\n", stderr );
+  return 1;
+}
+
 /* A deterministic stand-in for commands from an independent UI loop. An idle
    worker would wait on its command queue here rather than spinning on ticks. */
 static int
@@ -380,6 +426,7 @@ main( int argc, char **argv )
   unsigned int frame_turns = 0, budget_turns = 0;
   int prepared = 0, status = EXIT_FAILURE;
   int queued_input = argc == 3 && !strcmp( argv[2], "--queued-input" );
+  int debugger_step = argc == 3 && !strcmp( argv[2], "--debugger-step" );
   int disk_lifecycle = argc == 4 && !strcmp( argv[2], "--disk-lifecycle" );
   int tape_record = argc == 4 && !strcmp( argv[2], "--record-tape" );
   int parked_eject = argc == 4 && !strcmp( argv[2], "--parked-tape-eject" );
@@ -398,7 +445,7 @@ main( int argc, char **argv )
       ( argc == 3 && ( !strcmp( argv[2], "--open" ) || !strcmp( argv[2], "--save-disk" ) ||
                       !strcmp( argv[2], "--disk-lifecycle" ) || !strcmp( argv[2], "--tape-lifecycle" ) || !strcmp( argv[2], "--replace-tape" ) ||
                       !strcmp( argv[2], "--record-tape" ) || !strcmp( argv[2], "--parked-tape-eject" ) || !strcmp( argv[2], "--save-snapshot" ) || !strcmp( argv[2], "--filesystem" ) || !strcmp( argv[2], "--divmmc" ) ) ) ) {
-    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --queued-input]\n", argv[0] );
+    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --queued-input | --debugger-step]\n", argv[0] );
     return EXIT_FAILURE;
   }
   if( filesystem || divmmc ) {
@@ -410,6 +457,7 @@ main( int argc, char **argv )
     }
   }
   provider.queued_input = queued_input;
+  provider.debugger_step = debugger_step;
   provider.directory = argv[1]; /* Borrowed through shutdown, not passed as engine CLI. */
   config = fuse_host_config_alloc();
   if( fuse_host_config_set_machine( config, disk_save || disk_lifecycle ? "plus3" : "48" ) ||
@@ -438,6 +486,10 @@ main( int argc, char **argv )
   }
   if( parked_eject ) {
     if( !parked_eject_demo( argv[3], &frame_turns ) ) status = EXIT_SUCCESS;
+    goto cleanup;
+  }
+  if( debugger_step ) {
+    if( !debugger_step_demo( &budget_turns ) ) status = EXIT_SUCCESS;
     goto cleanup;
   }
   if( queued_input ) {

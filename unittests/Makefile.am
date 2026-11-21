@@ -373,6 +373,11 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    'host: keyboard read saw queued Space press; next frame drained release' \
 	    'host: shutdown; frame turns=2; budget turns=0; ROM requests=1; releases=1' > expected-queued-input; \
 	  printf '%s\n' 'host: prepared 48' \
+	    'host: debugger stopped at PC 0000' \
+	    'host: one instruction stepped; PC 0001 after budget boundary' \
+	    'host: Continue reached the same breakpoint again' \
+	    'host: shutdown; frame turns=0; budget turns=1; ROM requests=1; releases=1' > expected-debugger-step; \
+	  printf '%s\n' 'host: prepared 48' \
 	    'host: parked for eject; handled focus loss; checked cancel, save and stale replies' \
 	    'host: shutdown; frame turns=4; budget turns=0; ROM requests=1; releases=1' > expected-parked-eject; \
 	  printf '%s\n' 'host: prepared 48' \
@@ -420,6 +425,8 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    cmp expected "$$consumer-valid.out"; \
 	    "$$program" empty --queued-input > "$$consumer-queued-input.out" 2> "$$consumer-queued-input.err"; \
 	    cmp expected-queued-input "$$consumer-queued-input.out"; \
+	    "$$program" empty --debugger-step > "$$consumer-debugger-step.out" 2> "$$consumer-debugger-step.err"; \
+	    cmp expected-debugger-step "$$consumer-debugger-step.out"; \
 	    "$$program" only48 --parked-tape-eject parked.pzx > "$$consumer-parked.out" 2> "$$consumer-parked.err"; \
 	    cmp expected-parked-eject "$$consumer-parked.out"; rm parked.pzx; \
 	    "$$program" only48 --replace-tape sample.tap malformed.tzx > "$$consumer-replacement.out" 2> "$$consumer-replacement.err"; \
@@ -601,7 +608,8 @@ check-legacy-lifecycle: unittests/legacyenginelinktest unittests/legacyenginesou
 	      "$$program" --lifecycle-test $$kind > /dev/null; \
 	    done; \
 	    "$$program" --lifecycle-test zero "$$rom" > /dev/null; \
-	    for kind in frame-contract frame-shutdown budget-contract debugger-stop; do \
+	    for kind in frame-contract frame-shutdown budget-contract debugger-stop \
+	                debugger-step debugger-step-frame; do \
 	      "$$program" --lifecycle-test "$$kind" --machine 48 --rom-48 "$$rom" \
 	        --no-autosave-settings --no-sound > /dev/null; \
 	    done; \

@@ -299,6 +299,60 @@ check_debugger_stop( int argc, char **argv )
 }
 
 static void
+check_debugger_step( int argc, char **argv, int frame_edge )
+{
+  processor registers;
+  int status = -1;
+  libspectrum_dword before;
+
+  assert( fuse_legacy_prepare( argc, argv ) == FUSE_INIT_READY );
+  assert( fuse_host_debugger_step() == FUSE_HOST_OPERATION_NOT_READY );
+  z80.pc.w = 0x8000;
+  z80.sp.w = 0x9000;
+  z80.af.b.h = 0x42;
+  z80.iff1 = z80.iff2 = 0;
+  z80.im = 1;
+  writebyte_internal( 0x8000, frame_edge ? 0xfb : 0x3c ); /* EI or INC A */
+  writebyte_internal( 0x8001, frame_edge ? 0x00 : 0x76 ); /* NOP or HALT */
+  if( frame_edge ) tstates = machine_current->timings.tstates_per_frame - 4;
+  assert( !debugger_breakpoint_add_address( DEBUGGER_BREAKPOINT_TYPE_EXECUTE,
+           memory_source_any, 0, 0x8000, 0, DEBUGGER_BREAKPOINT_LIFE_ONESHOT, NULL ) );
+  assert( fuse_run_tstates( 1 ) == FUSE_RUN_DEBUGGER_STOPPED );
+  before = tstates;
+  assert( fuse_host_debugger_step() == FUSE_HOST_OPERATION_OK );
+  assert( z80.pc.w == 0x8000 && tstates == before );
+  assert( fuse_legacy_execute( &status ) && status == -1 );
+
+  if( frame_edge ) {
+    /* EI ends the frame, but the interrupt waits until after the NOP. */
+    assert( fuse_run_frame() == FUSE_RUN_COMPLETED );
+    assert( spectrum_get_frame_count() == 1 );
+    assert( fuse_run_tstates( 100 ) == FUSE_RUN_DEBUGGER_STOPPED );
+    assert( z80.pc.w == 0x8001 && z80.iff1 && z80.sp.w == 0x9000 );
+    assert( fuse_host_debugger_step() == FUSE_HOST_OPERATION_OK );
+    assert( fuse_run_tstates( 100 ) == FUSE_RUN_DEBUGGER_STOPPED );
+    assert( z80.pc.w == 0x0038 && !z80.iff1 && z80.sp.w == 0x8ffe );
+    assert( readbyte_internal( 0x8ffe ) == 0x02 && readbyte_internal( 0x8fff ) == 0x80 );
+  } else {
+    /* The budget ends after INC A, before the next pre-opcode check. */
+    assert( fuse_run_tstates( 1 ) == FUSE_RUN_COMPLETED );
+    assert( tstates == before + 4 && z80.af.b.h == 0x43 );
+    assert( fuse_run_frame() == FUSE_RUN_DEBUGGER_STOPPED );
+    assert( fuse_host_debugger_copy_registers( &registers ) == FUSE_HOST_OPERATION_OK );
+    assert( registers.pc.w == 0x8001 && !registers.halted );
+    assert( fuse_host_debugger_step() == FUSE_HOST_OPERATION_OK );
+    assert( fuse_run_tstates( 100 ) == FUSE_RUN_DEBUGGER_STOPPED );
+    assert( z80.pc.w == 0x8001 && z80.halted && tstates == before + 8 );
+    assert( fuse_host_debugger_step() == FUSE_HOST_OPERATION_OK );
+    assert( fuse_run_tstates( 100 ) == FUSE_RUN_DEBUGGER_STOPPED );
+    assert( z80.pc.w == 0x8001 && z80.halted && tstates == before + 12 );
+  }
+  assert( !null_ui_debugger_activate_calls );
+  fuse_shutdown();
+  check_closed();
+}
+
+static void
 check_budget_contract( int argc, char **argv )
 {
   int type, i;
@@ -550,6 +604,9 @@ legacy_lifecycle_test( int argc, char **argv )
     check_budget_contract( argc - 1, argv + 1 );
   } else if( !strcmp( argv[1], "debugger-stop" ) ) {
     check_debugger_stop( argc - 1, argv + 1 );
+  } else if( !strcmp( argv[1], "debugger-step" ) ||
+             !strcmp( argv[1], "debugger-step-frame" ) ) {
+    check_debugger_step( argc - 1, argv + 1, !strcmp( argv[1], "debugger-step-frame" ) );
   } else if( !strncmp( argv[1], "budgets", 7 ) ) {
     check_budget_run( argc - 1, argv + 1, argv[1] );
   } else if( !strcmp( argv[1], "frame-contract" ) ||
