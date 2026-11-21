@@ -167,6 +167,7 @@ change input refresh at emulated port reads.
 | --- | --- |
 | COMPLETED | Requested frame boundary or budget reached. Budget completion does not imply a completed frame. |
 | NEEDS_DECISION | A pending media decision blocks execution. No emulated time advances. |
+| DEBUGGER_STOPPED | Host execution hit an execute breakpoint before its opcode, or already awaits Continue. |
 | PAUSED | No execution on paused entry, or execution paused during dispatch. |
 | INTERRUPTED | An active budget's machine/clock state was replaced; reconsider the next request in the new state. |
 | EXITING | Exit requested inside the engine. |
@@ -240,6 +241,17 @@ NMI event; it is not delivered inline.
 
 Existing reset/module semantics apply. No input-sampling policy or owned state
 query is provided; do not read live globals concurrently from a UI thread.
+
+## Host debugger stops
+
+An execute breakpoint can end a frame or T-state turn before the trapped
+opcode and without opening the debugger window. Further turns do not advance
+until the host calls `fuse_host_debugger_continue()`. The host can copy the
+registers with `fuse_host_debugger_copy_registers()` or shut down while stopped.
+Continue schedules no execution itself and bypasses the execute check once if
+the next opcode is at the stopped address; the breakpoint stays installed.
+Legacy execution retains its debugger UI. Host single-step and read/write
+watchpoint stops are not covered by this API.
 
 ## Host Quit
 

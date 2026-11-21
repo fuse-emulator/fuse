@@ -71,7 +71,9 @@ void z80_retn( void );
 void z80_do_opcodes(void);
 /* Internal absolute instruction-boundary limit; NULL retains legacy execution.
    The borrowed limit may be lowered by owner-thread callbacks while running. */
-void z80_do_opcodes_until( const libspectrum_dword *stop_tstates );
+struct z80_host_debug;
+void z80_do_opcodes_until( const libspectrum_dword *stop_tstates,
+                           struct z80_host_debug *host_debug );
 
 void z80_enable_interrupts( void );
 

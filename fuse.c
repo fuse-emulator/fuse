@@ -382,21 +382,34 @@ fuse_engine_retire_decision( fuse_decision_owner owner )
   if( decision_owner == owner ) decision_owner = FUSE_DECISION_NONE;
 }
 
-/* Keep the CPU batch and all due events together. Dispatch can span more than
-   one instruction or frame, and callbacks may block. Observe session limits
-   afterward; result finalization stays in the legacy runner. */
 static void
-fuse_dispatch_once( const libspectrum_dword *deadline, int legacy_pump )
+fuse_check_execution_limits( void )
 {
-  pump_frame_ui = legacy_pump;
-  z80_do_opcodes_until( deadline );
-  event_do_events();
-  pump_frame_ui = 0;
 #ifdef ENABLE_AUTOMATION
   if( automation_active() &&
       automation_frame_limit_reached( spectrum_get_frame_count() ) )
     fuse_exiting = 1;
 #endif
+}
+
+static void
+fuse_dispatch_legacy_batch( void )
+{
+  pump_frame_ui = 1;
+  z80_do_opcodes();
+  event_do_events();
+  pump_frame_ui = 0;
+  fuse_check_execution_limits();
+}
+
+static void
+fuse_dispatch_host_batch( const libspectrum_dword *deadline )
+{
+  debugger_host_run_batch( deadline );
+  /* Return at the breakpoint without dispatching any more emulated work. */
+  if( debugger_host_stopped() ) return;
+  event_do_events();
+  fuse_check_execution_limits();
 }
 
 /* Host turns and the legacy runner share one automation session. Resuming
@@ -423,17 +436,19 @@ fuse_run_frame( void )
   if( legacy_ownership.phase != LEGACY_READY ) return FUSE_RUN_NOT_READY;
   if( fuse_exiting ) return FUSE_RUN_EXITING;
   if( decision_owner != FUSE_DECISION_NONE ) return FUSE_RUN_NEEDS_DECISION;
+  if( debugger_host_stopped() ) return FUSE_RUN_DEBUGGER_STOPPED;
   if( fuse_emulation_paused ) return FUSE_RUN_PAUSED;
 
   legacy_ownership.phase = LEGACY_RUNNING;
   fuse_execution_start();
   spectrum_frame_dispatch_complete = 0;
   do {
-    fuse_dispatch_once( NULL, 0 );
-  } while( !fuse_exiting && !fuse_emulation_paused &&
+    fuse_dispatch_host_batch( NULL );
+  } while( !fuse_exiting && !debugger_host_stopped() && !fuse_emulation_paused &&
            !spectrum_frame_dispatch_complete );
 
   result = fuse_exiting ? FUSE_RUN_EXITING :
+           debugger_host_stopped() ? FUSE_RUN_DEBUGGER_STOPPED :
            fuse_emulation_paused ? FUSE_RUN_PAUSED :
                                    FUSE_RUN_COMPLETED;
   legacy_ownership.phase = LEGACY_READY;
@@ -455,6 +470,7 @@ fuse_run_tstates( unsigned long budget )
     return FUSE_RUN_INVALID_ARGUMENT;
   if( fuse_exiting ) return FUSE_RUN_EXITING;
   if( decision_owner != FUSE_DECISION_NONE ) return FUSE_RUN_NEEDS_DECISION;
+  if( debugger_host_stopped() ) return FUSE_RUN_DEBUGGER_STOPPED;
   if( fuse_emulation_paused ) return FUSE_RUN_PAUSED;
 
   legacy_ownership.phase = LEGACY_RUNNING;
@@ -475,8 +491,8 @@ fuse_run_tstates( unsigned long budget )
       ( remaining < 0x7fffffffUL - tstates ? remaining :
                                             0x7fffffffUL - tstates );
     legacy_budget.rebased = 0;
-    fuse_dispatch_once( &legacy_budget.deadline, 0 );
-    if( legacy_budget.interrupted ) break;
+    fuse_dispatch_host_batch( &legacy_budget.deadline );
+    if( legacy_budget.interrupted || debugger_host_stopped() ) break;
     elapsed = (int64_t)tstates - before + legacy_budget.rebased;
     if( elapsed < 0 ) {
       legacy_budget.interrupted = 1;
@@ -490,6 +506,7 @@ fuse_run_tstates( unsigned long budget )
   } while( remaining && !fuse_exiting && !fuse_emulation_paused );
 
   result = fuse_exiting ? FUSE_RUN_EXITING :
+           debugger_host_stopped() ? FUSE_RUN_DEBUGGER_STOPPED :
            legacy_budget.interrupted ? FUSE_RUN_INTERRUPTED :
            fuse_emulation_paused ? FUSE_RUN_PAUSED :
                                    FUSE_RUN_COMPLETED;
@@ -503,7 +520,7 @@ fuse_legacy_execute( int *exit_status )
 {
   int r;
   if( legacy_ownership.phase != LEGACY_READY || !exit_status ||
-      decision_owner != FUSE_DECISION_NONE ) return 1;
+      decision_owner != FUSE_DECISION_NONE || debugger_host_stopped() ) return 1;
   legacy_ownership.phase = LEGACY_RUNNING;
 #ifdef FUSE_STARTUP_TEST
   fuse_startup_test_running();
@@ -517,7 +534,7 @@ fuse_legacy_execute( int *exit_status )
   {
     fuse_execution_start();
     while( !fuse_exiting ) {
-      fuse_dispatch_once( NULL, 1 );
+      fuse_dispatch_legacy_batch();
     }
     r = debugger_get_exit_code();
 #ifdef ENABLE_AUTOMATION

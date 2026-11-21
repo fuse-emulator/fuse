@@ -601,7 +601,7 @@ check-legacy-lifecycle: unittests/legacyenginelinktest unittests/legacyenginesou
 	      "$$program" --lifecycle-test $$kind > /dev/null; \
 	    done; \
 	    "$$program" --lifecycle-test zero "$$rom" > /dev/null; \
-	    for kind in frame-contract frame-shutdown budget-contract; do \
+	    for kind in frame-contract frame-shutdown budget-contract debugger-stop; do \
 	      "$$program" --lifecycle-test "$$kind" --machine 48 --rom-48 "$$rom" \
 	        --no-autosave-settings --no-sound > /dev/null; \
 	    done; \

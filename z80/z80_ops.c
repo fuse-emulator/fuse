@@ -117,14 +117,15 @@ static libspectrum_byte opcode = 0x00;
 void
 z80_do_opcodes( void )
 {
-  z80_do_opcodes_until( NULL );
+  z80_do_opcodes_until( NULL, NULL );
 }
 
 /* The optional limit is observed at instruction boundaries. Owner-thread
    callbacks may lower it (to zero when replacing the clock), never another
    thread. This adds no event that RZX's forced dispatch could consume. */
 void
-z80_do_opcodes_until( const libspectrum_dword *stop_tstates )
+z80_do_opcodes_until( const libspectrum_dword *stop_tstates,
+                      struct z80_host_debug *host_debug )
 {
 #ifdef HAVE_ENOUGH_MEMORY
   libspectrum_byte opcode = 0x00;
@@ -188,11 +189,9 @@ z80_do_opcodes_until( const libspectrum_dword *stop_tstates )
     END_CHECK
 #endif
 
-    /* Check if the debugger should become active at this point */
     CHECK( debugger, debugger_mode != DEBUGGER_MODE_INACTIVE )
 
-    if( debugger_check( DEBUGGER_BREAKPOINT_TYPE_EXECUTE, PC ) )
-      debugger_trap();
+    if( debugger_before_opcode( PC, host_debug ) ) break;
     /* Breakpoint commands may replace the clock and continue without a trap. */
     if( stop_tstates && tstates >= *stop_tstates ) break;
 

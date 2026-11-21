@@ -28,6 +28,7 @@
 #include "debugger_internals.h"
 #include "event.h"
 #include "fuse.h"
+#include "fuse-engine.h"
 #include "infrastructure/startup_manager.h"
 #include "memory_pages.h"
 #include "mempool.h"
@@ -38,6 +39,10 @@
 
 /* The current activity state of the debugger */
 enum debugger_mode_t debugger_mode;
+static struct z80_host_debug {
+  int stopped, skip_execute;
+  libspectrum_word pc;
+} host_debug;
 
 /* Which base should we display things in */
 int debugger_output_base;
@@ -80,6 +85,7 @@ debugger_reset( void )
 static void
 debugger_end( void )
 {
+  host_debug = (struct z80_host_debug){ 0 };
   debugger_breakpoint_remove_all();
   debugger_variable_end();
   debugger_system_variable_end();
@@ -138,15 +144,77 @@ debugger_next( void )
 }
 
 /* Set debugger_mode so that emulation will occur */
-int
-debugger_run( void )
+static void
+debugger_resume_execution( void )
 {
   keyboard_refresh_invalidate();
   debugger_mode = debugger_breakpoints ?
                   DEBUGGER_MODE_ACTIVE :
                   DEBUGGER_MODE_INACTIVE;
+}
+
+int
+debugger_run( void )
+{
+  debugger_resume_execution();
   ui_debugger_deactivate( 1 );
   return 0;
+}
+
+int
+debugger_before_opcode( libspectrum_word pc, struct z80_host_debug *host )
+{
+  int execute_check = debugger_mode == DEBUGGER_MODE_ACTIVE;
+
+  if( host && host->skip_execute ) {
+    host->skip_execute = 0;
+    if( host->pc == pc ) return 0;
+  }
+  if( !debugger_check( DEBUGGER_BREAKPOINT_TYPE_EXECUTE, pc ) ) return 0;
+  if( host && execute_check ) {
+    host->pc = PC;
+    host->stopped = 1;
+    return 1;
+  }
+  debugger_trap();
+  return 0;
+}
+
+void
+debugger_host_run_batch( const libspectrum_dword *deadline )
+{
+  /* No execute check remains to bypass if breakpoints were removed. */
+  if( debugger_mode == DEBUGGER_MODE_INACTIVE ) host_debug.skip_execute = 0;
+  z80_do_opcodes_until( deadline, &host_debug );
+}
+
+int
+debugger_host_stopped( void )
+{
+  return host_debug.stopped;
+}
+
+fuse_host_operation_result
+fuse_host_debugger_copy_registers( processor *registers )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !registers ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( !host_debug.stopped ) return FUSE_HOST_OPERATION_NOT_READY;
+  *registers = z80;
+  return FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_debugger_continue( void )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !host_debug.stopped ) return FUSE_HOST_OPERATION_NOT_READY;
+  host_debug.stopped = 0;
+  debugger_resume_execution();
+  host_debug.skip_execute = debugger_mode == DEBUGGER_MODE_ACTIVE;
+  return FUSE_HOST_OPERATION_OK;
 }
 
 /* Exit from the last CALL etc by setting a oneshot breakpoint at

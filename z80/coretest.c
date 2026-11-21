@@ -455,7 +455,8 @@ void debugger_system_variable_register(
 }
 
 int
-debugger_trap( void )
+debugger_before_opcode( libspectrum_word pc GCC_UNUSED,
+                        struct z80_host_debug *host GCC_UNUSED )
 {
   abort();
 }

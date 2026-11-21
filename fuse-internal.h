@@ -27,6 +27,7 @@
 #include "fuse-tape.h"
 #include "fuse-filesystem.h"
 #include "fuse-joystick.h"
+#include "z80/z80.h"
 
 /* Private, selected-UI-bound engine lifecycle. Not an installed embedding API:
    toolkit/fatal-error policy still applies. Calls must be serialized on the
@@ -321,16 +322,18 @@ typedef enum fuse_run_result {
   FUSE_RUN_NOT_READY,
   FUSE_RUN_INVALID_ARGUMENT,
   FUSE_RUN_INTERRUPTED,
-  FUSE_RUN_NEEDS_DECISION
+  FUSE_RUN_NEEDS_DECISION,
+  FUSE_RUN_DEBUGGER_STOPPED
 } fuse_run_result;
 
 /* Advance to the next completed frame boundary (not necessarily a whole frame
    from the current position). Repeatable after READY, on the owner thread only.
    Returns after CPU/due-event dispatch, including the frame's interrupt/RZX/UI
    companions. Existing services/debugger may block without a latency bound.
-   EXITING takes precedence over NEEDS_DECISION, then PAUSED, then COMPLETED.
-   A paused entry or pending media decision advances no emulated time; the
-   host owns command handling and waiting between calls.
+   EXITING takes precedence over NEEDS_DECISION at entry, then DEBUGGER_STOPPED,
+   then PAUSED. None advances emulated time on entry. An execute breakpoint
+   can stop during dispatch before its opcode and before draining due events.
+   The host owns command handling and waiting between calls.
    Ordinary reset may occur during dispatch and does not cancel the turn.
    Recursive calls are BUSY; before preparation/after finalization or shutdown,
    calls are NOT_READY. No automatic shutdown or application result writing. */
@@ -343,10 +346,15 @@ fuse_run_result fuse_run_frame( void );
    Machine selection, snapshot restoration or debugger clock assignment during
    the call returns INTERRUPTED at a safe boundary; call again in the new state.
    A pending decision blocks entry, as in run_frame. After dispatch, EXITING
-   wins over INTERRUPTED, then PAUSED, then COMPLETED. Invalid budgets (or a
+   wins over DEBUGGER_STOPPED, then INTERRUPTED, PAUSED and COMPLETED. Invalid budgets (or a
    clock >=0x7fffffff) are rejected without execution. Phase rejection precedes
    argument validation; other lifecycle and blocking rules match run_frame. */
 fuse_run_result fuse_run_tstates( unsigned long budget );
+
+/* Available at a host execute-breakpoint stop. Output is a by-value copy. */
+fuse_host_operation_result fuse_host_debugger_copy_registers( processor *registers );
+/* Leave the stop and bypass the current execute check once. Does not run. */
+fuse_host_operation_result fuse_host_debugger_continue( void );
 
 /* End a prepared, completed or failed-operation session. No-op before preparation,
    after shutdown or during active preparation/execution/cleanup callbacks.

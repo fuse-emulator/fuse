@@ -52,6 +52,13 @@ void debugger_register_startup( void );
 
 void debugger_reset( void );
 
+struct z80_host_debug;
+/* Instruction-boundary debugger check. Return nonzero to stop the CPU batch. */
+int debugger_before_opcode( libspectrum_word pc, struct z80_host_debug *host );
+
+/* Host CPU dispatch and its stop condition, without the legacy debugger UI. */
+void debugger_host_run_batch( const libspectrum_dword *deadline );
+int debugger_host_stopped( void );
 int debugger_trap( void );	/* Activate the debugger */
 
 int debugger_step( void );	/* Single step */

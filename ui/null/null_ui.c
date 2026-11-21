@@ -90,10 +90,12 @@ ui_confirm_joystick( libspectrum_joystick libspectrum_type, int inputs )
   return UI_CONFIRM_JOYSTICK_NONE;
 }
 
+int null_ui_debugger_activate_calls;
+
 int
 ui_debugger_activate( void )
 {
-  /* No error */
+  null_ui_debugger_activate_calls++;
   return 0;
 }
 
