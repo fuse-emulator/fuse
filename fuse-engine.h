@@ -43,9 +43,13 @@ fuse_host_operation_result fuse_engine_validate_decision(
   fuse_media_decision_choice choice, const char *path, int save_requires_path );
 void fuse_engine_retire_decision( fuse_decision_owner owner );
 
-/* General File Open with host decisions for the tape branch. */
+/* General File Open with host decisions for tapes and floppies. */
 int utils_open_file_with_decision( const char *filename, int autoload,
                                    fuse_media_decision_id *request );
+struct ui_media_drive_info_t;
+int ui_media_drive_request_open( const struct ui_media_drive_info_t *drive,
+                                 libspectrum_file *file, int autoload,
+                                 fuse_media_decision_id *request );
 
 /* Only continuous legacy execution pumps the linked UI at frame completion. */
 int fuse_engine_pumps_frame_ui( void );

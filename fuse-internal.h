@@ -159,8 +159,9 @@ fuse_host_operation_result fuse_host_nmi( void );
    cancelled/no-op insertion; MEDIA_ERROR means legacy nonzero. No rollback,
    unchanged-state or safe-continuation promise on error; legacy fatal paths
    remain. This is not strict ID selection or the tape-only insertion intent. */
-/* A dirty tape returns NEEDS_DECISION; reply with answer_tape_eject.
-   Other results clear the request. Non-tape paths retain legacy behavior. */
+/* A dirty tape or floppy returns NEEDS_DECISION; reply with the matching
+   tape or disk eject answer. Other results clear the request. Other media
+   retain legacy behavior. */
 fuse_host_operation_result fuse_host_open_file( const char *filename,
                                                 fuse_media_decision_id *request );
 

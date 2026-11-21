@@ -549,7 +549,7 @@ check-host-operations: unittests/legacyenginelinktest unittests/legacyenginesour
 	  cd "$$tmp"; export HOME=. XDG_CONFIG_HOME=. USERPROFILE=. WINDIR=. APPDATA=.; \
 	  for consumer in legacyenginelinktest legacyenginesourcetest; do \
 	    for mode in success filesystem-oracle filesystem tape-contract tape-info trapped-recording snapshot-roundtrip autoload-success autoload-failure \
-	      open-auto open-noauto open-custom open-reset-failure open-snapshot open-fallback open-rzx-stop \
+	      open-auto open-noauto open-custom open-reset-failure open-snapshot open-fallback open-rzx-stop open-floppy \
 	      disk-save disk-save-beta \
 	      reset-failure select-failure peripheral-reset-failure peripheral-select-failure; do \
 	      "$$root/$$consumer$(EXEEXT)" --host-operations-test "$$mode" "$$roms"; \

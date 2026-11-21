@@ -984,6 +984,63 @@ write_disk_fixture( const char *filename )
   disk_close( &disk );
 }
 
+static int open_disk_autoloads;
+
+static int
+count_open_disk_autoload( void )
+{
+  const ui_media_drive_info_t *drive = ui_media_drive_find( FUSE_DISK_CONTROLLER_PLUS3, 0 );
+  assert( drive && drive->fdd->loaded );
+  open_disk_autoloads++;
+  return 0;
+}
+
+static void
+check_open_floppy( void )
+{
+  const fuse_disk_controller controller = FUSE_DISK_CONTROLLER_PLUS3;
+  ui_media_drive_info_t *drive = ui_media_drive_find( controller, 0 );
+  ui_media_drive_info_t *other = ui_media_drive_find( controller, 1 );
+  ui_media_drive_autoload_hook_fn original_autoload = drive->autoload_hook;
+  fuse_media_decision_id request;
+  int rom_requests;
+  int autoload = tape_can_autoload();
+  unsigned char dsk[1024] = "MV - CPCEMU Disk-File\r\nDisk-Info\r\n";
+  dsk[0x30] = dsk[0x31] = 1; /* One track, one side. */
+  dsk[0x33] = 3; /* 768 bytes per track, including the header. */
+  memcpy( dsk + 256, "Track-Info\r\n", 12 );
+  dsk[0x114] = dsk[0x11b] = 2; /* 512-byte sector. */
+  dsk[0x115] = 1;
+  dsk[0x11a] = 1;
+  assert( !utils_write_file( "incoming.dsk", dsk, sizeof( dsk ) ) );
+
+  assert( fuse_host_select_machine( "plus3" ) == OK );
+  assert( new_disk_without_decision( controller, 0 ) == OK );
+  assert( new_disk_without_decision( controller, 1 ) == OK );
+  assert( fuse_host_select_machine( "48" ) == OK );
+  drive->autoload_hook = count_open_disk_autoload;
+
+  assert( fuse_host_open_file( "incoming.dsk", &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
+  assert( machine_current->machine == LIBSPECTRUM_MACHINE_PLUS3 );
+  assert( fuse_run_frame() == FUSE_RUN_NEEDS_DECISION && !open_disk_autoloads );
+  rom_requests = provider.acquired;
+  assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_CANCEL, NULL ) ==
+          FUSE_HOST_OPERATION_CANCELLED );
+  assert( machine_current->machine == LIBSPECTRUM_MACHINE_PLUS3 && provider.acquired == rom_requests );
+  assert( drive->fdd->loaded && drive->fdd->disk.dirty && !drive->fdd->disk.filename );
+  assert( fuse_host_open_file( "incoming.dsk", &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
+  assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_SAVE,
+                                       "missing-directory/out.udi" ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( drive->fdd->loaded && drive->fdd->disk.dirty && !open_disk_autoloads );
+  assert( fuse_host_open_file( "incoming.dsk", &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
+  assert( !remove( "incoming.dsk" ) );
+  assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL ) == OK );
+  assert( provider.acquired == rom_requests && open_disk_autoloads == autoload );
+  assert( drive->fdd->loaded && !strcmp( drive->fdd->disk.filename, "incoming.dsk" ) );
+  assert( other->fdd->loaded && other->fdd->disk.dirty && !other->fdd->disk.filename );
+  drive->autoload_hook = original_autoload;
+}
+
 static void
 check_lifecycle_disk_file( void )
 {
@@ -1308,6 +1365,8 @@ host_operations_test( int argc, char **argv )
     check_lifecycle_disk_file();
   } else if( !strcmp( argv[1], "disk-save" ) || !strcmp( argv[1], "disk-save-beta" ) ) {
     check_disk_save( !strcmp( argv[1], "disk-save" ) ? FUSE_DISK_CONTROLLER_PLUS3 : FUSE_DISK_CONTROLLER_BETA );
+  } else if( !strcmp( argv[1], "open-floppy" ) ) {
+    check_open_floppy();
   } else if( !strncmp( argv[1], "open-", 5 ) ) {
     check_file_open( argv[1] );
   } else if( !strcmp( argv[1], "tape-contract" ) ) {

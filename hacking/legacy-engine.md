@@ -255,11 +255,14 @@ in the existing implementation. The host supplies a filename and command intent,
 not decoded bytes or a copy of the dispatch rules. There is no media-type gate.
 Native filename selection and command delivery/pause ownership stay with the host.
 
-A dirty outgoing tape returns NEEDS_DECISION and retains the identified input.
-Reply via `fuse_host_answer_tape_eject()`. RZX is stopped before identification;
-a reply does not repeat that work. Tape autoload runs only on installation, and
-companion POK lookup and display refresh run when the attempt completes.
-Non-tape branches retain their synchronous behavior.
+A dirty outgoing tape or floppy returns NEEDS_DECISION and retains the
+identified input. Reply via `fuse_host_answer_tape_eject()` or
+`fuse_host_answer_disk_eject()`. RZX stops before identification, and floppy
+controller selection and machine fallback occur before the request. A reply
+does not repeat that work. Cancel keeps the outgoing media but does not undo a
+machine change. Autoload runs only on installation; tape companion POK lookup
+and display refresh run when the attempt completes. Other branches retain
+their synchronous behavior.
 
 OK means the dispatcher completed, which in the legacy branches can include cancelled/no-op
 insertion; it does not prove replacement or program-loading completion. MEDIA_ERROR
@@ -409,8 +412,8 @@ if the drive is empty or clean, or return NEEDS_DECISION for a dirty disk. A new
 Insert or New returns BUSY while another media decision is pending. Use
 `fuse_host_answer_disk_eject()` to answer either request: only after Discard or
 successful Save does Fuse eject and install the replacement. An image decode
-failure after eject does not restore the old disk. Legacy Insert, New, and general
-File → Open keep their synchronous behavior.
+failure after eject does not restore the old disk. Legacy Insert, New, and
+File → Open menus keep their synchronous behavior.
 `fuse_host_eject_disk(controller,slot,&id)` ejects clean media, succeeds on an
 empty available drive, or returns NEEDS_DECISION for dirty media without a
 prompt. The request applies only to the current attachment in that drive.

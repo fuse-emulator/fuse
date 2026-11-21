@@ -94,7 +94,7 @@ automation_disk_controller_name( fuse_disk_controller controller )
 
 static int
 utils_insert_disk( fuse_disk_controller controller, utils_file *file,
-                   int autoload )
+                   int autoload, fuse_media_decision_id *request )
 {
   ui_media_drive_info_t *drive = ui_media_drive_find( controller, 0 );
 #ifdef ENABLE_AUTOMATION
@@ -104,7 +104,9 @@ utils_insert_disk( fuse_disk_controller controller, utils_file *file,
     automation_record_disk( file,
                             automation_disk_controller_name( controller ), 0 );
 #endif
-  return drive ? ui_media_drive_insert_file( drive, file, autoload ) : 1;
+  if( !drive ) return 1;
+  return request ? ui_media_drive_request_open( drive, file, autoload, request ) :
+                   ui_media_drive_insert_file( drive, file, autoload );
 }
 
 /* Open `filename' and do something sensible with it; autoload tapes
@@ -181,25 +183,25 @@ open_loaded_file( utils_file *file, int autoload, libspectrum_id_t *type_ptr,
       error = machine_select( LIBSPECTRUM_MACHINE_PLUS3 ); if( error ) break;
     }
 
-    error = utils_insert_disk( FUSE_DISK_CONTROLLER_PLUS3, file, autoload );
+    error = utils_insert_disk( FUSE_DISK_CONTROLLER_PLUS3, file, autoload, request );
     break;
 
   case LIBSPECTRUM_CLASS_DISK_DIDAKTIK:
 
-    error = utils_insert_disk( FUSE_DISK_CONTROLLER_DIDAKTIK, file, autoload );
+    error = utils_insert_disk( FUSE_DISK_CONTROLLER_DIDAKTIK, file, autoload, request );
     break;
 
   case LIBSPECTRUM_CLASS_DISK_PLUSD:
 
     if( periph_is_active( PERIPH_TYPE_DISCIPLE ) )
-      error = utils_insert_disk( FUSE_DISK_CONTROLLER_DISCIPLE, file, autoload );
+      error = utils_insert_disk( FUSE_DISK_CONTROLLER_DISCIPLE, file, autoload, request );
     else
-      error = utils_insert_disk( FUSE_DISK_CONTROLLER_PLUSD, file, autoload );
+      error = utils_insert_disk( FUSE_DISK_CONTROLLER_PLUSD, file, autoload, request );
     break;
 
   case LIBSPECTRUM_CLASS_DISK_OPUS:
 
-    error = utils_insert_disk( FUSE_DISK_CONTROLLER_OPUS, file, autoload );
+    error = utils_insert_disk( FUSE_DISK_CONTROLLER_OPUS, file, autoload, request );
     break;
 
   case LIBSPECTRUM_CLASS_DISK_TRDOS:
@@ -214,26 +216,26 @@ open_loaded_file( utils_file *file, int autoload, libspectrum_id_t *type_ptr,
     if( ( machine_current->capabilities & 
           LIBSPECTRUM_MACHINE_CAPABILITY_TRDOS_DISK ) ||
         periph_is_active( PERIPH_TYPE_BETA128 ) ) {
-      error = utils_insert_disk( FUSE_DISK_CONTROLLER_BETA, file, autoload );
+      error = utils_insert_disk( FUSE_DISK_CONTROLLER_BETA, file, autoload, request );
     }
     break;
 
   case LIBSPECTRUM_CLASS_DISK_GENERIC:
     if( machine_current->machine == LIBSPECTRUM_MACHINE_PLUS3 ||
         machine_current->machine == LIBSPECTRUM_MACHINE_PLUS2A )
-      error = utils_insert_disk( FUSE_DISK_CONTROLLER_PLUS3, file, autoload );
+      error = utils_insert_disk( FUSE_DISK_CONTROLLER_PLUS3, file, autoload, request );
     else if( machine_current->machine == LIBSPECTRUM_MACHINE_PENT ||
           machine_current->machine == LIBSPECTRUM_MACHINE_PENT512 ||
           machine_current->machine == LIBSPECTRUM_MACHINE_PENT1024 ||
           machine_current->machine == LIBSPECTRUM_MACHINE_SCORP )
-      error = utils_insert_disk( FUSE_DISK_CONTROLLER_BETA, file, autoload );
+      error = utils_insert_disk( FUSE_DISK_CONTROLLER_BETA, file, autoload, request );
     else
       if( periph_is_active( PERIPH_TYPE_BETA128 ) )
-        error = utils_insert_disk( FUSE_DISK_CONTROLLER_BETA, file, autoload );
+        error = utils_insert_disk( FUSE_DISK_CONTROLLER_BETA, file, autoload, request );
       else if( periph_is_active( PERIPH_TYPE_DISCIPLE ) )
-        error = utils_insert_disk( FUSE_DISK_CONTROLLER_DISCIPLE, file, autoload );
+        error = utils_insert_disk( FUSE_DISK_CONTROLLER_DISCIPLE, file, autoload, request );
       else if( periph_is_active( PERIPH_TYPE_PLUSD ) )
-        error = utils_insert_disk( FUSE_DISK_CONTROLLER_PLUSD, file, autoload );
+        error = utils_insert_disk( FUSE_DISK_CONTROLLER_PLUSD, file, autoload, request );
     break;
 
   case LIBSPECTRUM_CLASS_CARTRIDGE_IF2:
