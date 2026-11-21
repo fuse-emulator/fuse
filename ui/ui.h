@@ -117,6 +117,7 @@ int ui_mouse_grab( int startup ); /* UI: grab, return 1 if done */
 int ui_mouse_release( int suspend ); /* UI: ungrab, return 0 if done */
 
 /* Write the current tape out */
+int ui_tape_close( void ); /* Synchronous legacy eject; may prompt. */
 int ui_tape_write( void );
 
 int ui_mdr_write( int which, int saveas );

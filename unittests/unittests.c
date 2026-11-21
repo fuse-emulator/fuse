@@ -83,6 +83,7 @@
 #include "sound/ula_filter.h"
 #include "snapshot.h"
 #include "tape.h"
+#include "ui/ui.h"
 #include "bitmap.h"
 #include "rectangle.h"
 #include "compat.h"
@@ -3267,7 +3268,7 @@ utils_open_loaded_file_test( void )
       utils_file_open_count || utils_file_read_count ) r++;
 
   utils_file_free( &file );
-  tape_close();
+  ui_tape_close();
   compat_file_test_set_hooks( &utils_file_previous_vtable );
   if( r ) printf( "utils_open_loaded_file_test failed\n" );
   return r;

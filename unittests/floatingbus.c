@@ -49,6 +49,7 @@
 #include "snapshot.h"
 #include "spectrum.h"
 #include "tape.h"
+#include "ui/ui.h"
 #include "unittests.h"
 #include "z80/z80.h"
 #include "z80/z80_macros.h"
@@ -475,7 +476,7 @@ floatingbus_original_unittest( void )
               spectrum_get_frame_count() - frame, filename );
     }
     keyboard_release_all();
-    tape_close();
+    ui_tape_close();
   }
   settings_current.tape_traps = traps;
   settings_current.accelerate_loader = acceleration;
@@ -624,7 +625,7 @@ floatingbus_visual_unittest( void )
       settings_current.accelerate_loader = acceleration;
       error += run_visual( paths[which], directory, which, models[m] );
       keyboard_release_all();
-      tape_close();
+      ui_tape_close();
     }
   }
   settings_current.tape_traps = traps;

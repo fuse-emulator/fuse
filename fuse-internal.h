@@ -99,7 +99,10 @@ typedef enum fuse_host_operation_result {
   FUSE_HOST_OPERATION_NOT_READY,
   FUSE_HOST_OPERATION_EXITING,
   FUSE_HOST_OPERATION_FAILED,
-  FUSE_HOST_OPERATION_MEDIA_ERROR
+  FUSE_HOST_OPERATION_MEDIA_ERROR,
+  FUSE_HOST_OPERATION_NEEDS_DECISION,
+  FUSE_HOST_OPERATION_CANCELLED,
+  FUSE_HOST_OPERATION_STALE
 } fuse_host_operation_result;
 
 typedef enum fuse_host_reset_kind {
@@ -198,7 +201,15 @@ fuse_host_operation_result fuse_host_stop_tape( void );
 fuse_host_operation_result fuse_host_rewind_tape( void );
 fuse_host_operation_result fuse_host_select_tape_block( int block );
 fuse_host_operation_result fuse_host_save_tape_file( const char *filename );
-fuse_host_operation_result fuse_host_eject_tape( void );
+/* Prompt-free eject. NEEDS_DECISION sets a nonzero ID; all other results
+   clear it. Asking again about the same tape returns the outstanding ID. */
+fuse_host_operation_result fuse_host_request_tape_eject(
+  fuse_tape_eject_id *request );
+/* A valid reply consumes the request, even on a write failure. SAVE requires
+   a nonempty, host-authorized path; other choices require NULL. */
+fuse_host_operation_result fuse_host_answer_tape_eject(
+  fuse_tape_eject_id request, fuse_tape_eject_choice choice,
+  const char *filename );
 
 /* Record into the engine's tape, including an empty deck; no file sink here.
    Start requires tape traps disabled; enabled traps, missing tape object or
@@ -275,15 +286,17 @@ typedef enum fuse_run_result {
   FUSE_RUN_BUSY,
   FUSE_RUN_NOT_READY,
   FUSE_RUN_INVALID_ARGUMENT,
-  FUSE_RUN_INTERRUPTED
+  FUSE_RUN_INTERRUPTED,
+  FUSE_RUN_NEEDS_DECISION
 } fuse_run_result;
 
 /* Advance to the next completed frame boundary (not necessarily a whole frame
    from the current position). Repeatable after READY, on the owner thread only.
    Returns after CPU/due-event dispatch, including the frame's interrupt/RZX/UI
    companions. Existing services/debugger may block without a latency bound.
-   EXITING takes precedence over PAUSED, then COMPLETED. A paused call advances
-   no emulated time; the host owns command handling and waiting between calls.
+   EXITING takes precedence over NEEDS_DECISION, then PAUSED, then COMPLETED.
+   A paused entry or pending media decision advances no emulated time; the
+   host owns command handling and waiting between calls.
    Ordinary reset may occur during dispatch and does not cancel the turn.
    Recursive calls are BUSY; before preparation/after finalization or shutdown,
    calls are NOT_READY. No automatic shutdown or application result writing. */
@@ -295,10 +308,10 @@ fuse_run_result fuse_run_frame( void );
    deadline events to RZX's forced event dispatch. Ordinary reset continues.
    Machine selection, snapshot restoration or debugger clock assignment during
    the call returns INTERRUPTED at a safe boundary; call again in the new state.
-   EXITING wins over INTERRUPTED, then PAUSED, then COMPLETED. A paused entry
-   advances nothing. Invalid budgets (or a clock >=0x7fffffff) are rejected without
-   execution. Phase rejection precedes argument validation; other lifecycle and
-   blocking rules are the same as run_frame. */
+   A pending decision blocks entry, as in run_frame. After dispatch, EXITING
+   wins over INTERRUPTED, then PAUSED, then COMPLETED. Invalid budgets (or a
+   clock >=0x7fffffff) are rejected without execution. Phase rejection precedes
+   argument validation; other lifecycle and blocking rules match run_frame. */
 fuse_run_result fuse_run_tstates( unsigned long budget );
 
 /* End a prepared, completed or failed-operation session. No-op before preparation,

@@ -119,6 +119,13 @@ operation( const char *name, fuse_host_operation_result result )
   return 1;
 }
 
+static int
+eject_saved_tape( void )
+{
+  fuse_tape_eject_id request;
+  return operation( "eject saved tape", fuse_host_request_tape_eject( &request ) );
+}
+
 static void
 print_disk_info( const char *label, const fuse_disk_drive_info *info )
 {
@@ -203,6 +210,105 @@ done:
   return error;
 }
 
+/* A deterministic stand-in for commands from an independent UI loop. An idle
+   worker would wait on its command queue here rather than spinning on ticks. */
+static int
+parked_eject_demo( const char *output, unsigned int *completed )
+{
+  enum { RECORD, TICK, EJECT, RELEASE_INPUT, CANCEL, FAIL_SAVE, SAVE, REOPEN,
+         DISCARD };
+  static const int commands[] = {
+    RECORD, TICK, EJECT, RELEASE_INPUT, TICK, CANCEL, TICK,
+    EJECT, TICK, FAIL_SAVE, EJECT, SAVE, REOPEN, EJECT,
+    RECORD, TICK, EJECT, RECORD, TICK, EJECT, DISCARD
+  };
+  fuse_tape_eject_id waiting = 0, retired = 0, request;
+  fuse_host_operation_result result;
+  fuse_tape_info *info = NULL;
+  unsigned int parked_ticks = 0;
+  size_t i;
+
+  for( i = 0; i < sizeof( commands ) / sizeof( *commands ); i++ ) {
+    switch( commands[i] ) {
+    case TICK:
+      if( waiting ) {
+        /* Test the guard; a real worker would not issue these turns. */
+        if( fuse_run_frame() != FUSE_RUN_NEEDS_DECISION ||
+            fuse_run_tstates( 1000 ) != FUSE_RUN_NEEDS_DECISION ) goto fail;
+        parked_ticks++;
+      } else if( frames( 1, completed ) ) goto fail;
+      break;
+    case RELEASE_INPUT:
+      if( !waiting || operation( "parked focus loss", fuse_host_release_all() ) )
+        goto fail;
+      break;
+    case RECORD:
+      if( operation( "record", fuse_host_start_tape_recording() ) ) goto fail;
+      if( waiting ) {
+        retired = waiting;
+        waiting = 0;
+        if( fuse_host_answer_tape_eject( retired, FUSE_TAPE_EJECT_DISCARD,
+                                        NULL ) != FUSE_HOST_OPERATION_STALE )
+          goto fail;
+      }
+      break;
+    case EJECT:
+      result = fuse_host_request_tape_eject( &request );
+      if( result == FUSE_HOST_OPERATION_OK && !request ) break;
+      if( result != FUSE_HOST_OPERATION_NEEDS_DECISION || !request ||
+          request == retired ) goto fail;
+      waiting = request;
+      if( fuse_host_request_tape_eject( &request ) != result ||
+          request != waiting ) goto fail;
+      if( retired && fuse_host_answer_tape_eject( retired,
+            FUSE_TAPE_EJECT_DISCARD, NULL ) != FUSE_HOST_OPERATION_STALE )
+        goto fail;
+      break;
+    case REOPEN:
+      if( operation( "reopen saved tape", fuse_host_insert_tape_file( output ) ) ||
+          fuse_host_answer_tape_eject( retired, FUSE_TAPE_EJECT_DISCARD,
+                                       NULL ) != FUSE_HOST_OPERATION_STALE )
+        goto fail;
+      break;
+    case CANCEL:
+    case FAIL_SAVE:
+    case SAVE:
+    case DISCARD:
+      if( !waiting ) goto fail;
+      result = fuse_host_answer_tape_eject( waiting,
+        commands[i] == CANCEL ? FUSE_TAPE_EJECT_CANCEL :
+        commands[i] == DISCARD ? FUSE_TAPE_EJECT_DISCARD : FUSE_TAPE_EJECT_SAVE,
+        commands[i] == FAIL_SAVE ? "missing-directory/recorded.pzx" :
+        commands[i] == SAVE ? output : NULL );
+      retired = waiting;
+      waiting = 0;
+      if( result != ( commands[i] == CANCEL ? FUSE_HOST_OPERATION_CANCELLED :
+                      commands[i] == FAIL_SAVE ? FUSE_HOST_OPERATION_MEDIA_ERROR :
+                                                   FUSE_HOST_OPERATION_OK ) )
+        goto fail;
+      if( fuse_host_answer_tape_eject( retired, FUSE_TAPE_EJECT_DISCARD,
+                                      NULL ) != FUSE_HOST_OPERATION_STALE )
+        goto fail;
+      if( operation( "eject observation", fuse_host_copy_tape_info( &info ) ) )
+        goto fail;
+      if( info->recording ||
+          info->present != ( commands[i] == CANCEL || commands[i] == FAIL_SAVE ) ||
+          info->modified != info->present ) goto fail;
+      fuse_tape_info_free( info );
+      info = NULL;
+      break;
+    }
+  }
+  if( waiting || parked_ticks != 2 || *completed != 4 ) goto fail;
+  puts( "host: parked for eject; handled focus loss; checked cancel, save and stale replies" );
+  return 0;
+
+fail:
+  fuse_tape_info_free( info );
+  fputs( "host: parked tape eject scenario failed\n", stderr );
+  return 1;
+}
+
 int
 main( int argc, char **argv )
 {
@@ -218,6 +324,7 @@ main( int argc, char **argv )
   int queued_input = argc == 3 && !strcmp( argv[2], "--queued-input" );
   int disk_lifecycle = argc == 4 && !strcmp( argv[2], "--disk-lifecycle" );
   int tape_record = argc == 4 && !strcmp( argv[2], "--record-tape" );
+  int parked_eject = argc == 4 && !strcmp( argv[2], "--parked-tape-eject" );
   int snapshot_save = argc == 4 && !strcmp( argv[2], "--save-snapshot" );
   int filesystem = argc == 4 && !strcmp( argv[2], "--filesystem" );
   int divmmc = argc == 4 && !strcmp( argv[2], "--divmmc" );
@@ -227,12 +334,12 @@ main( int argc, char **argv )
   int tape_lifecycle = argc == 5 && !strcmp( argv[2], "--tape-lifecycle" );
 
   if( ( argc != 2 && argc != 3 && argc != 4 && argc != 5 ) ||
-      ( argc == 4 && strcmp( argv[2], "--open" ) && !disk_lifecycle && !tape_record && !snapshot_save && !filesystem && !divmmc ) ||
+      ( argc == 4 && strcmp( argv[2], "--open" ) && !disk_lifecycle && !tape_record && !parked_eject && !snapshot_save && !filesystem && !divmmc ) ||
       ( argc == 5 && !disk_save && !tape_lifecycle ) ||
       ( argc == 3 && ( !strcmp( argv[2], "--open" ) || !strcmp( argv[2], "--save-disk" ) ||
                       !strcmp( argv[2], "--disk-lifecycle" ) || !strcmp( argv[2], "--tape-lifecycle" ) ||
-                      !strcmp( argv[2], "--record-tape" ) || !strcmp( argv[2], "--save-snapshot" ) || !strcmp( argv[2], "--filesystem" ) || !strcmp( argv[2], "--divmmc" ) ) ) ) {
-    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --queued-input]\n", argv[0] );
+                      !strcmp( argv[2], "--record-tape" ) || !strcmp( argv[2], "--parked-tape-eject" ) || !strcmp( argv[2], "--save-snapshot" ) || !strcmp( argv[2], "--filesystem" ) || !strcmp( argv[2], "--divmmc" ) ) ) ) {
+    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --queued-input]\n", argv[0] );
     return EXIT_FAILURE;
   }
   if( filesystem || divmmc ) {
@@ -248,7 +355,7 @@ main( int argc, char **argv )
   config = fuse_host_config_alloc();
   if( fuse_host_config_set_machine( config, disk_save || disk_lifecycle ? "plus3" : "48" ) ||
       fuse_host_config_set_sound( config, 0 ) ||
-      ( tape_record && fuse_host_config_set_tape_traps( config, 0 ) ) ||
+      ( ( tape_record || parked_eject ) && fuse_host_config_set_tape_traps( config, 0 ) ) ||
       ( filesystem && fuse_host_config_set_auto_load( config, 0 ) ) ||
       ( divmmc && fuse_host_config_set_divmmc( config, 1 ) ) ||
       fuse_host_config_set_joystick( config, FUSE_HOST_JOYSTICK_1,
@@ -265,6 +372,10 @@ main( int argc, char **argv )
   }
   prepared = 1;
   puts( disk_save || disk_lifecycle ? "host: prepared plus3" : "host: prepared 48" );
+  if( parked_eject ) {
+    if( !parked_eject_demo( argv[3], &frame_turns ) ) status = EXIT_SUCCESS;
+    goto cleanup;
+  }
   if( queued_input ) {
     if( !queued_input_demo( &frame_turns ) ) status = EXIT_SUCCESS;
     goto cleanup;
@@ -288,7 +399,7 @@ main( int argc, char **argv )
   if( filesystem ) {
     if( operation( "filesystem Tape Open", fuse_host_open_file( "media/input.tap" ) ) ||
         operation( "filesystem tape save", fuse_host_save_tape_file( "media/copy.pzx" ) ) ||
-        operation( "tape eject", fuse_host_eject_tape() ) ||
+        eject_saved_tape() ||
         operation( "filesystem tape reopen", fuse_host_open_file( "media/copy.pzx" ) ) ||
         frames( 2, &frame_turns ) ||
         operation( "filesystem snapshot save", fuse_host_save_snapshot_file( "media/state.szx" ) ) ||
@@ -337,7 +448,7 @@ main( int argc, char **argv )
         operation( "stop tape recording", fuse_host_stop_tape_recording() ) ||
         operation( "save recorded tape", fuse_host_save_tape_file( argv[3] ) ) ||
         operation( "saved tape info", fuse_host_copy_tape_info( &saved_tape_info ) ) ||
-        operation( "tape eject", fuse_host_eject_tape() ) ) goto cleanup;
+        eject_saved_tape() ) goto cleanup;
     print_tape_info( "saved recorded tape copy", saved_tape_info );
     puts( "host: recorded two frames; saved and ejected tape" );
     status = EXIT_SUCCESS;
@@ -356,7 +467,7 @@ main( int argc, char **argv )
         operation( "tape rewind", fuse_host_rewind_tape() ) ||
         operation( "tape save", fuse_host_save_tape_file( argv[4] ) ) ||
         operation( "saved tape info", fuse_host_copy_tape_info( &saved_tape_info ) ) ||
-        operation( "tape eject", fuse_host_eject_tape() ) ||
+        eject_saved_tape() ||
         operation( "empty tape info", fuse_host_copy_tape_info( &tape_info ) ) ) goto cleanup;
     print_tape_info( "saved tape copy", saved_tape_info );
     print_tape_info( "ejected tape copy", tape_info );

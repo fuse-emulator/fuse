@@ -36,6 +36,7 @@
 #include "spectrum.h"
 #include "tape.h"
 #include "tape_internals.h"
+#include "ui/ui.h"
 #include "utils.h"
 #include "z80/z80.h"
 #include "z80/z80_macros.h"
@@ -702,7 +703,7 @@ tape_record_lifecycle_unittest( void )
     if( action == 0 ) error |= machine_reset( 0 );
     else if( action == 1 ) error |= machine_select( LIBSPECTRUM_MACHINE_128 );
     else if( action == 2 ) error |= snapshot_copy_from( snap );
-    else error |= tape_close();
+    else error |= ui_tape_close();
     error |= tape_recording;
     block = libspectrum_tape_current_block( tape );
     if( action == 3 ) error |= libspectrum_tape_present( tape );

@@ -374,6 +374,7 @@ fuse_run_frame( void )
       legacy_ownership.phase == LEGACY_STOPPING ) return FUSE_RUN_BUSY;
   if( legacy_ownership.phase != LEGACY_READY ) return FUSE_RUN_NOT_READY;
   if( fuse_exiting ) return FUSE_RUN_EXITING;
+  if( tape_eject_pending() ) return FUSE_RUN_NEEDS_DECISION;
   if( fuse_emulation_paused ) return FUSE_RUN_PAUSED;
 
   legacy_ownership.phase = LEGACY_RUNNING;
@@ -405,6 +406,7 @@ fuse_run_tstates( unsigned long budget )
   if( !budget || budget > 0x7fffffffUL || tstates >= 0x7fffffffUL )
     return FUSE_RUN_INVALID_ARGUMENT;
   if( fuse_exiting ) return FUSE_RUN_EXITING;
+  if( tape_eject_pending() ) return FUSE_RUN_NEEDS_DECISION;
   if( fuse_emulation_paused ) return FUSE_RUN_PAUSED;
 
   legacy_ownership.phase = LEGACY_RUNNING;
@@ -452,7 +454,8 @@ int
 fuse_legacy_execute( int *exit_status )
 {
   int r;
-  if( legacy_ownership.phase != LEGACY_READY || !exit_status ) return 1;
+  if( legacy_ownership.phase != LEGACY_READY || !exit_status ||
+      tape_eject_pending() ) return 1;
   legacy_ownership.phase = LEGACY_RUNNING;
 #ifdef FUSE_STARTUP_TEST
   fuse_startup_test_running();

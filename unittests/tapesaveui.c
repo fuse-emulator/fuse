@@ -16,6 +16,8 @@
    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 #define tape_write test_tape_save_write
+#define tape_resolve_eject test_tape_resolve_eject
+#define tape_finish_eject test_tape_finish_eject
 #define ui_get_save_filename test_tape_save_filename
 #define ui_confirm_save_specific test_tape_save_confirm
 #include "../ui.c"

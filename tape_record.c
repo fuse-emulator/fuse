@@ -67,6 +67,7 @@ tape_record_start( void )
   capacity = 1024;
   durations = libspectrum_new( libspectrum_qword, capacity );
   tape_recording = 1;
+  tape_invalidate_eject_request();
   ui_menu_activate( UI_MENU_ITEM_TAPE_RECORDING, 1 );
   return 0;
 }

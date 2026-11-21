@@ -40,6 +40,7 @@
 #include "peripherals/kempmouse.h"
 #include "settings.h"
 #include "tape.h"
+#include "tape_internals.h"
 #include "ui/ui.h"
 #include "ui/ui_internals.h"
 #include "ui/uidisplay.h"
@@ -801,6 +802,41 @@ ui_menu_disk_update( void )
   }
 
   ui_media_drive_update_parent_menus();
+}
+
+/* Synchronous legacy adapter. It also runs inside tape replacement, where
+   the guarded host entry points cannot be called again. */
+int
+ui_tape_close( void )
+{
+  fuse_tape_eject_id request;
+  fuse_host_operation_result result;
+  int error;
+  char *filename;
+
+  error = tape_prepare_eject( &request );
+  if( error ) return error;
+  if( !request ) return tape_finish_eject();
+
+  switch( ui_confirm_save( "Tape has been modified.\nDo you want to save it?" ) ) {
+  case UI_CONFIRM_SAVE_SAVE:
+    fuse_emulation_pause();
+    filename = ui_get_save_filename( "Fuse - Write Tape" );
+    result = tape_resolve_eject( request, filename ? FUSE_TAPE_EJECT_SAVE :
+                                FUSE_TAPE_EJECT_CANCEL, filename, &error );
+    libspectrum_free( filename );
+    fuse_emulation_unpause();
+    break;
+  case UI_CONFIRM_SAVE_DONTSAVE:
+    result = tape_resolve_eject( request, FUSE_TAPE_EJECT_DISCARD, NULL, &error );
+    break;
+  case UI_CONFIRM_SAVE_CANCEL:
+  default:
+    result = tape_resolve_eject( request, FUSE_TAPE_EJECT_CANCEL, NULL, &error );
+    break;
+  }
+  if( result != FUSE_HOST_OPERATION_OK ) return error ? error : 1;
+  return tape_finish_eject();
 }
 
 int

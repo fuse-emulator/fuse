@@ -371,6 +371,9 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	  printf '%s\n' 'host: prepared 48' \
 	    'host: keyboard read saw queued Space press; next frame drained release' \
 	    'host: shutdown; frame turns=2; budget turns=0; ROM requests=1; releases=1' > expected-queued-input; \
+	  printf '%s\n' 'host: prepared 48' \
+	    'host: parked for eject; handled focus loss; checked cancel, save and stale replies' \
+	    'host: shutdown; frame turns=4; budget turns=0; ROM requests=1; releases=1' > expected-parked-eject; \
 	  printf '%s\n' 'host: prepared 48' 'host: inserted tape; deck stopped' \
 	    'host: shutdown; frame turns=5; budget turns=0; ROM requests=1; releases=1' > expected-tape; \
 	  printf '%s\n' 'host: prepared 48' 'host: File Open returned legacy success' \
@@ -413,6 +416,8 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    cmp expected "$$consumer-valid.out"; \
 	    "$$program" empty --queued-input > "$$consumer-queued-input.out" 2> "$$consumer-queued-input.err"; \
 	    cmp expected-queued-input "$$consumer-queued-input.out"; \
+	    "$$program" only48 --parked-tape-eject parked.pzx > "$$consumer-parked.out" 2> "$$consumer-parked.err"; \
+	    cmp expected-parked-eject "$$consumer-parked.out"; rm parked.pzx; \
 	    "$$program" only48 sample.tap > "$$consumer-tape.out" 2> "$$consumer-tape.err"; \
 	    cmp expected-tape "$$consumer-tape.out"; \
 	    "$$program" only48 --open sample.tap > "$$consumer-open.out" 2> "$$consumer-open.err"; \

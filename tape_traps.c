@@ -630,6 +630,7 @@ tape_save_trap( void )
   }
 
   tape_modified = 1;
+  tape_invalidate_eject_request();
   ui_tape_browser_update( UI_TAPE_BROWSER_NEW_BLOCK, block );
 
   /* And then return via the RET at #053E, except on Timex 2068 at #00E4 */

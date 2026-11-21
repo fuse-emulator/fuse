@@ -406,7 +406,7 @@ MENU_CALLBACK( menu_media_tape_rewind )
 MENU_CALLBACK( menu_media_tape_clear )
 {
   ui_widget_finish();
-  tape_close();
+  ui_tape_close();
 }
 
 MENU_CALLBACK( menu_media_tape_write )
@@ -1036,7 +1036,7 @@ menu_check_media_changed( void )
 {
   int confirm, i;
 
-  confirm = tape_close(); if( confirm ) return 1;
+  confirm = ui_tape_close(); if( confirm ) return 1;
 
   confirm = ui_media_drive_eject_all();
   if( confirm ) return 1;

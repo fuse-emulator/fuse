@@ -31,7 +31,8 @@ fuse_init_result fuse_legacy_prepare( int argc, char **argv );
 
 /* Run the blocking legacy loop once after READY, optionally after host turns.
    Zero means accepted; the application exit status is written separately.
-   Rejection leaves it alone. This finalizes application automation output once;
+   Rejection (including a pending host decision) leaves it alone. This
+   finalizes application automation output once;
    subsequent execution is rejected. Not cooperative execution. */
 int fuse_legacy_execute( int *exit_status );
 

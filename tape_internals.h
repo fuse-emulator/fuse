@@ -11,6 +11,7 @@
 #define FUSE_TAPE_INTERNALS_H
 
 #include "libspectrum.h"
+#include "fuse-internal.h"
 
 extern libspectrum_tape *tape;
 extern int tape_autoplay;
@@ -33,6 +34,18 @@ int tape_trap_load_block( libspectrum_tape_block *block,
                           size_t *bytes_consumed );
 void tape_update_microphone( const libspectrum_tape_edge *edge );
 
+/* Shared by guarded host operations and the synchronous UI adapter. Prepare
+   finalizes recording; a zero ID means no decision is needed. Resolve consumes
+   the answer and writes on Save, but leaves teardown to the caller, so legacy
+   can release its Save pause before stopping playback and clearing the tape. */
+int tape_prepare_eject( fuse_tape_eject_id *request );
+fuse_host_operation_result tape_resolve_eject(
+  fuse_tape_eject_id request, fuse_tape_eject_choice choice,
+  const char *filename, int *write_error );
+int tape_finish_eject( void );
+
+/* Invalidate a pending eject when a new recording starts or ROM SAVE appends. */
+void tape_invalidate_eject_request( void );
 void tape_record_init( libspectrum_tape *current_tape );
 void tape_record_set_tape( libspectrum_tape *current_tape );
 void tape_record_edge( int level );

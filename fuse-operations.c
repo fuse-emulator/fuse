@@ -373,18 +373,6 @@ fuse_host_save_tape_file( const char *filename )
 }
 
 fuse_host_operation_result
-fuse_host_eject_tape( void )
-{
-  int error;
-  fuse_host_operation_result result = fuse_engine_check_operation();
-  if( result != FUSE_HOST_OPERATION_OK ) return result;
-  fuse_engine_begin_operation();
-  error = tape_close();
-  fuse_engine_end_operation();
-  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
-}
-
-fuse_host_operation_result
 fuse_host_start_tape_recording( void )
 {
   int error;

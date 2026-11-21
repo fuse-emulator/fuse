@@ -107,6 +107,7 @@ block_count( void )
 static void
 check_failure( int host, int failed_append )
 {
+  fuse_tape_eject_id request;
   int kept = failed_append - 1;
   assert( !tape_present() && !tape_recording );
   tape_modified = 0; append_calls = 0; fail_at = failed_append;
@@ -128,10 +129,10 @@ check_failure( int host, int failed_append )
   assert( !recording_call( host, 0 ) && block_count() == kept + 1 );
   assert( fuse_host_save_tape_file( "recovered.pzx" ) == FUSE_HOST_OPERATION_OK );
   assert( !tape_modified );
-  assert( fuse_host_eject_tape() == FUSE_HOST_OPERATION_OK );
+  assert( fuse_host_request_tape_eject( &request ) == FUSE_HOST_OPERATION_OK && !request );
   assert( fuse_host_insert_tape_file( "recovered.pzx" ) == FUSE_HOST_OPERATION_OK );
   assert( tape_present() );
-  assert( fuse_host_eject_tape() == FUSE_HOST_OPERATION_OK );
+  assert( fuse_host_request_tape_eject( &request ) == FUSE_HOST_OPERATION_OK && !request );
   assert( !remove( "recovered.pzx" ) );
 }
 

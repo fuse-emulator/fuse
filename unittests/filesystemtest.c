@@ -130,6 +130,7 @@ filesystem_tests( void )
   compat_fd handle;
   unsigned char buffer[8], *expected;
   size_t length, count, closed;
+  fuse_tape_eject_id request;
 
   z80.pc.w = 0x8000; z80.sp.w = 0x9000; writebyte_internal( 0x8100, 0x5a );
   file_bytes( "fs-oracle.szx", &expected, &length );
@@ -180,7 +181,8 @@ filesystem_tests( void )
   assert( tape_present() && !tape_is_playing() && !pokemem_autoload_pokfile() );
   filesystem.unreadable_name = NULL;
   assert( fuse_host_save_tape_file( "media/copy.pzx" ) == OK );
-  assert( fuse_host_eject_tape() == OK && fuse_host_open_file( "media/copy.pzx" ) == OK );
+  assert( fuse_host_request_tape_eject( &request ) == OK && !request );
+  assert( fuse_host_open_file( "media/copy.pzx" ) == OK );
   assert( fuse_host_save_snapshot_file( "media/state.szx" ) == OK );
   file = memory_find( "media/state.szx" );
   assert( file && file->length == length && !memcmp( file->data, expected, length ) );

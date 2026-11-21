@@ -166,6 +166,7 @@ change input refresh at emulated port reads.
 | Result | Meaning |
 | --- | --- |
 | COMPLETED | Requested frame boundary or budget reached. Budget completion does not imply a completed frame. |
+| NEEDS_DECISION | A pending media decision blocks execution. No emulated time advances. |
 | PAUSED | No execution on paused entry, or execution paused during dispatch. |
 | INTERRUPTED | An active budget's machine/clock state was replaced; reconsider the next request in the new state. |
 | EXITING | Exit requested inside the engine. |
@@ -317,9 +318,26 @@ interval reset before a failed selection).
 `fuse_host_save_tape_file(path)` borrows the target and keeps format inference,
 TZX fallback, recording finalization and encoding in the engine. It need not stop
 playback; failure can follow recording finalization and is not a rollback.
-`fuse_host_eject_tape()` finalizes recording then uses Save/Discard/Cancel, retaining
-media on cancellation or failed Save. These entries own admission/completion;
-selected-UI decisions may block.
+
+`fuse_host_request_tape_eject(&id)` does not prompt.
+It finalizes recording first, then ejects a clean tape or returns NEEDS_DECISION
+with a nonzero ID. Repeating the request for the same tape returns the same ID.
+Answer with `fuse_host_answer_tape_eject(id, choice, path)`: Cancel leaves the
+tape loaded without restarting recording; Discard ejects; Save requires a
+host-authorized destination and ejects only after a successful write. A valid
+answer consumes the ID, including on write failure. A failed write leaves the
+tape loaded and dirty, but can leave partial output. Replaced or modified tape
+contents, a new recording, or a successful separate save retire the ID; cursor
+and playback changes alone do not. Shutdown drops outstanding decisions.
+
+While an eject decision is pending, frame and T-state turns return
+NEEDS_DECISION without advancing emulated time. The host stops scheduling turns
+and keeps processing commands. Clearing the decision does not release any
+existing pause. The null host's `--parked-tape-eject OUTPUT` demonstrates this
+with scripted loop iterations and a fresh PZX output path. Legacy eject and
+tape replacement use `ui_tape_close()` in `ui.c`, which supplies the existing
+prompt and picker to the same decision logic. The adapter releases its Save
+pause before stopping playback and clearing the tape.
 
 With tape traps enabled, ROM SAVE automatically appends decoded blocks; no manual
 recording command is needed. `fuse_host_config_set_tape_traps` supplies the existing
@@ -518,7 +536,7 @@ Null-UI builds include these checks in `make check`:
 | `check-host-prepare` | Configuration, all eight joystick interfaces on three slots, invalid inputs, ROM ownership/provenance and preference isolation. |
 | `check-host-operations` | Typed machine/input behaviour, tape and +3/Beta disk lifecycle, File Open eligibility/restore/RZX stop, admission and errors. |
 | `check-snapshot-file` | Host/legacy chosen-target saves: formats/fallback/overwrite, codec/write/close failures and allocation cleanup, nested pauses/reentry and RZX pause side effects. |
-| `check-tape-save-ui` | UI Save and host eject retain modified/playing tape on failed/cancelled Save, nested pause ownership and re-entry rejection. |
+| `check-tape-save-ui` | Legacy Save/eject retain modified tape on failed or cancelled Save; pause ownership and host replacement re-entry are checked. |
 | `check-tape-recording` | Recorder append failures before/after partial progress, cleanup/retention, subsequent work and selected-menu re-entry under nested pause. |
 | `check-floppy-save-ui` | Host/legacy lifecycle, decisions/failure retention, flags and owned observation lifetime across changes/shutdown, nested/unpaused. |
 | `check-null-host` | Direct input/Open/tape/disk lifecycle flows, ROM/media failures, saved image/legacy comparison and preference isolation in both linking forms. |

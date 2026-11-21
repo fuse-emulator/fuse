@@ -59,6 +59,22 @@ libspectrum_tape *tape;
 /* Has the current tape been modified since it was last loaded/saved? */
 int tape_modified;
 
+/* Only one request applies to the current tape. Invalidation retires it;
+   the sequence is not reset at tape teardown. */
+static fuse_tape_eject_id pending_eject, eject_sequence;
+
+int
+tape_eject_pending( void )
+{
+  return pending_eject != 0;
+}
+
+void
+tape_invalidate_eject_request( void )
+{
+  pending_eject = 0;
+}
+
 /* Is the emulated tape deck playing? */
 int tape_playing;
 
@@ -154,6 +170,7 @@ static void
 tape_end( void )
 {
   if( tape_recording ) tape_record_stop();
+  tape_invalidate_eject_request();
   libspectrum_tape_free( tape );
   tape = NULL;
 }
@@ -194,9 +211,10 @@ tape_read_buffer( unsigned char *buffer, size_t length, libspectrum_id_t type,
   int error;
 
   if( libspectrum_tape_present( tape ) ) {
-    error = tape_close(); if( error ) return error;
+    error = ui_tape_close(); if( error ) return error;
   }
 
+  tape_invalidate_eject_request();
   error = libspectrum_tape_read( tape, buffer, length, type, filename );
   if( error ) return error;
 
@@ -216,34 +234,29 @@ tape_read_buffer( unsigned char *buffer, size_t length, libspectrum_id_t type,
   return 0;
 }
 
-/* Close the active tape file */
 int
-tape_close( void )
+tape_prepare_eject( fuse_tape_eject_id *request )
 {
   int error;
-  ui_confirm_save_t confirm;
 
+  *request = 0;
   if( tape_recording ) {
-    error = tape_record_stop();
-    if( error ) return error;
+    error = tape_record_stop(); if( error ) return error;
   }
-
-  /* If the tape has been modified, check if we want to do this */
   if( tape_modified ) {
-
-    confirm =
-      ui_confirm_save( "Tape has been modified.\nDo you want to save it?" );
-    switch( confirm ) {
-
-    case UI_CONFIRM_SAVE_SAVE:
-      error = ui_tape_write(); if( error ) return error;
-      break;
-
-    case UI_CONFIRM_SAVE_DONTSAVE: break;
-    case UI_CONFIRM_SAVE_CANCEL: return 1;
-
+    if( !pending_eject ) {
+      if( ++eject_sequence == 0 ) ++eject_sequence;
+      pending_eject = eject_sequence;
     }
+    *request = pending_eject;
   }
+  return 0;
+}
+
+int
+tape_finish_eject( void )
+{
+  int error;
 
   /* Stop the tape if it's currently playing */
   if( tape_playing ) {
@@ -252,6 +265,7 @@ tape_close( void )
   }
 
   /* And then remove it from memory */
+  tape_invalidate_eject_request();
   error = libspectrum_tape_clear( tape );
   if( error ) return error;
 
@@ -263,6 +277,71 @@ tape_close( void )
   ui_tape_browser_update( UI_TAPE_BROWSER_NEW_TAPE, NULL );
 
   return 0;
+}
+
+fuse_host_operation_result
+fuse_host_request_tape_eject( fuse_tape_eject_id *request )
+{
+  fuse_host_operation_result result;
+
+  if( !request ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *request = 0;
+  result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+
+  fuse_engine_begin_operation();
+  if( tape_prepare_eject( request ) ) {
+    result = FUSE_HOST_OPERATION_MEDIA_ERROR;
+  } else if( *request ) {
+    result = FUSE_HOST_OPERATION_NEEDS_DECISION;
+  } else if( tape_finish_eject() ) {
+    result = FUSE_HOST_OPERATION_MEDIA_ERROR;
+  }
+  fuse_engine_end_operation();
+  return result;
+}
+
+fuse_host_operation_result
+tape_resolve_eject( fuse_tape_eject_id request, fuse_tape_eject_choice choice,
+                    const char *filename, int *write_error )
+{
+  *write_error = 0;
+  if( !request || request != pending_eject ) return FUSE_HOST_OPERATION_STALE;
+  switch( choice ) {
+  case FUSE_TAPE_EJECT_SAVE:
+    if( !filename || !*filename ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+    break;
+  case FUSE_TAPE_EJECT_CANCEL:
+  case FUSE_TAPE_EJECT_DISCARD:
+    if( filename ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+    break;
+  default:
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  }
+
+  tape_invalidate_eject_request();
+  if( choice == FUSE_TAPE_EJECT_CANCEL ) return FUSE_HOST_OPERATION_CANCELLED;
+  if( choice == FUSE_TAPE_EJECT_SAVE ) {
+    *write_error = tape_write( filename );
+    if( *write_error ) return FUSE_HOST_OPERATION_MEDIA_ERROR;
+  }
+  return FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_answer_tape_eject( fuse_tape_eject_id request,
+                            fuse_tape_eject_choice choice, const char *filename )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  int write_error;
+
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  fuse_engine_begin_operation();
+  result = tape_resolve_eject( request, choice, filename, &write_error );
+  if( result == FUSE_HOST_OPERATION_OK && tape_finish_eject() )
+    result = FUSE_HOST_OPERATION_MEDIA_ERROR;
+  fuse_engine_end_operation();
+  return result;
 }
 
 /* Rewind to block 0, if any */
@@ -346,6 +425,7 @@ tape_write( const char* filename )
   if( error ) { libspectrum_free( buffer ); return error; }
 
   tape_modified = 0;
+  tape_invalidate_eject_request();
   ui_tape_browser_update( UI_TAPE_BROWSER_MODIFIED, NULL );
 
   libspectrum_free( buffer );
