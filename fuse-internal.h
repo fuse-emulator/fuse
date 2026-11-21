@@ -241,8 +241,9 @@ fuse_host_operation_result fuse_host_copy_tape_info( fuse_tape_info **info );
    Unavailable/disabled drives return MEDIA_ERROR; unknown slots are invalid. */
 fuse_host_operation_result fuse_host_insert_disk_file( fuse_disk_controller controller,
   int slot, const char *filename, fuse_media_decision_id *request );
-/* Save uses a borrowed target, or NULL for the retained target. Existing
-   overwrite questions may block; there is no atomic-write guarantee. */
+/* Save uses a borrowed host-authorized target, or NULL for the retained target.
+   No chooser or overwrite prompt. An existing target can be replaced;
+   there is no atomic-write guarantee. */
 fuse_host_operation_result fuse_host_save_disk_file( fuse_disk_controller controller,
                                                     int slot, const char *filename );
 /* New uses configured geometry and controller insertion hooks (including +3

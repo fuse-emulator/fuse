@@ -373,16 +373,12 @@ from dirty/playing/recording flags. It is not a complete emulator status API.
 
 ## Shared floppy save implementation
 
-`ui_media_drive_save` retains the selected-UI filename chooser. The private engine
-save adapter takes a chosen path, borrowed through return; NULL uses the retained
-target and fails if unnamed. It does not invoke a chooser. Both paths share static
-format/overwrite/write/filename mechanics and post-pause result/dirty handling.
-The chooser keeps its own filename lifetime and pause interval, without adding a
-nested pause at write. There is no separate descriptor-taking chosen-target entry.
-
-These remain selected-UI-bound implementation mechanics, not host-facing mutable
-drive descriptors. Overwrite questions can block, and existing cancellation/type
-mutation and non-atomic file-write behaviour remain.
+`ui_media_drive_save` retains the selected-UI filename chooser and overwrite
+confirmation. The host save path borrows an already authorized destination
+through return and does not prompt. NULL uses the retained target and fails if
+unnamed. Direct host Save and a Save reply to a media decision share the same
+write and pause handling. Both legacy and host paths share format selection,
+filename updates and dirty-state handling. Writes are not atomic.
 
 `fuse_host_insert_disk_file(controller,slot,path,&id)` supplies the explicit
 Media insert intent, without autoload or machine selection. It reads and retains
@@ -487,8 +483,8 @@ legacy return, not that the file replaced media or that loading finished.
 `--save-disk INPUT OUTPUT` prepares a +3, explicitly inserts into slot 0 and saves
 through the host controller/slot API, without running the CPU. The core reads and
 encodes the image; the host does not handle disk bytes. This requires the four
-`plus3-*.rom` files. Existing-output decisions remain selected-UI policy (the null
-adapter declines overwrite); use a fresh output path for a successful example.
+`plus3-*.rom` files. The supplied output path is treated as authorized and can
+overwrite an existing file.
 `--disk-lifecycle OUTPUT` demonstrates New, flip/unflip, WP on/off, Save and eject
 on +3 slot 0 without running the CPU. Geometry and encoding stay in the engine;
 it is a bounded API example, not a new replacement/overwrite policy. It prints

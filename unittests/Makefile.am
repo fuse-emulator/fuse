@@ -478,13 +478,13 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    "$$root/legacyenginelinktest$(EXEEXT)" --host-operations-test disk-lifecycle-readback "$$roms" \
 	      > "$$consumer-lifecycle-check.out" 2> "$$consumer-lifecycle-check.err"; \
 	    rm lifecycle.udi; \
-	    if "$$program" "$$roms" --disk-lifecycle sample.udi \
-	      > "$$consumer-lifecycle-decline.out" 2> "$$consumer-lifecycle-decline.err"; \
-	    then exit 1; else result=$$?; test "$$result" -eq 1; fi; \
-	    grep -Fx 'host: stopped; frame turns=0; budget turns=0; ROM requests=4; releases=4' \
-	      "$$consumer-lifecycle-decline.out" > /dev/null; \
+	    printf 'old output\n' > existing.udi; \
+	    "$$program" "$$roms" --save-disk sample.udi existing.udi \
+	      > "$$consumer-disk-overwrite.out" 2> "$$consumer-disk-overwrite.err"; \
+	    cmp expected-disk "$$consumer-disk-overwrite.out"; cmp sample.udi existing.udi; \
+	    rm existing.udi; \
 	    for file in missing.udi malformed.udi sample.udi; do \
-	      if "$$program" "$$roms" --save-disk "$$file" sample.udi \
+	      if "$$program" "$$roms" --save-disk "$$file" missing-directory/out.udi \
 	        > "$$consumer-disk-$$file.out" 2> "$$consumer-disk-$$file.err"; \
 	      then exit 1; else result=$$?; test "$$result" -eq 1; fi; \
 	      test -s "$$consumer-disk-$$file.err"; \

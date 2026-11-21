@@ -454,18 +454,33 @@ main( int argc, char **argv )
   assert( fwrite( "KEEP", 1, 4, file ) == 4 && !fclose(file) );
   modify( 0x7c );
   reset_counts(); overwrite_choice = UI_CONFIRM_SAVE_DONTSAVE;
-  result = save_to( "other.udi" ); assert( result == 1 && writes == 0 && overwrites == 1 );
-  check_target_chooser( 1 ); check_retained( data, "first.udi", 0x7c );
+  selected_filename = "other.udi";
+  result = ui_media_drive_save( TEST_CONTROLLER, TEST_SLOT, 1 );
+  assert( result == 1 && writes == 0 && overwrites == 1 && filenames == 1 );
+  check_retained( data, "first.udi", 0x7c );
   assert( fdd.disk.type == DISK_TYPE_NONE ); /* Existing pre-question mutation. */
   report( "overwrite-decline", result );
   reset_counts(); overwrite_choice = UI_CONFIRM_SAVE_CANCEL;
-  result = save_to( "other.udi" ); assert( result == 1 && writes == 0 && overwrites == 1 );
-  check_target_chooser( 1 ); check_retained( data, "first.udi", 0x7c );
+  selected_filename = "other.udi";
+  result = ui_media_drive_save( TEST_CONTROLLER, TEST_SLOT, 1 );
+  assert( result == 1 && writes == 0 && overwrites == 1 && filenames == 1 );
+  check_retained( data, "first.udi", 0x7c );
   file = fopen( "other.udi", "rb" ); assert( file );
   assert( fread( sentinel, 1, 4, file ) == 4 && !memcmp(sentinel,"KEEP",4) && !fclose(file) );
   report( "overwrite-cancel", result );
-  reset_counts(); overwrite_choice = UI_CONFIRM_SAVE_SAVE;
-  result = save_to( "other.udi" ); assert( !result && writes == 1 && overwrites == 1 );
+  reset_counts();
+#ifdef FUSE_MEDIA_SAVE_BASELINE
+  overwrite_choice = UI_CONFIRM_SAVE_SAVE;
+#else
+  overwrite_choice = UI_CONFIRM_SAVE_CANCEL; /* Host already approved the path. */
+#endif
+  result = save_to( "other.udi" );
+  assert( !result && writes == 1 );
+#ifdef FUSE_MEDIA_SAVE_BASELINE
+  assert( overwrites == 1 );
+#else
+  assert( !overwrites );
+#endif
   check_target_chooser( 1 ); assert( !fdd.disk.dirty && !strcmp(fdd.disk.filename,"other.udi") );
   check_written( "other.udi", 0x7c ); report( "overwrite-save", result );
 

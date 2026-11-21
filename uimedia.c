@@ -296,6 +296,17 @@ drive_save( const ui_media_drive_info_t *drive, int saveas )
   return drive_save_finish( drive, err );
 }
 
+/* The host has already authorized the destination. */
+static int
+drive_save_authorized( const ui_media_drive_info_t *drive, const char *path )
+{
+  int error;
+  fuse_emulation_pause();
+  error = drive_disk_write( drive, path, 0 );
+  fuse_emulation_unpause();
+  return drive_save_finish( drive, error );
+}
+
 int
 ui_media_drive_save( fuse_disk_controller controller, int which, int saveas )
 {
@@ -578,20 +589,14 @@ fuse_host_operation_result
 fuse_host_save_disk_file( fuse_disk_controller controller, int slot,
                           const char *filename )
 {
-  int error;
   const ui_media_drive_info_t *drive;
   fuse_host_operation_result result = begin_disk_operation( controller, slot, &drive );
   if( result != FUSE_HOST_OPERATION_OK ) return result;
   if( filename && !*filename ) result = FUSE_HOST_OPERATION_INVALID_ARGUMENT;
   else if( !drive->fdd->loaded || ( !filename && !drive->fdd->disk.filename ) )
     result = FUSE_HOST_OPERATION_MEDIA_ERROR;
-  else {
-    fuse_emulation_pause();
-    error = drive_disk_write( drive, filename, 1 );
-    fuse_emulation_unpause();
-    result = drive_save_finish( drive, error ) ? FUSE_HOST_OPERATION_MEDIA_ERROR :
-                                               FUSE_HOST_OPERATION_OK;
-  }
+  else if( drive_save_authorized( drive, filename ) )
+    result = FUSE_HOST_OPERATION_MEDIA_ERROR;
   fuse_engine_end_operation();
   return result;
 }
@@ -657,13 +662,8 @@ fuse_host_answer_disk_eject( fuse_media_decision_id request,
   } else if( choice == FUSE_MEDIA_DECISION_SAVE && !path && !drive->fdd->disk.filename ) {
     result = FUSE_HOST_OPERATION_MEDIA_ERROR;
   } else {
-    if( choice == FUSE_MEDIA_DECISION_SAVE ) {
-      int error;
-      fuse_emulation_pause();
-      error = drive_disk_write( drive, path, 0 );
-      fuse_emulation_unpause();
-      if( drive_save_finish( drive, error ) ) result = FUSE_HOST_OPERATION_MEDIA_ERROR;
-    }
+    if( choice == FUSE_MEDIA_DECISION_SAVE && drive_save_authorized( drive, path ) )
+      result = FUSE_HOST_OPERATION_MEDIA_ERROR;
     if( result == FUSE_HOST_OPERATION_OK ) {
       drive_finish_eject( drive );
       if( change != DISK_CHANGE_EJECT &&
