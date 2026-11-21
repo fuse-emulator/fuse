@@ -178,35 +178,31 @@ fuse_host_operation_result fuse_host_insert_mass_storage(
    RZX finalization on first pause). Nonzero writer result maps MEDIA_ERROR;
    no rollback, durability or complete-state preservation guarantee. */
 fuse_host_operation_result fuse_host_save_snapshot_file( const char *filename );
-/* Media > Tape > Open intent: the existing tape_open(path, 0) workflow, not
-   File > Open (which uses tape_can_autoload()). The auto_load preference is not
-   consulted for this intent, exactly as in the legacy menu. Path is borrowed
-   through return. Replacement, recording finalization and save/discard/cancel
-   use the existing selected-UI services, which may block. MEDIA_ERROR maps the
-   legacy nonzero return, including cancellation; the session remains usable,
-   but tape state follows the legacy operation (no rollback guarantee). There
-   is no extra close/cleanup after a failed or cancelled open. Non-path access
-   is not exposed here. */
-fuse_host_operation_result fuse_host_insert_tape_file( const char *filename );
+/* Explicit insertion without autoload or a linked UI prompt. Read input before
+   handling the old tape. NEEDS_DECISION returns a nonzero ID and owns a copy
+   of the input and path until the reply; all other results clear the ID.
+   BUSY if another tape decision is pending. A decode failure after confirmed
+   eject does not restore the old tape. */
+fuse_host_operation_result fuse_host_insert_tape_file(
+  const char *filename, fuse_tape_eject_id *request );
 /* Explicit deck controls: toggle is the existing manual Play/Stop intent, not
    File Open/autoload. Stop affects playback, not recording. Rewind succeeds on
    an empty deck; block selection is zero-based and does not implicitly stop.
    A missing block returns MEDIA_ERROR and can reset partial-interval state.
    Named Save borrows its path, keeps encoding in the engine and finalizes any
-   recording before serialization; format/IO failure is not a rollback. Eject
-   finalizes recording then uses existing Save/Discard/Cancel. Ordinary legacy
-   nonzero (including cancellation) maps to MEDIA_ERROR, with no cleanup retry. */
+   recording before serialization; format/IO failure is not a rollback. */
 fuse_host_operation_result fuse_host_toggle_tape_play( void );
 fuse_host_operation_result fuse_host_stop_tape( void );
 fuse_host_operation_result fuse_host_rewind_tape( void );
 fuse_host_operation_result fuse_host_select_tape_block( int block );
 fuse_host_operation_result fuse_host_save_tape_file( const char *filename );
 /* Prompt-free eject. NEEDS_DECISION sets a nonzero ID; all other results
-   clear it. Asking again about the same tape returns the outstanding ID. */
+   clear it. Repeated eject returns the same ID; pending replacement is BUSY. */
 fuse_host_operation_result fuse_host_request_tape_eject(
   fuse_tape_eject_id *request );
 /* A valid reply consumes the request, even on a write failure. SAVE requires
-   a nonempty, host-authorized path; other choices require NULL. */
+   a nonempty, host-authorized path; other choices require NULL. For a staged
+   replacement, successful eject proceeds immediately to decode and insert. */
 fuse_host_operation_result fuse_host_answer_tape_eject(
   fuse_tape_eject_id request, fuse_tape_eject_choice choice,
   const char *filename );

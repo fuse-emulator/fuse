@@ -296,21 +296,6 @@ fuse_host_save_snapshot_file( const char *filename )
 }
 
 fuse_host_operation_result
-fuse_host_insert_tape_file( const char *filename )
-{
-  int error;
-  fuse_host_operation_result result = fuse_engine_check_operation();
-  if( result != FUSE_HOST_OPERATION_OK ) return result;
-  if( !filename || !*filename ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
-  fuse_engine_begin_operation();
-  error = tape_open( filename, 0 ); /* Same intent as menu_media_tape_open. */
-  /* tape_open owns replacement and selected-UI save/discard/cancel handling.
-     Do not retry close on failure: it may represent a cancelled replacement. */
-  fuse_engine_end_operation();
-  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
-}
-
-fuse_host_operation_result
 fuse_host_toggle_tape_play( void )
 {
   int error;

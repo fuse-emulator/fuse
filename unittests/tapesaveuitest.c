@@ -56,7 +56,7 @@ host_replace( void )
 {
   fuse_host_operation_result result;
   host_replacing = 1;
-  result = fuse_host_insert_tape_file( "replacement.tap" );
+  result = fuse_host_open_file( "replacement.tap" );
   host_replacing = 0;
   return result;
 }

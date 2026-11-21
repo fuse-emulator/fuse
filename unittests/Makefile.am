@@ -359,6 +359,7 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	  printf 'not a configuration directory\n' > config-blocker; \
 	  mkdir empty invalid only48; printf x > invalid/48.rom; \
 	  printf '\002\000\377\377' > sample.tap; printf x > malformed.tap; printf x > malformed.udi; \
+	  printf 'not a TZX header\n' > malformed.tzx; \
 	  "$$root/legacyenginelinktest$(EXEEXT)" --host-operations-test disk-fixture "$$roms"; \
 	  cp "$$roms/48.rom" 48.rom; cp "$$roms/48.rom" only48/48.rom; \
 	  printf '%s\n' 'host: prepared 48' \
@@ -374,6 +375,9 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	  printf '%s\n' 'host: prepared 48' \
 	    'host: parked for eject; handled focus loss; checked cancel, save and stale replies' \
 	    'host: shutdown; frame turns=4; budget turns=0; ROM requests=1; releases=1' > expected-parked-eject; \
+	  printf '%s\n' 'host: prepared 48' \
+	    'host: tape replacement checked read, cancel, save and decode failures' \
+	    'host: shutdown; frame turns=2; budget turns=0; ROM requests=1; releases=1' > expected-tape-replacement; \
 	  printf '%s\n' 'host: prepared 48' 'host: inserted tape; deck stopped' \
 	    'host: shutdown; frame turns=5; budget turns=0; ROM requests=1; releases=1' > expected-tape; \
 	  printf '%s\n' 'host: prepared 48' 'host: File Open returned legacy success' \
@@ -418,6 +422,8 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    cmp expected-queued-input "$$consumer-queued-input.out"; \
 	    "$$program" only48 --parked-tape-eject parked.pzx > "$$consumer-parked.out" 2> "$$consumer-parked.err"; \
 	    cmp expected-parked-eject "$$consumer-parked.out"; rm parked.pzx; \
+	    "$$program" only48 --replace-tape sample.tap malformed.tzx > "$$consumer-replacement.out" 2> "$$consumer-replacement.err"; \
+	    cmp expected-tape-replacement "$$consumer-replacement.out"; \
 	    "$$program" only48 sample.tap > "$$consumer-tape.out" 2> "$$consumer-tape.err"; \
 	    cmp expected-tape "$$consumer-tape.out"; \
 	    "$$program" only48 --open sample.tap > "$$consumer-open.out" 2> "$$consumer-open.err"; \

@@ -138,7 +138,7 @@ filesystem_tests( void )
   { FILE *native = fopen( "native-only.tap", "wb" ); assert( native );
     assert( fwrite( tap, 1, sizeof(tap), native ) == sizeof(tap) && !fclose( native ) ); }
   assert( !compat_file_exists( "native-only.tap" ) );
-  assert( fuse_host_insert_tape_file( "native-only.tap" ) == ERROR );
+  assert( fuse_host_insert_tape_file( "native-only.tap", &request ) == ERROR );
 
   seed( "seek.bin", "abcdef", 6 );
   handle = compat_file_open( "seek.bin", COMPAT_FILE_READ_WRITE ); assert( handle );
@@ -191,7 +191,7 @@ filesystem_tests( void )
   assert( z80.pc.w == 0x8000 && z80.sp.w == 0x9000 && readbyte_internal(0x8100) == 0x5a );
 
   filesystem.fail_open = 1;
-  assert( fuse_host_insert_tape_file( "media/input.tap" ) == ERROR ); filesystem.fail_open = 0;
+  assert( fuse_host_insert_tape_file( "media/input.tap", &request ) == ERROR ); filesystem.fail_open = 0;
   filesystem.fail_read = 1;
   assert( fuse_host_open_file( "media/state.szx" ) == ERROR ); filesystem.fail_read = 0;
   tape_modified = 1; filesystem.fail_write = 1;

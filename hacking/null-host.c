@@ -119,6 +119,13 @@ operation( const char *name, fuse_host_operation_result result )
   return 1;
 }
 
+static fuse_host_operation_result
+insert_clean_tape( const char *filename )
+{
+  fuse_tape_eject_id request;
+  return fuse_host_insert_tape_file( filename, &request );
+}
+
 static int
 eject_saved_tape( void )
 {
@@ -265,7 +272,7 @@ parked_eject_demo( const char *output, unsigned int *completed )
         goto fail;
       break;
     case REOPEN:
-      if( operation( "reopen saved tape", fuse_host_insert_tape_file( output ) ) ||
+      if( operation( "reopen saved tape", insert_clean_tape( output ) ) ||
           fuse_host_answer_tape_eject( retired, FUSE_TAPE_EJECT_DISCARD,
                                        NULL ) != FUSE_HOST_OPERATION_STALE )
         goto fail;
@@ -309,6 +316,56 @@ fail:
   return 1;
 }
 
+static int
+replacement_demo( const char *input, const char *bad, unsigned int *completed )
+{
+  static const fuse_tape_eject_choice choices[] = {
+    FUSE_TAPE_EJECT_CANCEL, FUSE_TAPE_EJECT_SAVE, FUSE_TAPE_EJECT_DISCARD
+  };
+  fuse_tape_eject_id request, other;
+  fuse_tape_info *info = NULL;
+  size_t i;
+  int failed = 1;
+
+  if( operation( "record", fuse_host_start_tape_recording() ) ||
+      frames( 1, completed ) ||
+      operation( "stop recording", fuse_host_stop_tape_recording() ) ) goto done;
+  if( fuse_host_insert_tape_file( "missing-directory/input.tap", &request ) !=
+      FUSE_HOST_OPERATION_MEDIA_ERROR || request ) goto done;
+
+  for( i = 0; i < sizeof( choices ) / sizeof( *choices ); i++ ) {
+    const char *target = i == 1 ? "missing-directory/recorded.pzx" : NULL;
+    if( fuse_host_insert_tape_file( input, &request ) !=
+        FUSE_HOST_OPERATION_NEEDS_DECISION || !request ||
+        fuse_run_frame() != FUSE_RUN_NEEDS_DECISION ||
+        fuse_host_request_tape_eject( &other ) != FUSE_HOST_OPERATION_BUSY || other ||
+        fuse_host_insert_tape_file( bad, &other ) != FUSE_HOST_OPERATION_BUSY || other )
+      goto done;
+    if( fuse_host_answer_tape_eject( request, choices[i], target ) !=
+        ( i == 0 ? FUSE_HOST_OPERATION_CANCELLED :
+          i == 1 ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK ) ) goto done;
+    if( operation( "replacement observation", fuse_host_copy_tape_info( &info ) ) ||
+        !info->present || info->recording || info->modified != ( i < 2 ) ) goto done;
+    fuse_tape_info_free( info );
+    info = NULL;
+  }
+
+  if( operation( "record again", fuse_host_start_tape_recording() ) ||
+      frames( 1, completed ) ||
+      fuse_host_insert_tape_file( bad, &request ) != FUSE_HOST_OPERATION_NEEDS_DECISION ||
+      fuse_host_answer_tape_eject( request, FUSE_TAPE_EJECT_DISCARD, NULL ) !=
+        FUSE_HOST_OPERATION_MEDIA_ERROR ||
+      operation( "failed replacement observation", fuse_host_copy_tape_info( &info ) ) ||
+      info->present || info->modified ) goto done;
+
+  puts( "host: tape replacement checked read, cancel, save and decode failures" );
+  failed = 0;
+done:
+  fuse_tape_info_free( info );
+  if( failed ) fputs( "host: tape replacement scenario failed\n", stderr );
+  return failed;
+}
+
 int
 main( int argc, char **argv )
 {
@@ -332,14 +389,15 @@ main( int argc, char **argv )
   memory_filesystem memory = { 0 };
   int disk_save = argc == 5 && !strcmp( argv[2], "--save-disk" );
   int tape_lifecycle = argc == 5 && !strcmp( argv[2], "--tape-lifecycle" );
+  int tape_replacement = argc == 5 && !strcmp( argv[2], "--replace-tape" );
 
   if( ( argc != 2 && argc != 3 && argc != 4 && argc != 5 ) ||
       ( argc == 4 && strcmp( argv[2], "--open" ) && !disk_lifecycle && !tape_record && !parked_eject && !snapshot_save && !filesystem && !divmmc ) ||
-      ( argc == 5 && !disk_save && !tape_lifecycle ) ||
+      ( argc == 5 && !disk_save && !tape_lifecycle && !tape_replacement ) ||
       ( argc == 3 && ( !strcmp( argv[2], "--open" ) || !strcmp( argv[2], "--save-disk" ) ||
-                      !strcmp( argv[2], "--disk-lifecycle" ) || !strcmp( argv[2], "--tape-lifecycle" ) ||
+                      !strcmp( argv[2], "--disk-lifecycle" ) || !strcmp( argv[2], "--tape-lifecycle" ) || !strcmp( argv[2], "--replace-tape" ) ||
                       !strcmp( argv[2], "--record-tape" ) || !strcmp( argv[2], "--parked-tape-eject" ) || !strcmp( argv[2], "--save-snapshot" ) || !strcmp( argv[2], "--filesystem" ) || !strcmp( argv[2], "--divmmc" ) ) ) ) {
-    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --queued-input]\n", argv[0] );
+    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --queued-input]\n", argv[0] );
     return EXIT_FAILURE;
   }
   if( filesystem || divmmc ) {
@@ -355,7 +413,8 @@ main( int argc, char **argv )
   config = fuse_host_config_alloc();
   if( fuse_host_config_set_machine( config, disk_save || disk_lifecycle ? "plus3" : "48" ) ||
       fuse_host_config_set_sound( config, 0 ) ||
-      ( ( tape_record || parked_eject ) && fuse_host_config_set_tape_traps( config, 0 ) ) ||
+      ( ( tape_record || parked_eject || tape_replacement ) &&
+        fuse_host_config_set_tape_traps( config, 0 ) ) ||
       ( filesystem && fuse_host_config_set_auto_load( config, 0 ) ) ||
       ( divmmc && fuse_host_config_set_divmmc( config, 1 ) ) ||
       fuse_host_config_set_joystick( config, FUSE_HOST_JOYSTICK_1,
@@ -372,6 +431,10 @@ main( int argc, char **argv )
   }
   prepared = 1;
   puts( disk_save || disk_lifecycle ? "host: prepared plus3" : "host: prepared 48" );
+  if( tape_replacement ) {
+    if( !replacement_demo( argv[3], argv[4], &frame_turns ) ) status = EXIT_SUCCESS;
+    goto cleanup;
+  }
   if( parked_eject ) {
     if( !parked_eject_demo( argv[3], &frame_turns ) ) status = EXIT_SUCCESS;
     goto cleanup;
@@ -455,7 +518,7 @@ main( int argc, char **argv )
     goto cleanup;
   }
   if( tape_lifecycle ) {
-    if( operation( "tape insertion", fuse_host_insert_tape_file( argv[3] ) ) ||
+    if( operation( "tape insertion", insert_clean_tape( argv[3] ) ) ||
         operation( "tape rewind", fuse_host_rewind_tape() ) ||
         operation( "tape selection", fuse_host_select_tape_block( 0 ) ) ||
         operation( "tape play toggle", fuse_host_toggle_tape_play() ) ||
@@ -512,7 +575,7 @@ main( int argc, char **argv )
     goto cleanup; /* Neither dispatch success nor five turns prove loading complete. */
   }
   if( argc == 3 ) {
-    if( operation( "tape insertion", fuse_host_insert_tape_file( argv[2] ) ) ) goto cleanup;
+    if( operation( "tape insertion", insert_clean_tape( argv[2] ) ) ) goto cleanup;
     puts( "host: inserted tape; deck stopped" );
     if( frames( 5, &frame_turns ) ) goto cleanup;
     status = EXIT_SUCCESS;

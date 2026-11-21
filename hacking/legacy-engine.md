@@ -285,27 +285,20 @@ Actual snapshot restore still uses existing File Open semantics and limitations.
 
 ## Tape operations
 
-`fuse_host_insert_tape_file(path)` exposes the existing **Media → Tape → Open**
-intent: `tape_open(path, 0)`. That menu action does not consult `auto_load`; it
-inserts without initiating autoload. Manual Play and later loader-detected tape
-activity retain their existing mechanics. The path is borrowed through return;
-decoded tape data is engine-owned.
+`fuse_host_insert_tape_file(path, &id)` is explicit insertion without autoload
+or a UI prompt. It reads the incoming file from the effective filesystem before
+handling the outgoing tape. Failed reads leave the outgoing tape untouched. If
+there are changes to confirm, NEEDS_DECISION returns a nonzero ID; Fuse retains
+its own input bytes and path until the decision is answered or invalidated.
+Only one tape decision may be pending: another insert, or an eject while a
+replacement is pending, returns BUSY. A clean replacement completes immediately.
 
-This is not **File → Open**, exposed separately by `fuse_host_open_file`. Hosts
-must not reimplement its rules or treat tape insertion as a policy replacement.
-
-Replacement and recording finalization follow the existing tape workflow,
-including selected-UI save/discard/cancel handling. Occupied or modified media do
-not make this command BUSY. These synchronous services may block; host-facing
-resumable decisions are not implemented yet.
-
-MEDIA_ERROR maps the legacy nonzero result, which can also mean cancellation.
-The session remains runnable, but there is no tape rollback guarantee: read
-failure can leave old media untouched, cancellation retains the existing tape,
-and a decode failure can leave the old tape removed and partial new blocks.
-The entry neither retries close nor adds cleanup after a failed operation.
-This uses the effective filesystem reader, not the ROM provider. Names can be
-virtual; no per-operation media resource callbacks are exposed. Success reports insertion, not playback/loading completion.
+Reply through `fuse_host_answer_tape_eject()`. Cancel or failed Save retains the
+outgoing tape without restarting any finalized recording. Discard or a successful
+Save ejects it and decodes the retained input. A decode failure can leave the
+old tape removed and partial new blocks. Success reports insertion, not playback
+or loading completion. General **File → Open** (`fuse_host_open_file`) retains its
+legacy autoload and synchronous replacement behavior.
 
 `fuse_host_toggle_tape_play()` uses manual `tape_toggle_play(0)`, not ensure-playing
 or autoload. `fuse_host_stop_tape()` affects playback only, not recording.
@@ -330,11 +323,13 @@ tape loaded and dirty, but can leave partial output. Replaced or modified tape
 contents, a new recording, or a successful separate save retire the ID; cursor
 and playback changes alone do not. Shutdown drops outstanding decisions.
 
-While an eject decision is pending, frame and T-state turns return
+While a tape decision is pending, frame and T-state turns return
 NEEDS_DECISION without advancing emulated time. The host stops scheduling turns
 and keeps processing commands. Clearing the decision does not release any
 existing pause. The null host's `--parked-tape-eject OUTPUT` demonstrates this
-with scripted loop iterations and a fresh PZX output path. Legacy eject and
+with scripted loop iterations and a fresh PZX output path. `--replace-tape
+INPUT BAD_INPUT` demonstrates explicit replacement with a valid input and a file
+that fails tape decoding. Legacy eject and
 tape replacement use `ui_tape_close()` in `ui.c`, which supplies the existing
 prompt and picker to the same decision logic. The adapter releases its Save
 pause before stopping playback and clearing the tape.

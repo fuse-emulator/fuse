@@ -130,7 +130,7 @@ check_failure( int host, int failed_append )
   assert( fuse_host_save_tape_file( "recovered.pzx" ) == FUSE_HOST_OPERATION_OK );
   assert( !tape_modified );
   assert( fuse_host_request_tape_eject( &request ) == FUSE_HOST_OPERATION_OK && !request );
-  assert( fuse_host_insert_tape_file( "recovered.pzx" ) == FUSE_HOST_OPERATION_OK );
+  assert( fuse_host_insert_tape_file( "recovered.pzx", &request ) == FUSE_HOST_OPERATION_OK );
   assert( tape_present() );
   assert( fuse_host_request_tape_eject( &request ) == FUSE_HOST_OPERATION_OK && !request );
   assert( !remove( "recovered.pzx" ) );
