@@ -434,6 +434,16 @@ The host drives the loop; the scripted key, joystick and focus events stand in
 for events collected by the host between turns. Fuse does not pump frontend
 events at frame completion on this path. The directory needs `48.rom`, `128-0.rom` and `128-1.rom`.
 
+`--queued-input` demonstrates optional keyboard-read refresh using the existing
+private `keyboard_refresh.h` hook. The host queues a Space press before the first
+turn and a release between turns. A synthetic ROM keeps reading the keyboard
+only if its first port read saw the press. The refresh callback drains queued
+input in order on the engine thread without waiting or pumping a toolkit. It
+unregisters before its queue goes out of scope. No ROM files are needed for this
+mode. A host collecting events on another thread must synchronize its own queue;
+only the engine thread calls Fuse. The existing refresh timing and exclusions
+still apply.
+
 An optional tape filename selects a separate scenario: insert on 48K with the
 deck stopped, run five frame turns and shut down. This mode needs only `48.rom`;
 it does not perform the input/reset/128K sequence or wait for tape completion.

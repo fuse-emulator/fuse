@@ -6,11 +6,13 @@
 #include <string.h>
 
 #include "fuse-internal.h"
+#include "keyboard_refresh.h"
 
 typedef struct rom_provider {
   const char *directory;
   unsigned char *pending;
   unsigned int requests, releases;
+  int queued_input;
 } rom_provider;
 
 static void
@@ -37,6 +39,25 @@ acquire_rom( void *context, const char *name, fuse_host_rom *rom )
   provider->requests++;
   rom->context = provider;
   rom->release = release_rom; /* Called even when acquisition/validation fails. */
+  if( provider->queued_input ) {
+    /* Read Space once. Halt if it is up; otherwise keep reading the row.
+       A refresh on the next frame proves the first read saw the queued press. */
+    static const unsigned char probe[16384] = {
+      0xf3,                    /* DI */
+      0x3e, 0x7f,              /* LD A,7Fh: select the Space row */
+      0xdb, 0xfe,              /* IN A,(FEh) */
+      0xe6, 0x01,              /* AND 1 */
+      0x20, 0x06,              /* JR NZ,halt */
+      0x3e, 0x7f, 0xdb, 0xfe,  /* loop: LD A,7Fh; IN A,(FEh) */
+      0x18, 0xfa,              /* JR loop */
+      0x76,                    /* halt: HALT */
+    };
+    if( strcmp( name, "48.rom" ) ) return 1;
+    rom->data = probe;
+    rom->length = sizeof( probe );
+    rom->custom = 1;
+    return 0;
+  }
   written = snprintf( path, sizeof(path), "%s/%s", provider->directory, name );
   if( written < 0 || (size_t)written >= sizeof(path) ) {
     fprintf( stderr, "host: ROM path is too long: %s\n", name );
@@ -134,6 +155,54 @@ frames( unsigned int count, unsigned int *completed )
   return 0;
 }
 
+typedef struct queued_keys {
+  input_event_t events[2];
+  unsigned int next, end;
+} queued_keys;
+
+/* The real host would fill this queue from its own event loop. The refresh
+   callback runs on the engine thread and never pumps a toolkit or waits. */
+static input_refresh_result
+supply_queued_keys( void *context )
+{
+  queued_keys *queue = context;
+
+  if( input_dispatch_pending() ) return INPUT_REFRESH_SKIPPED;
+  while( queue->next < queue->end ) {
+    input_dispatch_result result = input_event_dispatch(
+      &queue->events[queue->next], INPUT_DISPATCH_READ_TIME );
+    if( result == INPUT_DISPATCH_BLOCKED ) return INPUT_REFRESH_SKIPPED;
+    if( result == INPUT_DISPATCH_ERROR ) return INPUT_REFRESH_FAILED;
+    queue->next++;
+    if( result == INPUT_DISPATCH_DEFERRED ) return INPUT_REFRESH_SKIPPED;
+  }
+  return INPUT_REFRESH_SUCCESS;
+}
+
+static int
+queued_input_demo( unsigned int *completed )
+{
+  queued_keys queue = {
+    {
+      { .type = INPUT_EVENT_KEYPRESS, .types.key = { INPUT_KEY_space, INPUT_KEY_space } },
+      { .type = INPUT_EVENT_KEYRELEASE, .types.key = { INPUT_KEY_space, INPUT_KEY_space } },
+    },
+    0, 1
+  };
+  int error = 1;
+
+  keyboard_refresh_set_frontend( supply_queued_keys, &queue );
+  if( frames( 1, completed ) || queue.next != 1 ) goto done;
+  queue.end = 2; /* The host collects the release while Fuse is between turns. */
+  if( frames( 1, completed ) || queue.next != 2 ) goto done;
+  puts( "host: keyboard read saw queued Space press; next frame drained release" );
+  error = 0;
+done:
+  keyboard_refresh_set_frontend( NULL, NULL );
+  if( error ) fputs( "host: queued keyboard probe did not complete\n", stderr );
+  return error;
+}
+
 int
 main( int argc, char **argv )
 {
@@ -146,6 +215,7 @@ main( int argc, char **argv )
   fuse_run_result run;
   unsigned int frame_turns = 0, budget_turns = 0;
   int prepared = 0, status = EXIT_FAILURE;
+  int queued_input = argc == 3 && !strcmp( argv[2], "--queued-input" );
   int disk_lifecycle = argc == 4 && !strcmp( argv[2], "--disk-lifecycle" );
   int tape_record = argc == 4 && !strcmp( argv[2], "--record-tape" );
   int snapshot_save = argc == 4 && !strcmp( argv[2], "--save-snapshot" );
@@ -162,7 +232,7 @@ main( int argc, char **argv )
       ( argc == 3 && ( !strcmp( argv[2], "--open" ) || !strcmp( argv[2], "--save-disk" ) ||
                       !strcmp( argv[2], "--disk-lifecycle" ) || !strcmp( argv[2], "--tape-lifecycle" ) ||
                       !strcmp( argv[2], "--record-tape" ) || !strcmp( argv[2], "--save-snapshot" ) || !strcmp( argv[2], "--filesystem" ) || !strcmp( argv[2], "--divmmc" ) ) ) ) {
-    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE]\n", argv[0] );
+    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --queued-input]\n", argv[0] );
     return EXIT_FAILURE;
   }
   if( filesystem || divmmc ) {
@@ -173,6 +243,7 @@ main( int argc, char **argv )
       fputs( "host: filesystem input import failed\n", stderr ); goto cleanup;
     }
   }
+  provider.queued_input = queued_input;
   provider.directory = argv[1]; /* Borrowed through shutdown, not passed as engine CLI. */
   config = fuse_host_config_alloc();
   if( fuse_host_config_set_machine( config, disk_save || disk_lifecycle ? "plus3" : "48" ) ||
@@ -194,6 +265,10 @@ main( int argc, char **argv )
   }
   prepared = 1;
   puts( disk_save || disk_lifecycle ? "host: prepared plus3" : "host: prepared 48" );
+  if( queued_input ) {
+    if( !queued_input_demo( &frame_turns ) ) status = EXIT_SUCCESS;
+    goto cleanup;
+  }
   if( divmmc ) {
     fuse_mass_storage_info *drive = NULL;
     int mounted;
