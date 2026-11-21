@@ -122,14 +122,14 @@ operation( const char *name, fuse_host_operation_result result )
 static fuse_host_operation_result
 insert_clean_tape( const char *filename )
 {
-  fuse_tape_eject_id request;
+  fuse_media_decision_id request;
   return fuse_host_insert_tape_file( filename, &request );
 }
 
 static int
 eject_saved_tape( void )
 {
-  fuse_tape_eject_id request;
+  fuse_media_decision_id request;
   return operation( "eject saved tape", fuse_host_request_tape_eject( &request ) );
 }
 
@@ -229,7 +229,7 @@ parked_eject_demo( const char *output, unsigned int *completed )
     EJECT, TICK, FAIL_SAVE, EJECT, SAVE, REOPEN, EJECT,
     RECORD, TICK, EJECT, RECORD, TICK, EJECT, DISCARD
   };
-  fuse_tape_eject_id waiting = 0, retired = 0, request;
+  fuse_media_decision_id waiting = 0, retired = 0, request;
   fuse_host_operation_result result;
   fuse_tape_info *info = NULL;
   unsigned int parked_ticks = 0;
@@ -254,7 +254,7 @@ parked_eject_demo( const char *output, unsigned int *completed )
       if( waiting ) {
         retired = waiting;
         waiting = 0;
-        if( fuse_host_answer_tape_eject( retired, FUSE_TAPE_EJECT_DISCARD,
+        if( fuse_host_answer_tape_eject( retired, FUSE_MEDIA_DECISION_DISCARD,
                                         NULL ) != FUSE_HOST_OPERATION_STALE )
           goto fail;
       }
@@ -268,12 +268,12 @@ parked_eject_demo( const char *output, unsigned int *completed )
       if( fuse_host_request_tape_eject( &request ) != result ||
           request != waiting ) goto fail;
       if( retired && fuse_host_answer_tape_eject( retired,
-            FUSE_TAPE_EJECT_DISCARD, NULL ) != FUSE_HOST_OPERATION_STALE )
+            FUSE_MEDIA_DECISION_DISCARD, NULL ) != FUSE_HOST_OPERATION_STALE )
         goto fail;
       break;
     case REOPEN:
       if( operation( "reopen saved tape", insert_clean_tape( output ) ) ||
-          fuse_host_answer_tape_eject( retired, FUSE_TAPE_EJECT_DISCARD,
+          fuse_host_answer_tape_eject( retired, FUSE_MEDIA_DECISION_DISCARD,
                                        NULL ) != FUSE_HOST_OPERATION_STALE )
         goto fail;
       break;
@@ -283,8 +283,8 @@ parked_eject_demo( const char *output, unsigned int *completed )
     case DISCARD:
       if( !waiting ) goto fail;
       result = fuse_host_answer_tape_eject( waiting,
-        commands[i] == CANCEL ? FUSE_TAPE_EJECT_CANCEL :
-        commands[i] == DISCARD ? FUSE_TAPE_EJECT_DISCARD : FUSE_TAPE_EJECT_SAVE,
+        commands[i] == CANCEL ? FUSE_MEDIA_DECISION_CANCEL :
+        commands[i] == DISCARD ? FUSE_MEDIA_DECISION_DISCARD : FUSE_MEDIA_DECISION_SAVE,
         commands[i] == FAIL_SAVE ? "missing-directory/recorded.pzx" :
         commands[i] == SAVE ? output : NULL );
       retired = waiting;
@@ -293,7 +293,7 @@ parked_eject_demo( const char *output, unsigned int *completed )
                       commands[i] == FAIL_SAVE ? FUSE_HOST_OPERATION_MEDIA_ERROR :
                                                    FUSE_HOST_OPERATION_OK ) )
         goto fail;
-      if( fuse_host_answer_tape_eject( retired, FUSE_TAPE_EJECT_DISCARD,
+      if( fuse_host_answer_tape_eject( retired, FUSE_MEDIA_DECISION_DISCARD,
                                       NULL ) != FUSE_HOST_OPERATION_STALE )
         goto fail;
       if( operation( "eject observation", fuse_host_copy_tape_info( &info ) ) )
@@ -319,10 +319,10 @@ fail:
 static int
 replacement_demo( const char *input, const char *bad, unsigned int *completed )
 {
-  static const fuse_tape_eject_choice choices[] = {
-    FUSE_TAPE_EJECT_CANCEL, FUSE_TAPE_EJECT_SAVE, FUSE_TAPE_EJECT_DISCARD
+  static const fuse_media_decision_choice choices[] = {
+    FUSE_MEDIA_DECISION_CANCEL, FUSE_MEDIA_DECISION_SAVE, FUSE_MEDIA_DECISION_DISCARD
   };
-  fuse_tape_eject_id request, other;
+  fuse_media_decision_id request, other;
   fuse_tape_info *info = NULL;
   size_t i;
   int failed = 1;
@@ -353,7 +353,7 @@ replacement_demo( const char *input, const char *bad, unsigned int *completed )
   if( operation( "record again", fuse_host_start_tape_recording() ) ||
       frames( 1, completed ) ||
       fuse_host_insert_tape_file( bad, &request ) != FUSE_HOST_OPERATION_NEEDS_DECISION ||
-      fuse_host_answer_tape_eject( request, FUSE_TAPE_EJECT_DISCARD, NULL ) !=
+      fuse_host_answer_tape_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL ) !=
         FUSE_HOST_OPERATION_MEDIA_ERROR ||
       operation( "failed replacement observation", fuse_host_copy_tape_info( &info ) ) ||
       info->present || info->modified ) goto done;
@@ -375,6 +375,7 @@ main( int argc, char **argv )
   fuse_disk_drive_info *disk = NULL, *saved_disk = NULL;
   fuse_tape_info *tape_info = NULL, *saved_tape_info = NULL;
   fuse_init_result init;
+  fuse_media_decision_id disk_request;
   fuse_run_result run;
   unsigned int frame_turns = 0, budget_turns = 0;
   int prepared = 0, status = EXIT_FAILURE;
@@ -559,7 +560,7 @@ main( int argc, char **argv )
         operation( "write enable", fuse_host_set_disk_write_protected( disk->controller, disk->slot, 0 ) ) ||
         operation( "disk save", fuse_host_save_disk_file( disk->controller, disk->slot, argv[3] ) ) ||
         operation( "saved drive info", fuse_host_copy_disk_drive_info( disk->controller, disk->slot, &saved_disk ) ) ||
-        operation( "disk eject", fuse_host_eject_disk( disk->controller, disk->slot ) ) ) goto cleanup;
+        operation( "disk eject", fuse_host_eject_disk( disk->controller, disk->slot, &disk_request ) ) ) goto cleanup;
     fuse_disk_drive_info_free( disk ); disk = NULL;
     if( operation( "empty drive info", fuse_host_copy_disk_drive_info( FUSE_DISK_CONTROLLER_PLUS3, 0, &disk ) ) ) goto cleanup;
     print_disk_info( "ejected drive copy", disk );

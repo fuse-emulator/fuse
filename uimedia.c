@@ -43,6 +43,16 @@
     ( option_enumerate_diskoptions_disk_try_merge() == 1 && heads == 1 ) )
 
 static GSList *registered_drives = NULL;
+/* Registry entries live until drive teardown. Retire the token before their
+   attachment is unloaded, or after a successful separate save. */
+static const ui_media_drive_info_t *pending_eject_drive;
+
+static void
+retire_disk_eject( void )
+{
+  pending_eject_drive = NULL;
+  fuse_engine_retire_decision( FUSE_DECISION_FLOPPY );
+}
 
 static inline int
 menu_item_valid( ui_menu_item item )
@@ -61,6 +71,7 @@ void
 ui_media_drive_end( void )
 {
   GSList *entry;
+  retire_disk_eject();
   /* Dispose loaded images without invoking save/eject decisions. The legacy
      application has already handled quit decisions; rollback must not ask. */
   for( entry = registered_drives; entry; entry = entry->next ) {
@@ -192,14 +203,15 @@ ui_media_drive_writeprotect( fuse_disk_controller controller, int which, int wrp
 
 
 static int
-drive_disk_write( const ui_media_drive_info_t *drive, const char *filename )
+drive_disk_write( const ui_media_drive_info_t *drive, const char *filename,
+                  int confirm_overwrite )
 {
   int error;
 
   drive->fdd->disk.type = DISK_TYPE_NONE;
   if( filename == NULL )
     filename = drive->fdd->disk.filename; /* write over original file */
-  else if( compat_file_exists( filename ) ) {
+  else if( confirm_overwrite && compat_file_exists( filename ) ) {
     const char *filename1 = strrchr( filename, FUSE_DIR_SEP_CHR );
     filename1 = filename1 ? filename1 + 1 : filename;
 
@@ -244,6 +256,7 @@ drive_save_finish( const ui_media_drive_info_t *drive, int error )
 {
   if( error ) return 1;
   drive->fdd->disk.dirty = 0;
+  if( pending_eject_drive == drive ) retire_disk_eject();
   return 0;
 }
 
@@ -267,7 +280,7 @@ drive_save( const ui_media_drive_info_t *drive, int saveas )
     }
   }
 
-  err = drive_disk_write( drive, filename );
+  err = drive_disk_write( drive, filename, 1 );
 
   if( saveas )
     libspectrum_free( filename );
@@ -285,6 +298,15 @@ ui_media_drive_save( fuse_disk_controller controller, int which, int saveas )
   if( !drive )
     return -1;
   return drive_save( drive, saveas );
+}
+
+static void
+drive_finish_eject( const ui_media_drive_info_t *drive )
+{
+  if( pending_eject_drive == drive ) retire_disk_eject();
+  fdd_unload( drive->fdd );
+  disk_close( &drive->fdd->disk );
+  ui_media_drive_update_menus( drive, UI_MEDIA_DRIVE_UPDATE_EJECT );
 }
 
 static int
@@ -314,9 +336,7 @@ drive_eject( const ui_media_drive_info_t *drive )
     }
   }
 
-  fdd_unload( drive->fdd );
-  disk_close( &drive->fdd->disk );
-  ui_media_drive_update_menus( drive, UI_MEDIA_DRIVE_UPDATE_EJECT );
+  drive_finish_eject( drive );
   return 0;
 }
 
@@ -518,7 +538,7 @@ fuse_host_save_disk_file( fuse_disk_controller controller, int slot,
     result = FUSE_HOST_OPERATION_MEDIA_ERROR;
   else {
     fuse_emulation_pause();
-    error = drive_disk_write( drive, filename );
+    error = drive_disk_write( drive, filename, 1 );
     fuse_emulation_unpause();
     result = drive_save_finish( drive, error ) ? FUSE_HOST_OPERATION_MEDIA_ERROR :
                                                FUSE_HOST_OPERATION_OK;
@@ -540,15 +560,67 @@ fuse_host_new_disk( fuse_disk_controller controller, int slot )
 }
 
 fuse_host_operation_result
-fuse_host_eject_disk( fuse_disk_controller controller, int slot )
+fuse_host_eject_disk( fuse_disk_controller controller, int slot,
+                     fuse_media_decision_id *request )
 {
-  int error;
   const ui_media_drive_info_t *drive;
-  fuse_host_operation_result result = begin_disk_operation( controller, slot, &drive );
+  fuse_host_operation_result result;
+
+  if( !request ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *request = 0;
+  result = begin_disk_operation( controller, slot, &drive );
   if( result != FUSE_HOST_OPERATION_OK ) return result;
-  error = drive_eject( drive );
+
+  if( fuse_engine_pending_decision() == FUSE_DECISION_TAPE ||
+      ( pending_eject_drive && pending_eject_drive != drive ) ) {
+    result = FUSE_HOST_OPERATION_BUSY;
+  } else if( drive->fdd->loaded ) {
+    if( drive->fdd->disk.dirty ) {
+      *request = fuse_engine_request_decision( FUSE_DECISION_FLOPPY );
+      pending_eject_drive = drive;
+      result = FUSE_HOST_OPERATION_NEEDS_DECISION;
+    } else {
+      drive_finish_eject( drive );
+    }
+  }
   fuse_engine_end_operation();
-  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+  return result;
+}
+
+fuse_host_operation_result
+fuse_host_answer_disk_eject( fuse_media_decision_id request,
+                            fuse_media_decision_choice choice, const char *path )
+{
+  const ui_media_drive_info_t *drive;
+  fuse_host_operation_result result = fuse_engine_check_operation();
+
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  result = fuse_engine_validate_decision( FUSE_DECISION_FLOPPY, request,
+                                          choice, path, 0 );
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+
+  fuse_engine_begin_operation();
+  drive = pending_eject_drive;
+  retire_disk_eject();
+  if( choice == FUSE_MEDIA_DECISION_CANCEL ) {
+    result = FUSE_HOST_OPERATION_CANCELLED;
+  } else if( !drive->is_available || !drive->is_available() ||
+             drive->fdd->type == FDD_TYPE_NONE || !drive->fdd->loaded ) {
+    result = FUSE_HOST_OPERATION_STALE;
+  } else if( choice == FUSE_MEDIA_DECISION_SAVE && !path && !drive->fdd->disk.filename ) {
+    result = FUSE_HOST_OPERATION_MEDIA_ERROR;
+  } else {
+    if( choice == FUSE_MEDIA_DECISION_SAVE ) {
+      int error;
+      fuse_emulation_pause();
+      error = drive_disk_write( drive, path, 0 );
+      fuse_emulation_unpause();
+      if( drive_save_finish( drive, error ) ) result = FUSE_HOST_OPERATION_MEDIA_ERROR;
+    }
+    if( result == FUSE_HOST_OPERATION_OK ) drive_finish_eject( drive );
+  }
+  fuse_engine_end_operation();
+  return result;
 }
 
 fuse_host_operation_result

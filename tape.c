@@ -59,9 +59,6 @@ libspectrum_tape *tape;
 /* Has the current tape been modified since it was last loaded/saved? */
 int tape_modified;
 
-/* Only one request applies to the current tape. Invalidation retires it;
-   the sequence is not reset at tape teardown. */
-static fuse_tape_eject_id pending_eject, eject_sequence;
 typedef struct tape_replacement {
   utils_file file;
   char *filename;
@@ -76,16 +73,10 @@ release_replacement( tape_replacement *replacement )
   *replacement = (tape_replacement){ 0 };
 }
 
-int
-tape_eject_pending( void )
-{
-  return pending_eject != 0;
-}
-
 void
 tape_invalidate_eject_request( void )
 {
-  pending_eject = 0;
+  fuse_engine_retire_decision( FUSE_DECISION_TAPE );
   release_replacement( &pending_replacement );
 }
 
@@ -256,21 +247,20 @@ tape_read_buffer( unsigned char *buffer, size_t length, libspectrum_id_t type,
 }
 
 int
-tape_prepare_eject( fuse_tape_eject_id *request )
+tape_prepare_eject( fuse_media_decision_id *request )
 {
   int error;
 
   *request = 0;
-  if( pending_replacement.filename ) return 1;
+  if( pending_replacement.filename ||
+      ( ( tape_modified || tape_recording ) &&
+        fuse_engine_pending_decision() == FUSE_DECISION_FLOPPY ) ) return 1;
   if( tape_recording ) {
     error = tape_record_stop(); if( error ) return error;
   }
   if( tape_modified ) {
-    if( !pending_eject ) {
-      if( ++eject_sequence == 0 ) ++eject_sequence;
-      pending_eject = eject_sequence;
-    }
-    *request = pending_eject;
+    *request = fuse_engine_request_decision( FUSE_DECISION_TAPE );
+    if( !*request ) return 1;
   }
   return 0;
 }
@@ -302,7 +292,7 @@ tape_finish_eject( void )
 }
 
 fuse_host_operation_result
-fuse_host_insert_tape_file( const char *filename, fuse_tape_eject_id *request )
+fuse_host_insert_tape_file( const char *filename, fuse_media_decision_id *request )
 {
   fuse_host_operation_result result;
   utils_file file;
@@ -313,7 +303,8 @@ fuse_host_insert_tape_file( const char *filename, fuse_tape_eject_id *request )
   result = fuse_engine_check_operation();
   if( result != FUSE_HOST_OPERATION_OK ) return result;
   if( !filename || !*filename ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
-  if( pending_eject ) return FUSE_HOST_OPERATION_BUSY;
+  if( fuse_engine_pending_decision() != FUSE_DECISION_NONE )
+    return FUSE_HOST_OPERATION_BUSY;
 
   fuse_engine_begin_operation();
   error = utils_read_file( filename, &file );
@@ -339,7 +330,7 @@ fuse_host_insert_tape_file( const char *filename, fuse_tape_eject_id *request )
 }
 
 fuse_host_operation_result
-fuse_host_request_tape_eject( fuse_tape_eject_id *request )
+fuse_host_request_tape_eject( fuse_media_decision_id *request )
 {
   fuse_host_operation_result result;
 
@@ -349,7 +340,8 @@ fuse_host_request_tape_eject( fuse_tape_eject_id *request )
   if( result != FUSE_HOST_OPERATION_OK ) return result;
 
   fuse_engine_begin_operation();
-  if( pending_replacement.filename ) {
+  if( pending_replacement.filename ||
+      fuse_engine_pending_decision() == FUSE_DECISION_FLOPPY ) {
     result = FUSE_HOST_OPERATION_BUSY;
   } else if( tape_prepare_eject( request ) ) {
     result = FUSE_HOST_OPERATION_MEDIA_ERROR;
@@ -363,23 +355,14 @@ fuse_host_request_tape_eject( fuse_tape_eject_id *request )
 }
 
 static fuse_host_operation_result
-resolve_eject( fuse_tape_eject_id request, fuse_tape_eject_choice choice,
+resolve_eject( fuse_media_decision_id request, fuse_media_decision_choice choice,
                const char *filename, int *write_error,
                tape_replacement *replacement )
 {
+  fuse_host_operation_result result = fuse_engine_validate_decision(
+    FUSE_DECISION_TAPE, request, choice, filename, 1 );
   *write_error = 0;
-  if( !request || request != pending_eject ) return FUSE_HOST_OPERATION_STALE;
-  switch( choice ) {
-  case FUSE_TAPE_EJECT_SAVE:
-    if( !filename || !*filename ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
-    break;
-  case FUSE_TAPE_EJECT_CANCEL:
-  case FUSE_TAPE_EJECT_DISCARD:
-    if( filename ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
-    break;
-  default:
-    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
-  }
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
 
   if( replacement ) {
     *replacement = pending_replacement;
@@ -388,8 +371,8 @@ resolve_eject( fuse_tape_eject_id request, fuse_tape_eject_choice choice,
     return FUSE_HOST_OPERATION_BUSY;
   }
   tape_invalidate_eject_request();
-  if( choice == FUSE_TAPE_EJECT_CANCEL ) return FUSE_HOST_OPERATION_CANCELLED;
-  if( choice == FUSE_TAPE_EJECT_SAVE ) {
+  if( choice == FUSE_MEDIA_DECISION_CANCEL ) return FUSE_HOST_OPERATION_CANCELLED;
+  if( choice == FUSE_MEDIA_DECISION_SAVE ) {
     *write_error = tape_write( filename );
     if( *write_error ) return FUSE_HOST_OPERATION_MEDIA_ERROR;
   }
@@ -397,15 +380,15 @@ resolve_eject( fuse_tape_eject_id request, fuse_tape_eject_choice choice,
 }
 
 fuse_host_operation_result
-tape_resolve_eject( fuse_tape_eject_id request, fuse_tape_eject_choice choice,
+tape_resolve_eject( fuse_media_decision_id request, fuse_media_decision_choice choice,
                     const char *filename, int *write_error )
 {
   return resolve_eject( request, choice, filename, write_error, NULL );
 }
 
 fuse_host_operation_result
-fuse_host_answer_tape_eject( fuse_tape_eject_id request,
-                            fuse_tape_eject_choice choice, const char *filename )
+fuse_host_answer_tape_eject( fuse_media_decision_id request,
+                            fuse_media_decision_choice choice, const char *filename )
 {
   fuse_host_operation_result result = fuse_engine_check_operation();
   int write_error;

@@ -334,6 +334,53 @@ fuse_engine_pumps_frame_ui( void )
   return pump_frame_ui;
 }
 
+/* The owner thread owns a single pending decision and process-wide IDs. */
+static fuse_decision_owner decision_owner;
+static fuse_media_decision_id decision_sequence;
+
+fuse_decision_owner
+fuse_engine_pending_decision( void )
+{
+  return decision_owner;
+}
+
+fuse_media_decision_id
+fuse_engine_request_decision( fuse_decision_owner owner )
+{
+  if( decision_owner != FUSE_DECISION_NONE )
+    return decision_owner == owner ? decision_sequence : 0;
+  if( ++decision_sequence == 0 ) ++decision_sequence;
+  decision_owner = owner;
+  return decision_sequence;
+}
+
+fuse_host_operation_result
+fuse_engine_validate_decision( fuse_decision_owner owner, fuse_media_decision_id id,
+                               fuse_media_decision_choice choice, const char *path,
+                               int save_requires_path )
+{
+  if( !id || id != decision_sequence || decision_owner != owner )
+    return FUSE_HOST_OPERATION_STALE;
+  switch( choice ) {
+  case FUSE_MEDIA_DECISION_SAVE:
+    if( path ? !*path : save_requires_path ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+    break;
+  case FUSE_MEDIA_DECISION_CANCEL:
+  case FUSE_MEDIA_DECISION_DISCARD:
+    if( path ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+    break;
+  default:
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  }
+  return FUSE_HOST_OPERATION_OK;
+}
+
+void
+fuse_engine_retire_decision( fuse_decision_owner owner )
+{
+  if( decision_owner == owner ) decision_owner = FUSE_DECISION_NONE;
+}
+
 /* Keep the CPU batch and all due events together. Dispatch can span more than
    one instruction or frame, and callbacks may block. Observe session limits
    afterward; result finalization stays in the legacy runner. */
@@ -374,7 +421,7 @@ fuse_run_frame( void )
       legacy_ownership.phase == LEGACY_STOPPING ) return FUSE_RUN_BUSY;
   if( legacy_ownership.phase != LEGACY_READY ) return FUSE_RUN_NOT_READY;
   if( fuse_exiting ) return FUSE_RUN_EXITING;
-  if( tape_eject_pending() ) return FUSE_RUN_NEEDS_DECISION;
+  if( decision_owner != FUSE_DECISION_NONE ) return FUSE_RUN_NEEDS_DECISION;
   if( fuse_emulation_paused ) return FUSE_RUN_PAUSED;
 
   legacy_ownership.phase = LEGACY_RUNNING;
@@ -406,7 +453,7 @@ fuse_run_tstates( unsigned long budget )
   if( !budget || budget > 0x7fffffffUL || tstates >= 0x7fffffffUL )
     return FUSE_RUN_INVALID_ARGUMENT;
   if( fuse_exiting ) return FUSE_RUN_EXITING;
-  if( tape_eject_pending() ) return FUSE_RUN_NEEDS_DECISION;
+  if( decision_owner != FUSE_DECISION_NONE ) return FUSE_RUN_NEEDS_DECISION;
   if( fuse_emulation_paused ) return FUSE_RUN_PAUSED;
 
   legacy_ownership.phase = LEGACY_RUNNING;
@@ -455,7 +502,7 @@ fuse_legacy_execute( int *exit_status )
 {
   int r;
   if( legacy_ownership.phase != LEGACY_READY || !exit_status ||
-      tape_eject_pending() ) return 1;
+      decision_owner != FUSE_DECISION_NONE ) return 1;
   legacy_ownership.phase = LEGACY_RUNNING;
 #ifdef FUSE_STARTUP_TEST
   fuse_startup_test_running();

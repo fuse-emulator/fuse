@@ -290,8 +290,9 @@ or a UI prompt. It reads the incoming file from the effective filesystem before
 handling the outgoing tape. Failed reads leave the outgoing tape untouched. If
 there are changes to confirm, NEEDS_DECISION returns a nonzero ID; Fuse retains
 its own input bytes and path until the decision is answered or invalidated.
-Only one tape decision may be pending: another insert, or an eject while a
-replacement is pending, returns BUSY. A clean replacement completes immediately.
+Tape and floppy share one pending media decision and one ID sequence. While a
+tape replacement is pending, another insert or eject returns BUSY. A clean
+replacement completes immediately when no media decision is pending.
 
 Reply through `fuse_host_answer_tape_eject()`. Cancel or failed Save retains the
 outgoing tape without restarting any finalized recording. Discard or a successful
@@ -323,7 +324,7 @@ tape loaded and dirty, but can leave partial output. Replaced or modified tape
 contents, a new recording, or a successful separate save retire the ID; cursor
 and playback changes alone do not. Shutdown drops outstanding decisions.
 
-While a tape decision is pending, frame and T-state turns return
+While a media decision is pending, frame and T-state turns return
 NEEDS_DECISION without advancing emulated time. The host stops scheduling turns
 and keeps processing commands. Clearing the decision does not release any
 existing pause. The null host's `--parked-tape-eject OUTPUT` demonstrates this
@@ -400,9 +401,21 @@ completion, including drive lookup, FDD preconditions and result translation.
 There is no duplicate host/engine disk delegate API. Drive descriptors remain private.
 
 `fuse_host_new_disk` uses configured geometry, controller insertion hooks (including
-+3 preformat) and the same replacement questions; zero can mean cancellation. `fuse_host_eject_disk`
-uses existing Save/Discard/Cancel and succeeds for an already empty available
-drive. `fuse_host_set_disk_flipped` and `fuse_host_set_disk_write_protected` take
++3 preformat) and the same replacement questions; zero can mean cancellation.
+`fuse_host_eject_disk(controller,slot,&id)` ejects clean media, succeeds on an
+empty available drive, or returns NEEDS_DECISION for dirty media without a
+prompt. The request applies only to the current attachment in that drive.
+Repeated requests for that drive return the same ID; another drive's eject or a
+host tape decision cannot start while it is pending. Execution turns return
+NEEDS_DECISION until the request is resolved or invalidated.
+
+`fuse_host_answer_disk_eject(id,choice,path)` consumes a valid reply. Cancel or
+failed Save leaves the disk loaded; Discard or successful Save ejects it. Save
+accepts NULL for the existing target or a host-authorized path with no additional
+overwrite prompt. A separate successful save, replacement, or shutdown invalidates
+the request. Legacy floppy eject still uses the existing modal dialog.
+
+`fuse_host_set_disk_flipped` and `fuse_host_set_disk_write_protected` take
 0/1 flags and require loaded media. Floppy WP is an emulated write gate, not
 filesystem access, and changing it does not itself mark the image modified.
 

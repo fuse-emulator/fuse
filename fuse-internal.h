@@ -20,6 +20,7 @@
 #define FUSE_INTERNAL_H
 
 #include <stddef.h>
+#include <stdint.h>
 #include "input.h"
 #include "fuse-disk.h"
 #include "periph.h"
@@ -105,6 +106,14 @@ typedef enum fuse_host_operation_result {
   FUSE_HOST_OPERATION_STALE
 } fuse_host_operation_result;
 
+/* Nonzero, single-use decision IDs are shared across media operations. */
+typedef uint64_t fuse_media_decision_id;
+typedef enum fuse_media_decision_choice {
+  FUSE_MEDIA_DECISION_CANCEL,
+  FUSE_MEDIA_DECISION_DISCARD,
+  FUSE_MEDIA_DECISION_SAVE
+} fuse_media_decision_choice;
+
 typedef enum fuse_host_reset_kind {
   FUSE_HOST_RESET_SOFT, FUSE_HOST_RESET_HARD
 } fuse_host_reset_kind;
@@ -184,7 +193,7 @@ fuse_host_operation_result fuse_host_save_snapshot_file( const char *filename );
    BUSY if another tape decision is pending. A decode failure after confirmed
    eject does not restore the old tape. */
 fuse_host_operation_result fuse_host_insert_tape_file(
-  const char *filename, fuse_tape_eject_id *request );
+  const char *filename, fuse_media_decision_id *request );
 /* Explicit deck controls: toggle is the existing manual Play/Stop intent, not
    File Open/autoload. Stop affects playback, not recording. Rewind succeeds on
    an empty deck; block selection is zero-based and does not implicitly stop.
@@ -199,12 +208,12 @@ fuse_host_operation_result fuse_host_save_tape_file( const char *filename );
 /* Prompt-free eject. NEEDS_DECISION sets a nonzero ID; all other results
    clear it. Repeated eject returns the same ID; pending replacement is BUSY. */
 fuse_host_operation_result fuse_host_request_tape_eject(
-  fuse_tape_eject_id *request );
+  fuse_media_decision_id *request );
 /* A valid reply consumes the request, even on a write failure. SAVE requires
    a nonempty, host-authorized path; other choices require NULL. For a staged
    replacement, successful eject proceeds immediately to decode and insert. */
 fuse_host_operation_result fuse_host_answer_tape_eject(
-  fuse_tape_eject_id request, fuse_tape_eject_choice choice,
+  fuse_media_decision_id request, fuse_media_decision_choice choice,
   const char *filename );
 
 /* Record into the engine's tape, including an empty deck; no file sink here.
@@ -243,7 +252,13 @@ fuse_host_operation_result fuse_host_save_disk_file( fuse_disk_controller contro
    loaded media and accept flags 0 or 1. WP is emulated write protection, not
    filesystem permissions; changing it does not itself dirty a floppy image. */
 fuse_host_operation_result fuse_host_new_disk( fuse_disk_controller controller, int slot );
-fuse_host_operation_result fuse_host_eject_disk( fuse_disk_controller controller, int slot );
+/* Prompt-free eject: NEEDS_DECISION sets a nonzero ID; otherwise clears it. */
+fuse_host_operation_result fuse_host_eject_disk( fuse_disk_controller controller,
+                                                  int slot, fuse_media_decision_id *request );
+/* SAVE uses the existing target if path is NULL, or a host-authorized path.
+   Other choices require NULL. A valid reply consumes the ID. */
+fuse_host_operation_result fuse_host_answer_disk_eject(
+  fuse_media_decision_id request, fuse_media_decision_choice choice, const char *path );
 fuse_host_operation_result fuse_host_set_disk_flipped( fuse_disk_controller controller,
                                                       int slot, int flipped );
 fuse_host_operation_result fuse_host_set_disk_write_protected( fuse_disk_controller controller,

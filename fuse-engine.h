@@ -29,6 +29,20 @@ void fuse_engine_begin_operation( void );
 fuse_host_operation_result fuse_engine_end_machine_operation( int error );
 void fuse_engine_end_operation( void );
 
+/* One outstanding media decision. Domains own payload and invalidation;
+   only the owner may retire the slot. Repeat requests return the current ID. */
+typedef enum fuse_decision_owner {
+  FUSE_DECISION_NONE,
+  FUSE_DECISION_TAPE,
+  FUSE_DECISION_FLOPPY
+} fuse_decision_owner;
+fuse_decision_owner fuse_engine_pending_decision( void );
+fuse_media_decision_id fuse_engine_request_decision( fuse_decision_owner owner );
+fuse_host_operation_result fuse_engine_validate_decision(
+  fuse_decision_owner owner, fuse_media_decision_id id,
+  fuse_media_decision_choice choice, const char *path, int save_requires_path );
+void fuse_engine_retire_decision( fuse_decision_owner owner );
+
 /* Only continuous legacy execution pumps the linked UI at frame completion. */
 int fuse_engine_pumps_frame_ui( void );
 

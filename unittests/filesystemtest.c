@@ -130,7 +130,7 @@ filesystem_tests( void )
   compat_fd handle;
   unsigned char buffer[8], *expected;
   size_t length, count, closed;
-  fuse_tape_eject_id request;
+  fuse_media_decision_id request;
 
   z80.pc.w = 0x8000; z80.sp.w = 0x9000; writebyte_internal( 0x8100, 0x5a );
   file_bytes( "fs-oracle.szx", &expected, &length );
@@ -384,12 +384,13 @@ filesystem_tests( void )
   assert( fuse_host_save_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, "media/fail.udi" ) == ERROR );
   assert( filesystem.closes == closed + 1 );
   filesystem.fail_write_at = 0;
-  assert( fuse_host_eject_disk( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == OK );
+  fuse_media_decision_id disk_request;
+  assert( fuse_host_eject_disk( FUSE_DISK_CONTROLLER_PLUS3, 0, &disk_request ) == OK && !disk_request );
   assert( fuse_host_insert_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, "media/disk.udi" ) == OK );
   { fuse_disk_drive_info *info;
     assert( fuse_host_copy_disk_drive_info( FUSE_DISK_CONTROLLER_PLUS3, 0, &info ) == OK );
     assert( info->loaded && !info->write_protected ); fuse_disk_drive_info_free( info ); }
-  assert( fuse_host_eject_disk( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == OK );
+  assert( fuse_host_eject_disk( FUSE_DISK_CONTROLLER_PLUS3, 0, &disk_request ) == OK && !disk_request );
   assert( filesystem.opens == filesystem.closes );
   free( expected );
   assert( !remove( "native-only.tap" ) );

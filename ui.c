@@ -809,7 +809,7 @@ ui_menu_disk_update( void )
 int
 ui_tape_close( void )
 {
-  fuse_tape_eject_id request;
+  fuse_media_decision_id request;
   fuse_host_operation_result result;
   int error;
   char *filename;
@@ -822,17 +822,17 @@ ui_tape_close( void )
   case UI_CONFIRM_SAVE_SAVE:
     fuse_emulation_pause();
     filename = ui_get_save_filename( "Fuse - Write Tape" );
-    result = tape_resolve_eject( request, filename ? FUSE_TAPE_EJECT_SAVE :
-                                FUSE_TAPE_EJECT_CANCEL, filename, &error );
+    result = tape_resolve_eject( request, filename ? FUSE_MEDIA_DECISION_SAVE :
+                                FUSE_MEDIA_DECISION_CANCEL, filename, &error );
     libspectrum_free( filename );
     fuse_emulation_unpause();
     break;
   case UI_CONFIRM_SAVE_DONTSAVE:
-    result = tape_resolve_eject( request, FUSE_TAPE_EJECT_DISCARD, NULL, &error );
+    result = tape_resolve_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL, &error );
     break;
   case UI_CONFIRM_SAVE_CANCEL:
   default:
-    result = tape_resolve_eject( request, FUSE_TAPE_EJECT_CANCEL, NULL, &error );
+    result = tape_resolve_eject( request, FUSE_MEDIA_DECISION_CANCEL, NULL, &error );
     break;
   }
   if( result != FUSE_HOST_OPERATION_OK ) return error ? error : 1;

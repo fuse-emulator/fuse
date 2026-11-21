@@ -38,9 +38,9 @@ void tape_update_microphone( const libspectrum_tape_edge *edge );
    finalizes recording; a zero ID means no decision is needed. Resolve consumes
    the answer and writes on Save, but leaves teardown to the caller, so legacy
    can release its Save pause before stopping playback and clearing the tape. */
-int tape_prepare_eject( fuse_tape_eject_id *request );
+int tape_prepare_eject( fuse_media_decision_id *request );
 fuse_host_operation_result tape_resolve_eject(
-  fuse_tape_eject_id request, fuse_tape_eject_choice choice,
+  fuse_media_decision_id request, fuse_media_decision_choice choice,
   const char *filename, int *write_error );
 int tape_finish_eject( void );
 

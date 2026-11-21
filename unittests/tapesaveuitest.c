@@ -35,7 +35,7 @@ static void
 check_deck_busy( void )
 {
   fuse_tape_info *info = (fuse_tape_info *)1;
-  fuse_tape_eject_id request = 1;
+  fuse_media_decision_id request = 1;
   if( !host_replacing ) return;
   assert( fuse_host_copy_tape_info( &info ) == FUSE_HOST_OPERATION_BUSY && !info );
   assert( fuse_host_toggle_tape_play() == FUSE_HOST_OPERATION_BUSY );
@@ -45,7 +45,7 @@ check_deck_busy( void )
   assert( fuse_host_save_tape_file( "not-written.tzx" ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_request_tape_eject( &request ) == FUSE_HOST_OPERATION_BUSY &&
           !request );
-  assert( fuse_host_answer_tape_eject( 1, FUSE_TAPE_EJECT_DISCARD, NULL ) ==
+  assert( fuse_host_answer_tape_eject( 1, FUSE_MEDIA_DECISION_DISCARD, NULL ) ==
           FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_start_tape_recording() == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_stop_tape_recording() == FUSE_HOST_OPERATION_BUSY );
@@ -65,7 +65,7 @@ static ui_confirm_save_t choice = UI_CONFIRM_SAVE_SAVE;
 
 int test_tape_save_write( const char *filename );
 fuse_host_operation_result test_tape_resolve_eject(
-  fuse_tape_eject_id request, fuse_tape_eject_choice choice,
+  fuse_media_decision_id request, fuse_media_decision_choice choice,
   const char *filename, int *write_error );
 int test_tape_finish_eject( void );
 char *test_tape_save_filename( const char *title );
@@ -83,10 +83,10 @@ test_tape_save_write( const char *filename )
 }
 
 fuse_host_operation_result
-test_tape_resolve_eject( fuse_tape_eject_id request, fuse_tape_eject_choice choice,
+test_tape_resolve_eject( fuse_media_decision_id request, fuse_media_decision_choice choice,
                         const char *filename, int *write_error )
 {
-  if( choice == FUSE_TAPE_EJECT_SAVE ) {
+  if( choice == FUSE_MEDIA_DECISION_SAVE ) {
     assert( fuse_emulation_paused == expected_pause );
     check_deck_busy();
     writes++;

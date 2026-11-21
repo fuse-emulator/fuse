@@ -146,7 +146,16 @@ eject_disk( void )
 #ifdef FUSE_MEDIA_SAVE_BASELINE
   return ui_media_drive_eject( TEST_CONTROLLER, TEST_SLOT );
 #else
-  return legacy_result( fuse_host_eject_disk( TEST_CONTROLLER, TEST_SLOT ) );
+  fuse_media_decision_id request;
+  fuse_host_operation_result result = fuse_host_eject_disk( TEST_CONTROLLER, TEST_SLOT, &request );
+  if( result == FUSE_HOST_OPERATION_NEEDS_DECISION ) {
+    fuse_media_decision_choice reply = eject_choice == UI_CONFIRM_SAVE_SAVE ? FUSE_MEDIA_DECISION_SAVE :
+      eject_choice == UI_CONFIRM_SAVE_CANCEL ? FUSE_MEDIA_DECISION_CANCEL : FUSE_MEDIA_DECISION_DISCARD;
+    assert( request && !eject_questions );
+    result = fuse_host_answer_disk_eject( request, reply, NULL );
+    if( result == FUSE_HOST_OPERATION_CANCELLED ) return 1;
+  } else assert( !request );
+  return legacy_result( result );
 #endif
 }
 
@@ -179,6 +188,16 @@ save_to( const char *filename )
   return ui_media_drive_save( TEST_CONTROLLER, TEST_SLOT, filename != NULL );
 #else
   return legacy_result( fuse_host_save_disk_file( TEST_CONTROLLER, TEST_SLOT, filename ) );
+#endif
+}
+
+static int
+eject_prompt_count( void )
+{
+#ifdef FUSE_MEDIA_SAVE_BASELINE
+  return 1;
+#else
+  return 0;
 #endif
 }
 
@@ -448,22 +467,22 @@ main( int argc, char **argv )
 
   reset_counts(); eject_choice = UI_CONFIRM_SAVE_SAVE; fail_write = 1;
   result = eject_disk();
-  assert( result == 1 && writes == 1 && filenames == 0 && eject_questions == 1 );
+  assert( result == 1 && writes == 1 && filenames == 0 && eject_questions == eject_prompt_count() );
   check_retained( data, "other.udi", 0x8d ); report( "eject-save-failure", result );
   reset_counts(); eject_choice = UI_CONFIRM_SAVE_CANCEL; fail_write = 0;
   result = eject_disk();
-  assert( result == 1 && writes == 0 && filenames == 0 && eject_questions == 1 );
+  assert( result == 1 && writes == 0 && filenames == 0 && eject_questions == eject_prompt_count() );
   check_retained( data, "other.udi", 0x8d ); report( "eject-cancel", result );
   reset_counts(); eject_choice = UI_CONFIRM_SAVE_SAVE;
   result = eject_disk();
-  assert( !result && writes == 1 && filenames == 0 && eject_questions == 1 );
+  assert( !result && writes == 1 && filenames == 0 && eject_questions == eject_prompt_count() );
   assert( !fdd.loaded && !fdd.disk.data && !fdd.disk.filename );
   check_written( "other.udi", 0x8d ); report( "eject-save", result );
 
   assert( !ui_media_drive_insert( &drive, "other.udi", 0 ) );
   modify( 0x9e ); reset_counts(); eject_choice = UI_CONFIRM_SAVE_DONTSAVE;
   result = eject_disk();
-  assert( !result && writes == 0 && filenames == 0 && eject_questions == 1 );
+  assert( !result && writes == 0 && filenames == 0 && eject_questions == eject_prompt_count() );
   assert( !fdd.loaded && !fdd.disk.data && !fdd.disk.filename );
   check_written( "other.udi", 0x8d ); report( "eject-discard", result );
   assert( !remove( "first.udi" ) && !remove( "other.udi" ) );

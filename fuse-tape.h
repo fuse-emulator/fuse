@@ -19,16 +19,6 @@
 #define FUSE_TAPE_INFO_H
 
 #include <stddef.h>
-#include <stdint.h>
-
-/* A decision ID is not a tape observation or a reusable tape handle. */
-typedef uint64_t fuse_tape_eject_id;
-
-typedef enum fuse_tape_eject_choice {
-  FUSE_TAPE_EJECT_CANCEL,
-  FUSE_TAPE_EJECT_DISCARD,
-  FUSE_TAPE_EJECT_SAVE
-} fuse_tape_eject_choice;
 
 /* Display strings use the existing browser description/detail formatting.
    Both are owned, NUL-terminated UTF-8 (description labels are ASCII).

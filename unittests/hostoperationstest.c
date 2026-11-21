@@ -50,7 +50,7 @@ static fuse_tape_info *retained_tape_info;
 static fuse_host_operation_result
 insert_tape_without_decision( const char *filename )
 {
-  fuse_tape_eject_id request = 1;
+  fuse_media_decision_id request = 1;
   fuse_host_operation_result result = fuse_host_insert_tape_file( filename, &request );
   assert( !request );
   return result;
@@ -60,7 +60,7 @@ static void
 check_tape_deck_blocked( fuse_host_operation_result expected )
 {
   fuse_tape_info *info = (fuse_tape_info *)1;
-  fuse_tape_eject_id request = 1;
+  fuse_media_decision_id request = 1;
   assert( fuse_host_copy_tape_info( &info ) == expected && !info );
   assert( fuse_host_copy_tape_info( NULL ) == expected );
   assert( fuse_host_toggle_tape_play() == expected );
@@ -69,7 +69,7 @@ check_tape_deck_blocked( fuse_host_operation_result expected )
   assert( fuse_host_select_tape_block( 0 ) == expected );
   assert( fuse_host_save_tape_file( "not-written.tzx" ) == expected );
   assert( fuse_host_request_tape_eject( &request ) == expected && !request );
-  assert( fuse_host_answer_tape_eject( 1, FUSE_TAPE_EJECT_DISCARD, NULL ) == expected );
+  assert( fuse_host_answer_tape_eject( 1, FUSE_MEDIA_DECISION_DISCARD, NULL ) == expected );
   assert( fuse_host_start_tape_recording() == expected );
   assert( fuse_host_stop_tape_recording() == expected );
   assert( fuse_host_save_snapshot_file( "not-written.szx" ) == expected );
@@ -78,10 +78,19 @@ check_tape_deck_blocked( fuse_host_operation_result expected )
 static fuse_host_operation_result
 eject_tape_discarding_changes( void )
 {
-  fuse_tape_eject_id request;
+  fuse_media_decision_id request;
   fuse_host_operation_result result = fuse_host_request_tape_eject( &request );
   if( result == FUSE_HOST_OPERATION_NEEDS_DECISION )
-    result = fuse_host_answer_tape_eject( request, FUSE_TAPE_EJECT_DISCARD, NULL );
+    result = fuse_host_answer_tape_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL );
+  return result;
+}
+
+static fuse_host_operation_result
+eject_disk_without_decision( fuse_disk_controller controller, int slot )
+{
+  fuse_media_decision_id request = 1;
+  fuse_host_operation_result result = fuse_host_eject_disk( controller, slot, &request );
+  assert( !request );
   return result;
 }
 
@@ -121,7 +130,7 @@ acquire_rom( void *context, const char *name, fuse_host_rom *rom )
   assert( fuse_host_keyboard_event( INPUT_KEY_a, 1 ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_nmi() == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_new_disk( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_BUSY );
-  assert( fuse_host_eject_disk( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_BUSY );
+  assert( eject_disk_without_decision( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_set_disk_flipped( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_set_disk_write_protected( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_insert_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, "not-opened.udi" ) == FUSE_HOST_OPERATION_BUSY );
@@ -451,12 +460,12 @@ check_tape_info( void )
   assert( fwrite( bytes, 1, 4, file ) == 4 && !fclose( file ) );
   {
     char path[] = "replacement.tap";
-    fuse_tape_eject_id request;
+    fuse_media_decision_id request;
     assert( fuse_host_insert_tape_file( path, &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
     /* The continuation owns both bytes and original name. */
     path[0] = 'x';
     assert( !remove( "replacement.tap" ) );
-    assert( fuse_host_answer_tape_eject( request, FUSE_TAPE_EJECT_DISCARD, NULL ) == OK );
+    assert( fuse_host_answer_tape_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL ) == OK );
   }
   assert( fuse_host_copy_tape_info( &b ) == OK );
   assert( b->present && !b->playing && !b->modified && b->block_count == 1 && b->current_block == 0 );
@@ -610,7 +619,7 @@ static void
 check_trap_recording( void )
 {
   libspectrum_tape_block *block;
-  fuse_tape_eject_id request;
+  fuse_media_decision_id request;
   libspectrum_dword clock = tstates;
   assert( settings_current.tape_traps && !tape_recording && !tape_present() );
   assert( !fuse_emulation_pause() && !fuse_emulation_pause() );
@@ -640,8 +649,11 @@ check_trap_recording( void )
     assert( tstates == before && spectrum_get_frame_count() == frame &&
             z80.pc.w == pc && fuse_emulation_paused == 2 );
   }
+  assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL ) == FUSE_HOST_OPERATION_STALE );
+  assert( fuse_host_answer_tape_eject( request, FUSE_MEDIA_DECISION_SAVE, NULL ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_run_frame() == FUSE_RUN_NEEDS_DECISION );
   assert( !tape_save_trap() && tape_modified );
-  assert( fuse_host_answer_tape_eject( request, FUSE_TAPE_EJECT_DISCARD, NULL ) ==
+  assert( fuse_host_answer_tape_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL ) ==
           FUSE_HOST_OPERATION_STALE );
   assert( tape_present() && tape_modified && fuse_emulation_paused == 2 );
   assert( fuse_host_save_tape_file( "automatic.tap" ) == OK );
@@ -656,7 +668,7 @@ check_trap_recording( void )
   assert( fuse_emulation_paused == 2 && settings_current.tape_traps );
   assert( fuse_host_request_tape_eject( &request ) ==
           FUSE_HOST_OPERATION_NEEDS_DECISION );
-  assert( fuse_host_answer_tape_eject( request, FUSE_TAPE_EJECT_CANCEL, NULL ) ==
+  assert( fuse_host_answer_tape_eject( request, FUSE_MEDIA_DECISION_CANCEL, NULL ) ==
           FUSE_HOST_OPERATION_CANCELLED );
   assert( fuse_run_frame() == FUSE_RUN_PAUSED );
   assert( fuse_run_tstates( 1000 ) == FUSE_RUN_PAUSED );
@@ -725,7 +737,7 @@ check_tape_workflow( void )
   libspectrum_dword clock = tstates;
   int i, microphone, saved_auto_load = settings_current.auto_load;
   int rom_requests = provider.acquired, legacy_present;
-  fuse_tape_eject_id request;
+  fuse_media_decision_id request;
 
   assert( insert_tape_without_decision( NULL ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
   assert( insert_tape_without_decision( "" ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
@@ -806,7 +818,7 @@ check_tape_workflow( void )
   assert( fwrite( valid, 1, sizeof(valid), file ) == sizeof(valid) && !fclose(file) );
   assert( fuse_host_insert_tape_file( "host-replacement.tap", &request ) ==
           FUSE_HOST_OPERATION_NEEDS_DECISION );
-  assert( fuse_host_answer_tape_eject( request, FUSE_TAPE_EJECT_DISCARD, NULL ) == OK );
+  assert( fuse_host_answer_tape_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL ) == OK );
   assert( tape_present() && !tape_modified && !tape_is_playing() );
   /* Ordinary clean replacement needs no decision. */
   assert( insert_tape_without_decision( "host-replacement.tap" ) == OK );
@@ -814,7 +826,7 @@ check_tape_workflow( void )
   assert( fuse_run_tstates( 100 ) == FUSE_RUN_COMPLETED );
   assert( fuse_host_insert_tape_file( "host-replacement.tap", &request ) ==
           FUSE_HOST_OPERATION_NEEDS_DECISION );
-  assert( fuse_host_answer_tape_eject( request, FUSE_TAPE_EJECT_SAVE,
+  assert( fuse_host_answer_tape_eject( request, FUSE_MEDIA_DECISION_SAVE,
                                       "host-outgoing.pzx" ) == OK );
   assert( !remove( "host-outgoing.pzx" ) );
   assert( tape_present() && !tape_recording && !tape_modified && !tape_is_playing() );
@@ -972,7 +984,7 @@ check_disk_available( void )
   assert( fuse_engine_check_operation() == FUSE_HOST_OPERATION_BUSY );
   check_disk_info_blocked( FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_new_disk( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_BUSY );
-  assert( fuse_host_eject_disk( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_BUSY );
+  assert( eject_disk_without_decision( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_set_disk_flipped( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_set_disk_write_protected( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_save_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, NULL ) == FUSE_HOST_OPERATION_BUSY );
@@ -1001,13 +1013,13 @@ check_disk_save( fuse_disk_controller controller )
   assert( info->controller == controller && !info->slot && info->available && info->enabled && !info->loaded );
   assert( !strcmp( info->name, drive->name ) && info->name != drive->name && !info->filename );
   fuse_disk_drive_info_free( info ); info = NULL;
-  assert( fuse_host_eject_disk( controller, 0 ) == OK );
+  assert( eject_disk_without_decision( controller, 0 ) == OK );
   assert( fuse_host_set_disk_flipped( controller, 0, 1 ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
   assert( fuse_host_set_disk_write_protected( controller, 0, 1 ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
   assert( fuse_host_set_disk_flipped( controller, 0, 2 ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
   assert( fuse_host_set_disk_write_protected( controller, 0, -1 ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
   assert( fuse_host_new_disk( (fuse_disk_controller)99, 0 ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
-  assert( fuse_host_eject_disk( controller, 99 ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( eject_disk_without_decision( controller, 99 ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
   for( length = 0; length < 20; length++ ) {
     utils_file truncated;
     utils_file_init( &truncated, "short-header.udi" );
@@ -1031,7 +1043,7 @@ check_disk_save( fuse_disk_controller controller )
     assert( fuse_host_insert_disk_file( FUSE_DISK_CONTROLLER_BETA, 0, "not-opened.udi" ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
     assert( fuse_host_save_disk_file( FUSE_DISK_CONTROLLER_BETA, 0, "not-created.udi" ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
     assert( fuse_host_new_disk( FUSE_DISK_CONTROLLER_BETA, 0 ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
-    assert( fuse_host_eject_disk( FUSE_DISK_CONTROLLER_BETA, 0 ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
+    assert( eject_disk_without_decision( FUSE_DISK_CONTROLLER_BETA, 0 ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
   }
   write_disk_fixture( "api-input.udi" );
   type = drive->fdd->type; drive->fdd->type = FDD_TYPE_NONE;
@@ -1073,13 +1085,48 @@ check_disk_save( fuse_disk_controller controller )
   assert( drive->fdd->disk.track[0] == 0x6b && !drive->fdd->disk.dirty );
   drive->fdd->selected = selected; drive->fdd->ready = ready; drive->fdd->loadhead = loadhead;
   assert( fuse_host_set_disk_write_protected( controller, 0, 0 ) == OK && !drive->fdd->wrprot );
-  assert( fuse_host_eject_disk( controller, 0 ) == OK && !drive->fdd->loaded );
+  assert( eject_disk_without_decision( controller, 0 ) == OK && !drive->fdd->loaded );
   assert( fuse_host_new_disk( controller, 0 ) == OK );
   assert( drive->fdd->loaded && !drive->fdd->disk.filename && drive->fdd->disk.dirty );
   assert( drive->fdd->disk.sides == drive->get_params()->heads &&
           drive->fdd->disk.cylinders == drive->get_params()->cylinders );
-  /* Selected null-UI discard policy, not an extra host cleanup decision. */
-  assert( fuse_host_eject_disk( controller, 0 ) == OK && !drive->fdd->loaded );
+  {
+    fuse_media_decision_id request, other;
+    fuse_media_decision_id tape_request;
+    int has_second = controller == FUSE_DISK_CONTROLLER_PLUS3;
+    if( has_second )
+      assert( fuse_host_insert_disk_file( controller, 1, "api-input.udi" ) == OK );
+    assert( fuse_host_eject_disk( controller, 0, &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
+    assert( fuse_host_eject_disk( controller, 0, &other ) == FUSE_HOST_OPERATION_NEEDS_DECISION && other == request );
+    assert( fuse_run_frame() == FUSE_RUN_NEEDS_DECISION &&
+            fuse_run_tstates( 100 ) == FUSE_RUN_NEEDS_DECISION );
+    assert( fuse_host_request_tape_eject( &tape_request ) == FUSE_HOST_OPERATION_BUSY && !tape_request );
+    assert( fuse_host_answer_tape_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL ) == FUSE_HOST_OPERATION_STALE );
+    assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_DISCARD, "unused.udi" ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+    assert( fuse_run_frame() == FUSE_RUN_NEEDS_DECISION );
+    if( has_second )
+      assert( fuse_host_eject_disk( controller, 1, &other ) == FUSE_HOST_OPERATION_BUSY && !other );
+    assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_CANCEL, NULL ) == FUSE_HOST_OPERATION_CANCELLED );
+    assert( drive->fdd->loaded && drive->fdd->disk.dirty );
+    assert( fuse_host_eject_disk( controller, 0, &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
+    assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_SAVE,
+                                         "missing-directory/out.udi" ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
+    assert( drive->fdd->loaded && drive->fdd->disk.dirty );
+    assert( fuse_host_eject_disk( controller, 0, &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
+    assert( fuse_host_save_disk_file( controller, 0, "api-eject.udi" ) == OK );
+    assert( fuse_host_new_disk( controller, 0 ) == OK );
+    assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL ) == FUSE_HOST_OPERATION_STALE );
+    assert( drive->fdd->loaded && drive->fdd->disk.dirty );
+    assert( fuse_host_eject_disk( controller, 0, &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
+    assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_SAVE, "api-eject.udi" ) == OK );
+    assert( !drive->fdd->loaded && !remove( "api-eject.udi" ) );
+    if( has_second ) {
+      assert( fuse_host_copy_disk_drive_info( controller, 1, &info ) == OK );
+      assert( info->loaded && !strcmp( info->filename, "api-input.udi" ) );
+      fuse_disk_drive_info_free( info );
+      assert( eject_disk_without_decision( controller, 1 ) == OK );
+    }
+  }
   assert( !remove( "api-input.udi" ) && !remove( "api-copy.udi" ) );
   assert( disk_available_calls );
   drive->is_available = disk_available;
@@ -1115,7 +1162,7 @@ host_operations_test( int argc, char **argv )
   check_disk_info_blocked( FUSE_HOST_OPERATION_NOT_READY );
   check_tape_deck_blocked( FUSE_HOST_OPERATION_NOT_READY );
   assert( fuse_host_new_disk( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_NOT_READY );
-  assert( fuse_host_eject_disk( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_NOT_READY );
+  assert( eject_disk_without_decision( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_NOT_READY );
   assert( fuse_host_set_disk_flipped( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_NOT_READY );
   assert( fuse_host_set_disk_write_protected( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_NOT_READY );
   assert( fuse_host_save_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, NULL ) == FUSE_HOST_OPERATION_NOT_READY );
@@ -1170,7 +1217,7 @@ host_operations_test( int argc, char **argv )
     check_trap_recording();
   } else if( !strcmp( argv[1], "recording-readback" ) ) {
     assert( insert_tape_without_decision( "recorded.pzx" ) == OK && tape_present() );
-    fuse_tape_eject_id request;
+    fuse_media_decision_id request;
     assert( fuse_host_select_tape_block( 0 ) == OK );
     assert( fuse_host_request_tape_eject( &request ) == OK && !request );
   } else if( !strcmp( argv[1], "disk-fixture" ) ) {
@@ -1232,7 +1279,7 @@ host_operations_test( int argc, char **argv )
     check_tape_deck_blocked( FUSE_HOST_OPERATION_EXITING );
     assert( fuse_host_keyboard_event( INPUT_KEY_a, 1 ) == FUSE_HOST_OPERATION_EXITING );
     assert( fuse_host_new_disk( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_EXITING );
-    assert( fuse_host_eject_disk( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_EXITING );
+    assert( eject_disk_without_decision( FUSE_DISK_CONTROLLER_PLUS3, 0 ) == FUSE_HOST_OPERATION_EXITING );
     assert( fuse_host_set_disk_flipped( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_EXITING );
     assert( fuse_host_set_disk_write_protected( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_EXITING );
     assert( fuse_host_save_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, NULL ) == FUSE_HOST_OPERATION_EXITING );

@@ -107,7 +107,7 @@ block_count( void )
 static void
 check_failure( int host, int failed_append )
 {
-  fuse_tape_eject_id request;
+  fuse_media_decision_id request;
   int kept = failed_append - 1;
   assert( !tape_present() && !tape_recording );
   tape_modified = 0; append_calls = 0; fail_at = failed_append;

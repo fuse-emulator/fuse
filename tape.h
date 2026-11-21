@@ -35,7 +35,6 @@ int
 tape_read_buffer( unsigned char *buffer, size_t length, libspectrum_id_t type,
 		  const char *filename, int autoload );
 
-int tape_eject_pending( void );
 int tape_rewind( void );
 int tape_select_block( size_t n );
 int tape_select_block_no_update( size_t n );
