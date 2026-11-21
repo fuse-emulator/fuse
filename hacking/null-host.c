@@ -461,14 +461,14 @@ main( int argc, char **argv )
     goto cleanup;
   }
   if( filesystem ) {
-    if( operation( "filesystem Tape Open", fuse_host_open_file( "media/input.tap" ) ) ||
+    if( operation( "filesystem Tape Open", fuse_host_open_file( "media/input.tap", &(fuse_media_decision_id){ 0 } ) ) ||
         operation( "filesystem tape save", fuse_host_save_tape_file( "media/copy.pzx" ) ) ||
         eject_saved_tape() ||
-        operation( "filesystem tape reopen", fuse_host_open_file( "media/copy.pzx" ) ) ||
+        operation( "filesystem tape reopen", fuse_host_open_file( "media/copy.pzx", &(fuse_media_decision_id){ 0 } ) ) ||
         frames( 2, &frame_turns ) ||
         operation( "filesystem snapshot save", fuse_host_save_snapshot_file( "media/state.szx" ) ) ||
         operation( "reset", fuse_host_reset( FUSE_HOST_RESET_HARD ) ) ||
-        operation( "filesystem snapshot reopen", fuse_host_open_file( "media/state.szx" ) ) ||
+        operation( "filesystem snapshot reopen", fuse_host_open_file( "media/state.szx", &(fuse_media_decision_id){ 0 } ) ) ||
         frames( 1, &frame_turns ) ) goto cleanup;
     {
       unsigned char hdf[640] = { 'R','S','-','I','D','E',0x1a,0x11,0,128,0 };
@@ -481,7 +481,7 @@ main( int argc, char **argv )
       error = compat_file_write( backing, hdf, sizeof(hdf) );
       if( compat_file_close( backing ) ) error = 1;
       if( error ||
-          operation( "open ZXCF", fuse_host_open_file( "media/drive.hdf" ) ) ||
+          operation( "open ZXCF", fuse_host_open_file( "media/drive.hdf", &(fuse_media_decision_id){ 0 } ) ) ||
           operation( "observe ZXCF", fuse_host_copy_mass_storage_info( PERIPH_TYPE_ZXCF, LIBSPECTRUM_IDE_MASTER, &drive ) ) )
         goto cleanup;
       ok = drive->active && drive->backing_name && !strcmp( drive->backing_name, "media/drive.hdf" );
@@ -497,7 +497,7 @@ main( int argc, char **argv )
     if( frames( 2, &frame_turns ) ||
         operation( "save snapshot", fuse_host_save_snapshot_file( argv[3] ) ) ||
         operation( "reset", fuse_host_reset( FUSE_HOST_RESET_HARD ) ) ||
-        operation( "reopen snapshot", fuse_host_open_file( argv[3] ) ) ||
+        operation( "reopen snapshot", fuse_host_open_file( argv[3], &(fuse_media_decision_id){ 0 } ) ) ||
         frames( 1, &frame_turns ) ) goto cleanup;
     puts( "host: saved snapshot; reset and reopened" );
     status = EXIT_SUCCESS;
@@ -569,7 +569,7 @@ main( int argc, char **argv )
     goto cleanup;
   }
   if( argc == 4 ) {
-    if( operation( "File Open", fuse_host_open_file( argv[3] ) ) ) goto cleanup;
+    if( operation( "File Open", fuse_host_open_file( argv[3], &(fuse_media_decision_id){ 0 } ) ) ) goto cleanup;
     puts( "host: File Open returned legacy success" );
     if( frames( 5, &frame_turns ) ) goto cleanup;
     status = EXIT_SUCCESS;

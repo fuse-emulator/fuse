@@ -34,7 +34,9 @@
 
 #include "debugger/debugger.h"
 #include "event.h"
+#include "display.h"
 #include "fuse.h"
+#include "pokefinder/pokemem.h"
 #include "fuse-engine.h"
 #include "infrastructure/startup_manager.h"
 #include "loader.h"
@@ -62,6 +64,8 @@ int tape_modified;
 typedef struct tape_replacement {
   utils_file file;
   char *filename;
+  libspectrum_id_t type;
+  int autoload, file_open;
 } tape_replacement;
 static tape_replacement pending_replacement;
 
@@ -291,6 +295,28 @@ tape_finish_eject( void )
   return 0;
 }
 
+int
+tape_request_insert( utils_file *file, const char *filename, libspectrum_id_t type,
+                     int autoload, int file_open, fuse_media_decision_id *request )
+{
+  if( libspectrum_tape_present( tape ) ) {
+    int error = tape_prepare_eject( request );
+    if( error ) return error;
+    if( *request ) {
+      pending_replacement.file = *file;
+      pending_replacement.filename = utils_safe_strdup( filename );
+      pending_replacement.type = type;
+      pending_replacement.autoload = autoload;
+      pending_replacement.file_open = file_open;
+      utils_file_init( file, NULL );
+      return 0;
+    }
+    error = tape_finish_eject();
+    if( error ) return error;
+  }
+  return tape_install_buffer( file->buffer, file->length, type, filename, autoload );
+}
+
 fuse_host_operation_result
 fuse_host_insert_tape_file( const char *filename, fuse_media_decision_id *request )
 {
@@ -308,22 +334,10 @@ fuse_host_insert_tape_file( const char *filename, fuse_media_decision_id *reques
 
   fuse_engine_begin_operation();
   error = utils_read_file( filename, &file );
-  if( !error && libspectrum_tape_present( tape ) ) {
-    error = tape_prepare_eject( request );
-    if( !error && !*request ) error = tape_finish_eject();
-  }
-  if( error ) {
-    result = FUSE_HOST_OPERATION_MEDIA_ERROR;
-  } else if( *request ) {
-    pending_replacement.file = file;
-    pending_replacement.filename = libspectrum_new( char, strlen( filename ) + 1 );
-    strcpy( pending_replacement.filename, filename );
-    file = (utils_file){ 0 };
-    result = FUSE_HOST_OPERATION_NEEDS_DECISION;
-  } else if( tape_install_buffer( file.buffer, file.length, LIBSPECTRUM_ID_UNKNOWN,
-                                  filename, 0 ) ) {
-    result = FUSE_HOST_OPERATION_MEDIA_ERROR;
-  }
+  if( !error ) error = tape_request_insert( &file, filename, LIBSPECTRUM_ID_UNKNOWN,
+                                           0, 0, request );
+  if( error ) result = FUSE_HOST_OPERATION_MEDIA_ERROR;
+  else if( *request ) result = FUSE_HOST_OPERATION_NEEDS_DECISION;
   utils_close_file( &file );
   fuse_engine_end_operation();
   return result;
@@ -400,8 +414,13 @@ fuse_host_answer_tape_eject( fuse_media_decision_id request,
   if( result == FUSE_HOST_OPERATION_OK &&
       ( tape_finish_eject() ||
         ( replacement.filename && tape_install_buffer( replacement.file.buffer,
-          replacement.file.length, LIBSPECTRUM_ID_UNKNOWN, replacement.filename, 0 ) ) ) )
+          replacement.file.length, replacement.type, replacement.filename,
+          replacement.autoload ) ) ) )
     result = FUSE_HOST_OPERATION_MEDIA_ERROR;
+  if( replacement.file_open ) {
+    pokemem_find_pokfile( replacement.filename );
+    display_refresh_all();
+  }
   release_replacement( &replacement );
   fuse_engine_end_operation();
   return result;

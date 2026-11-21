@@ -22,6 +22,7 @@
 #include <string.h>
 #include "fuse.h"
 #include "fuse-internal.h"
+#include "fuse-engine.h"
 #include "tape.h"
 #include "tape_internals.h"
 #include "ui/ui.h"
@@ -56,7 +57,10 @@ host_replace( void )
 {
   fuse_host_operation_result result;
   host_replacing = 1;
-  result = fuse_host_open_file( "replacement.tap" );
+  fuse_engine_begin_operation();
+  result = utils_open_file( "replacement.tap", 0, NULL ) ?
+    FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+  fuse_engine_end_operation();
   host_replacing = 0;
   return result;
 }

@@ -1,7 +1,5 @@
 /* Private owner-thread operations. Each invocation owns one fresh process. */
 #include "config.h"
-#undef NDEBUG
-#include <assert.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,6 +8,7 @@
 #include "fuse-internal.h"
 #include "fuse-engine.h"
 #include "fuse-legacy.h"
+#include "pokefinder/pokemem.h"
 #include "spectrum.h"
 #include "event.h"
 #include "display.h"
@@ -30,6 +29,9 @@
 #include "ui/ui.h"
 #include "utils.h"
 #include "z80/z80.h"
+
+#undef NDEBUG
+#include <assert.h>
 
 #define OK FUSE_HOST_OPERATION_OK
 static struct {
@@ -154,7 +156,7 @@ acquire_rom( void *context, const char *name, fuse_host_rom *rom )
   assert( fuse_host_set_disk_write_protected( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_BUSY );
   assert( insert_disk_file_without_decision( FUSE_DISK_CONTROLLER_PLUS3, 0, "not-opened.udi" ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_save_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, NULL ) == FUSE_HOST_OPERATION_BUSY );
-  assert( fuse_host_open_file( "not-opened.tap" ) == FUSE_HOST_OPERATION_BUSY );
+  assert( fuse_host_open_file( "not-opened.tap", &(fuse_media_decision_id){ 0 } ) == FUSE_HOST_OPERATION_BUSY );
   assert( insert_tape_without_decision( "not-opened.tap" ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_run_frame() == FUSE_RUN_BUSY );
   assert( fuse_run_tstates( 1 ) == FUSE_RUN_BUSY );
@@ -712,7 +714,7 @@ check_snapshot_roundtrip( void )
   assert( provider.acquired == acquired );
   assert( fuse_host_reset( FUSE_HOST_RESET_HARD ) == OK );
   z80.pc.w = 0; writebyte_internal( 0x8100, 0 );
-  assert( fuse_host_open_file( "host-state.szx" ) == OK );
+  assert( fuse_host_open_file( "host-state.szx", &(fuse_media_decision_id){ 0 } ) == OK );
   assert( machine_current->machine == LIBSPECTRUM_MACHINE_48 );
   assert( z80.pc.w == 0x8000 && z80.sp.w == 0x9000 && readbyte_internal( 0x8100 ) == 0x5a );
   assert( !remove( "host-state.szx" ) );
@@ -893,13 +895,13 @@ check_file_open( const char *mode )
   libspectrum_dword clock;
 
   assert( settings_current.auto_load == ( strcmp( mode, "open-noauto" ) != 0 ) );
-  assert( fuse_host_open_file( NULL ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
-  assert( fuse_host_open_file( "" ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_host_open_file( NULL, &(fuse_media_decision_id){ 0 } ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_host_open_file( "", &(fuse_media_decision_id){ 0 } ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
   file = fopen( "open.tap", "wb" ); assert( file );
   assert( fwrite( bytes, 1, sizeof(bytes), file ) == sizeof(bytes) && !fclose(file) );
   if( !strcmp( mode, "open-reset-failure" ) ) {
     machine_current->reset = fail_autoload_reset;
-    assert( fuse_host_open_file( "open.tap" ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
+    assert( fuse_host_open_file( "open.tap", &(fuse_media_decision_id){ 0 } ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
     machine_current->reset = reset;
     assert( tape_present() && !phantom_typist_is_active() );
     /* No execution/retry after destructive failure; caller will shut down. */
@@ -913,7 +915,7 @@ check_file_open( const char *mode )
     }
     settings_current.late_timings = 0; z80.pc.w = 0x9234;
     assert( fuse_host_spectrum_key_event( FUSE_HOST_KEY_A, 1 ) == OK );
-    assert( fuse_host_open_file( "open.szx" ) == OK );
+    assert( fuse_host_open_file( "open.szx", &(fuse_media_decision_id){ 0 } ) == OK );
     assert( z80.pc.w == 0x8123 && settings_current.late_timings == 1 );
     if( !strcmp( mode, "open-fallback" ) ) {
       assert( machine_current->machine == LIBSPECTRUM_MACHINE_48 && provider.rejected == 1 );
@@ -923,10 +925,10 @@ check_file_open( const char *mode )
     assert( !remove( "open.szx" ) );
   } else if( !strcmp( mode, "open-rzx-stop" ) ) {
     assert( !rzx_start_recording( "open-recording.rzx", 0 ) && rzx_recording );
-    assert( fuse_host_open_file( "missing-open.tap" ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
+    assert( fuse_host_open_file( "missing-open.tap", &(fuse_media_decision_id){ 0 } ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
     assert( !rzx_recording ); /* Stop occurs before even failed identification. */
     assert( !remove( "open-recording.rzx" ) );
-    assert( fuse_host_open_file( "open.tap" ) == OK ); /* Ordinary read error permits retry. */
+    assert( fuse_host_open_file( "open.tap", &(fuse_media_decision_id){ 0 } ) == OK ); /* Ordinary read error permits retry. */
   } else {
     assert( !fuse_emulation_pause() );
     for( i = 0; i < 2; i++ ) {
@@ -938,7 +940,29 @@ check_file_open( const char *mode )
         display_refresh_all();
         fuse_engine_end_operation();
         assert( !error );
-      } else assert( fuse_host_open_file( "open.tap" ) == OK );
+      } else {
+        static const unsigned char pok[] = "NTest\nM 8 32768 99 0\nY\n";
+        fuse_media_decision_id request;
+        libspectrum_tape_block *old = libspectrum_tape_current_block( tape );
+        assert( fuse_host_open_file( "open.tap", &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
+        assert( fuse_run_frame() == FUSE_RUN_NEEDS_DECISION );
+        assert( fuse_host_answer_tape_eject( request, FUSE_MEDIA_DECISION_CANCEL, NULL ) ==
+                FUSE_HOST_OPERATION_CANCELLED );
+        assert( tape_modified && libspectrum_tape_current_block( tape ) == old );
+        assert( fuse_host_open_file( "open.tap", &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
+        assert( fuse_host_answer_tape_eject( request, FUSE_MEDIA_DECISION_SAVE,
+                                             "missing-directory/out.pzx" ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
+        assert( tape_modified && libspectrum_tape_current_block( tape ) == old );
+        assert( !rzx_start_recording( "open-recording.rzx", 0 ) && rzx_recording );
+        assert( fuse_host_open_file( "open.tap", &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
+        assert( !rzx_recording && provider.acquired == requests );
+        assert( !remove( "open-recording.rzx" ) && !remove( "open.tap" ) );
+        assert( !utils_write_file( "open.pok", pok, sizeof( pok ) ) );
+        assert( fuse_host_answer_tape_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL ) == OK );
+        assert( !pokemem_autoload_pokfile() );
+        assert( !remove( "open.pok" ) );
+        assert( !utils_write_file( "open.tap", bytes, sizeof( bytes ) ) );
+      }
       assert( provider.acquired == requests + autoload );
       assert( phantom_typist_is_active() == autoload );
       assert( z80.pc.w == ( autoload ? 0 : 0x8123 ) && tstates == clock );
@@ -1201,7 +1225,7 @@ active_callback( libspectrum_dword ts, int type, void *data )
   assert( fuse_host_nmi() == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_reset( FUSE_HOST_RESET_SOFT ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_select_machine( "128" ) == FUSE_HOST_OPERATION_BUSY );
-  assert( fuse_host_open_file( "not-opened.tap" ) == FUSE_HOST_OPERATION_BUSY );
+  assert( fuse_host_open_file( "not-opened.tap", &(fuse_media_decision_id){ 0 } ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_keyboard_event( INPUT_KEY_a, 1 ) == FUSE_HOST_OPERATION_BUSY );
   assert( insert_tape_without_decision( "not-opened.tap" ) == FUSE_HOST_OPERATION_BUSY );
 }
@@ -1224,7 +1248,7 @@ host_operations_test( int argc, char **argv )
   assert( fuse_host_set_disk_flipped( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_NOT_READY );
   assert( fuse_host_set_disk_write_protected( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_NOT_READY );
   assert( fuse_host_save_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, NULL ) == FUSE_HOST_OPERATION_NOT_READY );
-  assert( fuse_host_open_file( "not-opened.tap" ) == FUSE_HOST_OPERATION_NOT_READY );
+  assert( fuse_host_open_file( "not-opened.tap", &(fuse_media_decision_id){ 0 } ) == FUSE_HOST_OPERATION_NOT_READY );
   assert( insert_tape_without_decision( "not-opened.tap" ) == FUSE_HOST_OPERATION_NOT_READY );
   config = fuse_host_config_alloc();
   if( !strcmp( argv[1], "disk-save" ) || !strcmp( argv[1], "disk-lifecycle-readback" ) )
@@ -1341,7 +1365,7 @@ host_operations_test( int argc, char **argv )
     assert( fuse_host_set_disk_flipped( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_EXITING );
     assert( fuse_host_set_disk_write_protected( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) == FUSE_HOST_OPERATION_EXITING );
     assert( fuse_host_save_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, NULL ) == FUSE_HOST_OPERATION_EXITING );
-    assert( fuse_host_open_file( "not-opened.tap" ) == FUSE_HOST_OPERATION_EXITING );
+    assert( fuse_host_open_file( "not-opened.tap", &(fuse_media_decision_id){ 0 } ) == FUSE_HOST_OPERATION_EXITING );
     assert( insert_tape_without_decision( "not-opened.tap" ) == FUSE_HOST_OPERATION_EXITING );
   }
   assert( provider.acquired == provider.released );
@@ -1363,7 +1387,7 @@ host_operations_test( int argc, char **argv )
     fuse_disk_drive_info_free( retained_disk_info );
   }
   assert( fuse_host_save_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, NULL ) == FUSE_HOST_OPERATION_NOT_READY );
-  assert( fuse_host_open_file( "not-opened.tap" ) == FUSE_HOST_OPERATION_NOT_READY );
+  assert( fuse_host_open_file( "not-opened.tap", &(fuse_media_decision_id){ 0 } ) == FUSE_HOST_OPERATION_NOT_READY );
   assert( insert_tape_without_decision( "not-opened.tap" ) == FUSE_HOST_OPERATION_NOT_READY );
   return 0;
 }

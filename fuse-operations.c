@@ -81,17 +81,23 @@ fuse_host_reset( fuse_host_reset_kind kind )
 }
 
 fuse_host_operation_result
-fuse_host_open_file( const char *filename )
+fuse_host_open_file( const char *filename, fuse_media_decision_id *request )
 {
   int error;
-  fuse_host_operation_result result = fuse_engine_check_operation();
+  fuse_host_operation_result result;
+  if( !request ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *request = 0;
+  result = fuse_engine_check_operation();
   if( result != FUSE_HOST_OPERATION_OK ) return result;
   if( !filename || !*filename ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( fuse_engine_pending_decision() != FUSE_DECISION_NONE )
+    return FUSE_HOST_OPERATION_BUSY;
   fuse_engine_begin_operation();
-  error = utils_open_file( filename, tape_can_autoload(), NULL );
-  display_refresh_all(); /* Same post-operation refresh as menu_file_open. */
+  error = utils_open_file_with_decision( filename, tape_can_autoload(), request );
+  if( !*request ) display_refresh_all();
   fuse_engine_end_operation();
-  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+  if( error ) return FUSE_HOST_OPERATION_MEDIA_ERROR;
+  return *request ? FUSE_HOST_OPERATION_NEEDS_DECISION : FUSE_HOST_OPERATION_OK;
 }
 
 static int

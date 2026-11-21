@@ -243,7 +243,7 @@ query is provided; do not read live globals concurrently from a UI thread.
 
 ## File → Open
 
-`fuse_host_open_file(path)` invokes the existing general Open dispatcher with
+`fuse_host_open_file(path,&id)` invokes the existing general Open dispatcher with
 `tape_can_autoload()`, then refreshes the display as the legacy menu does. The
 current `auto_load` preference and ROM eligibility remain emulator policy;
 `fuse_host_config_set_auto_load` supplies that existing value during preparation.
@@ -255,7 +255,13 @@ in the existing implementation. The host supplies a filename and command intent,
 not decoded bytes or a copy of the dispatch rules. There is no media-type gate.
 Native filename selection and command delivery/pause ownership stay with the host.
 
-OK means the legacy dispatcher returned zero, which can include cancelled/no-op
+A dirty outgoing tape returns NEEDS_DECISION and retains the identified input.
+Reply via `fuse_host_answer_tape_eject()`. RZX is stopped before identification;
+a reply does not repeat that work. Tape autoload runs only on installation, and
+companion POK lookup and display refresh run when the attempt completes.
+Non-tape branches retain their synchronous behavior.
+
+OK means the dispatcher completed, which in the legacy branches can include cancelled/no-op
 insertion; it does not prove replacement or program-loading completion. MEDIA_ERROR
 maps nonzero, not a uniform unchanged-state or safe-to-continue outcome. File Open
 can partially mutate state and retains legacy fatal paths. No rollback, extra
@@ -298,8 +304,8 @@ Reply through `fuse_host_answer_tape_eject()`. Cancel or failed Save retains the
 outgoing tape without restarting any finalized recording. Discard or a successful
 Save ejects it and decodes the retained input. A decode failure can leave the
 old tape removed and partial new blocks. Success reports insertion, not playback
-or loading completion. General **File → Open** (`fuse_host_open_file`) retains its
-legacy autoload and synchronous replacement behavior.
+or loading completion. For general **File → Open**, use `fuse_host_open_file()`
+to retain file identification, tape autoload, and companion-file policy.
 
 `fuse_host_toggle_tape_play()` uses manual `tape_toggle_play(0)`, not ensure-playing
 or autoload. `fuse_host_stop_tape()` affects playback only, not recording.

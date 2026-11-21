@@ -12,6 +12,7 @@
 
 #include "libspectrum.h"
 #include "fuse-internal.h"
+#include "utils.h"
 
 extern libspectrum_tape *tape;
 extern int tape_autoplay;
@@ -43,6 +44,9 @@ fuse_host_operation_result tape_resolve_eject(
   fuse_media_decision_id request, fuse_media_decision_choice choice,
   const char *filename, int *write_error );
 int tape_finish_eject( void );
+/* An admitted host insert may take ownership of the loaded file. */
+int tape_request_insert( utils_file *file, const char *filename, libspectrum_id_t type,
+                         int autoload, int file_open, fuse_media_decision_id *request );
 
 /* Invalidate a pending eject when a new recording starts or ROM SAVE appends. */
 void tape_invalidate_eject_request( void );

@@ -42,6 +42,7 @@
 #include "automation/automation.h"
 #endif
 #include "fuse.h"
+#include "fuse-engine.h"
 #include "machines/specplus3.h"
 #include "memory_pages.h"
 #include "peripherals/dck.h"
@@ -59,6 +60,7 @@
 #include "settings.h"
 #include "snapshot.h"
 #include "tape.h"
+#include "tape_internals.h"
 #include "utils.h"
 #include "ui/uimedia.h"
 
@@ -120,9 +122,9 @@ utils_open_file( const char *filename, int autoload,
   return error;
 }
 
-int
-utils_open_loaded_file( utils_file *file, int autoload,
-                        libspectrum_id_t *type_ptr)
+static int
+open_loaded_file( utils_file *file, int autoload, libspectrum_id_t *type_ptr,
+                  fuse_media_decision_id *request )
 {
   int error;
 
@@ -164,8 +166,12 @@ utils_open_loaded_file( utils_file *file, int autoload,
     break;
 
   case LIBSPECTRUM_CLASS_TAPE:
-    error = tape_read_buffer( file->buffer, file->length, file->type,
-                              file->filename, autoload );
+    if( request ) {
+      error = tape_request_insert( file, filename, type, autoload, 1, request );
+      if( *request ) return error;
+    } else {
+      error = tape_read_buffer( file->buffer, file->length, type, filename, autoload );
+    }
     pokemem_find_pokfile( file->filename );
     break;
 
@@ -296,6 +302,25 @@ utils_open_loaded_file( utils_file *file, int autoload,
 
   return 0;
   }
+}
+
+int
+utils_open_loaded_file( utils_file *file, int autoload, libspectrum_id_t *type )
+{
+  return open_loaded_file( file, autoload, type, NULL );
+}
+
+int
+utils_open_file_with_decision( const char *filename, int autoload,
+                               fuse_media_decision_id *request )
+{
+  utils_file file;
+  int error;
+
+  utils_file_init( &file, filename );
+  error = open_loaded_file( &file, autoload, NULL, request );
+  utils_file_free( &file );
+  return error;
 }
 
 /* Request a snapshot file from the user and it */
