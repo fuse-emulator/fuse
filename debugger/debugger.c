@@ -41,7 +41,9 @@
 enum debugger_mode_t debugger_mode;
 static struct z80_host_debug {
   int stopped, skip_execute, stepping;
+  int running_batch, has_watchpoint;
   libspectrum_word pc;
+  fuse_debugger_watchpoint watchpoint;
 } host_debug;
 
 /* Which base should we display things in */
@@ -167,6 +169,16 @@ debugger_run( void )
   return 0;
 }
 
+void
+debugger_note_watchpoint( debugger_breakpoint_type type, libspectrum_dword address )
+{
+  if( !host_debug.running_batch || host_debug.has_watchpoint ) return;
+  host_debug.has_watchpoint = 1;
+  host_debug.watchpoint.access = type == DEBUGGER_BREAKPOINT_TYPE_READ ?
+    FUSE_DEBUGGER_ACCESS_READ : FUSE_DEBUGGER_ACCESS_WRITE;
+  host_debug.watchpoint.address = address;
+}
+
 int
 debugger_before_opcode( libspectrum_word pc, struct z80_host_debug *host )
 {
@@ -177,7 +189,7 @@ debugger_before_opcode( libspectrum_word pc, struct z80_host_debug *host )
     if( host->pc == pc ) return 0;
   }
   if( !debugger_check( DEBUGGER_BREAKPOINT_TYPE_EXECUTE, pc ) ) return 0;
-  if( host && ( execute_check || host->stepping ) ) {
+  if( host && ( execute_check || host->stepping || host->has_watchpoint ) ) {
     host->pc = PC;
     host->stepping = 0;
     host->stopped = 1;
@@ -192,7 +204,9 @@ debugger_host_run_batch( const libspectrum_dword *deadline )
 {
   /* No execute check remains to bypass if breakpoints were removed. */
   if( debugger_mode == DEBUGGER_MODE_INACTIVE ) host_debug.skip_execute = 0;
+  host_debug.running_batch = 1;
   z80_do_opcodes_until( deadline, &host_debug );
+  host_debug.running_batch = 0;
 }
 
 int
@@ -204,7 +218,7 @@ debugger_host_stopped( void )
 int
 debugger_host_pending( void )
 {
-  return host_debug.stopped || host_debug.stepping;
+  return host_debug.stopped || host_debug.stepping || host_debug.has_watchpoint;
 }
 
 fuse_host_operation_result
@@ -219,6 +233,17 @@ fuse_host_debugger_copy_registers( processor *registers )
 }
 
 fuse_host_operation_result
+fuse_host_debugger_copy_watchpoint( fuse_debugger_watchpoint *watchpoint )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !watchpoint ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( !host_debug.stopped || !host_debug.has_watchpoint ) return FUSE_HOST_OPERATION_NOT_READY;
+  *watchpoint = host_debug.watchpoint;
+  return FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
 fuse_host_debugger_continue( void )
 {
   fuse_host_operation_result result = fuse_engine_check_operation();
@@ -226,7 +251,8 @@ fuse_host_debugger_continue( void )
   if( !host_debug.stopped ) return FUSE_HOST_OPERATION_NOT_READY;
   host_debug.stopped = 0;
   debugger_resume_execution();
-  host_debug.skip_execute = debugger_mode == DEBUGGER_MODE_ACTIVE;
+  host_debug.skip_execute = !host_debug.has_watchpoint && debugger_mode == DEBUGGER_MODE_ACTIVE;
+  host_debug.has_watchpoint = 0;
   return FUSE_HOST_OPERATION_OK;
 }
 
@@ -240,6 +266,7 @@ fuse_host_debugger_step( void )
   host_debug.stopped = 0;
   host_debug.skip_execute = 1;
   host_debug.stepping = 1;
+  host_debug.has_watchpoint = 0;
   return FUSE_HOST_OPERATION_OK;
 }
 

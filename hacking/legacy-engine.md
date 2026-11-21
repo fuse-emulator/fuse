@@ -167,7 +167,7 @@ change input refresh at emulated port reads.
 | --- | --- |
 | COMPLETED | Requested frame boundary or budget reached. Budget completion does not imply a completed frame. |
 | NEEDS_DECISION | A pending media decision blocks execution. No emulated time advances. |
-| DEBUGGER_STOPPED | Host execution stopped at an opcode boundary for a breakpoint or single-step, or already awaits a debugger command. |
+| DEBUGGER_STOPPED | Host execution stopped at an opcode boundary for a breakpoint, memory watchpoint, or single-step, or already awaits a debugger command. |
 | PAUSED | No execution on paused entry, or execution paused during dispatch. |
 | INTERRUPTED | An active budget's machine/clock state was replaced; reconsider the next request in the new state. |
 | EXITING | Exit requested inside the engine. |
@@ -255,8 +255,16 @@ the breakpoint stays installed.
 one-shot bypass, as in legacy Step. Due events and interrupts can run before
 that boundary, so the new PC may be in an interrupt handler. A frame or T-state
 limit can end a turn first; Step stays armed for the next turn. A halted CPU
-can step without changing PC. Legacy execution retains its debugger UI;
-host read/write watchpoint stops are not covered by this API.
+can step without changing PC.
+
+A read/write watchpoint hit during a host CPU batch stops at the next opcode
+boundary. The triggering access and instruction finish first. Copy the access
+kind and address with `fuse_host_debugger_copy_watchpoint()`; the copied
+registers describe the stop, not the triggering access. A frame or budget limit
+can return before the stop is reported. Continue after a watchpoint does not
+skip an execute breakpoint at the new PC. Legacy execution retains its debugger
+UI; port watchpoints and memory accesses from event callbacks are outside this
+host contract.
 
 ## Host Quit
 
@@ -511,6 +519,9 @@ events at frame completion on this path. The directory needs `48.rom`, `128-0.ro
 execute breakpoint, copies the registers, steps across a T-state budget boundary,
 and continues until the same breakpoint fires again. Breakpoint setup uses the
 existing internal debugger API; the host drives execution, inspection and Step.
+`--debugger-watchpoint` also uses a synthetic ROM and demonstrates completed
+read and write instructions, access metadata, and an execute breakpoint that
+still fires after Continue from a watchpoint.
 
 `--queued-input` demonstrates optional keyboard-read refresh using the existing
 private `keyboard_refresh.h` hook. The host queues a Space press before the first

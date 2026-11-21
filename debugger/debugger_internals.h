@@ -34,6 +34,7 @@ extern int debugger_memory_pool;
 extern int debugger_breakpoint_event;
 
 void debugger_breakpoint_time_fn( libspectrum_dword tstates, int type, void *user_data );
+void debugger_note_watchpoint( debugger_breakpoint_type type, libspectrum_dword address );
 
 int debugger_breakpoint_remove( size_t id );
 int debugger_breakpoint_remove_all( void );

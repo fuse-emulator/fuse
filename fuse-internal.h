@@ -353,6 +353,18 @@ fuse_run_result fuse_run_tstates( unsigned long budget );
 
 /* Available at a host breakpoint or single-step stop. Copy by value. */
 fuse_host_operation_result fuse_host_debugger_copy_registers( processor *registers );
+
+typedef enum fuse_debugger_access {
+  FUSE_DEBUGGER_ACCESS_READ,
+  FUSE_DEBUGGER_ACCESS_WRITE
+} fuse_debugger_access;
+typedef struct fuse_debugger_watchpoint {
+  fuse_debugger_access access;
+  libspectrum_word address;
+} fuse_debugger_watchpoint;
+/* Copy the triggering memory access at a host watchpoint stop only. */
+fuse_host_operation_result fuse_host_debugger_copy_watchpoint(
+  fuse_debugger_watchpoint *watchpoint );
 /* Leave the stop and bypass the current execute check once. Does not run. */
 fuse_host_operation_result fuse_host_debugger_continue( void );
 /* Arm a stop at the next opcode boundary after bypassing the current check.

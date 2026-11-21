@@ -14,7 +14,7 @@ typedef struct rom_provider {
   const char *directory;
   unsigned char *pending;
   unsigned int requests, releases;
-  int queued_input, debugger_step;
+  int queued_input, debugger_step, debugger_watchpoint;
 } rom_provider;
 
 static void
@@ -41,6 +41,21 @@ acquire_rom( void *context, const char *name, fuse_host_rom *rom )
   provider->requests++;
   rom->context = provider;
   rom->release = release_rom; /* Called even when acquisition/validation fails. */
+  if( provider->debugger_watchpoint ) {
+    static const unsigned char probe[16384] = {
+      0x3e, 0x42,        /* LD A,42h */
+      0x32, 0x00, 0x80,  /* LD (8000h),A */
+      0x3e, 0x00,        /* LD A,0 */
+      0x3a, 0x00, 0x80,  /* LD A,(8000h) */
+      0x3c,              /* INC A */
+      0xc3, 0, 0,        /* JP 0 */
+    };
+    if( strcmp( name, "48.rom" ) ) return 1;
+    rom->data = probe;
+    rom->length = sizeof( probe );
+    rom->custom = 1;
+    return 0;
+  }
   if( provider->debugger_step ) {
     /* INC A; INC A; JP 0 */
     static const unsigned char probe[16384] = { 0x3c, 0x3c, 0xc3, 0, 0 };
@@ -263,6 +278,48 @@ fail:
   return 1;
 }
 
+static int
+watchpoint_demo( unsigned int *budget_turns )
+{
+  fuse_debugger_watchpoint watch;
+  processor registers;
+
+  if( debugger_breakpoint_add_address( DEBUGGER_BREAKPOINT_TYPE_WRITE,
+        memory_source_any, 0, 0x8000, 0, DEBUGGER_BREAKPOINT_LIFE_PERMANENT, NULL ) ||
+      debugger_breakpoint_add_address( DEBUGGER_BREAKPOINT_TYPE_READ,
+        memory_source_any, 0, 0x8000, 0, DEBUGGER_BREAKPOINT_LIFE_PERMANENT, NULL ) ||
+      debugger_breakpoint_add_address( DEBUGGER_BREAKPOINT_TYPE_EXECUTE,
+        memory_source_any, 0, 10, 0, DEBUGGER_BREAKPOINT_LIFE_PERMANENT, NULL ) ||
+      fuse_run_frame() != FUSE_RUN_DEBUGGER_STOPPED ||
+      fuse_host_debugger_copy_watchpoint( &watch ) != FUSE_HOST_OPERATION_OK ||
+      watch.access != FUSE_DEBUGGER_ACCESS_WRITE || watch.address != 0x8000 ||
+      fuse_host_debugger_copy_registers( &registers ) != FUSE_HOST_OPERATION_OK ||
+      registers.pc.w != 5 ) goto fail;
+  puts( "host: write watchpoint at 8000; stopped at PC 0005" );
+
+  if( operation( "continue after write", fuse_host_debugger_continue() ) ||
+      fuse_run_tstates( 20 ) != FUSE_RUN_COMPLETED ) goto fail;
+  (*budget_turns)++;
+  if( fuse_run_frame() != FUSE_RUN_DEBUGGER_STOPPED ||
+      fuse_host_debugger_copy_watchpoint( &watch ) != FUSE_HOST_OPERATION_OK ||
+      watch.access != FUSE_DEBUGGER_ACCESS_READ || watch.address != 0x8000 ||
+      fuse_host_debugger_copy_registers( &registers ) != FUSE_HOST_OPERATION_OK ||
+      registers.pc.w != 10 || ( registers.af.w >> 8 ) != 0x42 ) goto fail;
+  puts( "host: read watchpoint at 8000; stopped at PC 000a with A=42" );
+
+  if( operation( "continue after read", fuse_host_debugger_continue() ) ||
+      fuse_run_frame() != FUSE_RUN_DEBUGGER_STOPPED ||
+      fuse_host_debugger_copy_watchpoint( &watch ) != FUSE_HOST_OPERATION_NOT_READY ||
+      fuse_host_debugger_copy_registers( &registers ) != FUSE_HOST_OPERATION_OK ||
+      registers.pc.w != 10 || ( registers.af.w >> 8 ) != 0x42 ) goto fail;
+  puts( "host: Continue honored the execute breakpoint at PC 000a" );
+  return 0;
+
+fail:
+  fputs( "host: debugger watchpoint probe did not complete\n", stderr );
+  return 1;
+}
+
 /* A deterministic stand-in for commands from an independent UI loop. An idle
    worker would wait on its command queue here rather than spinning on ticks. */
 static int
@@ -427,6 +484,7 @@ main( int argc, char **argv )
   int prepared = 0, status = EXIT_FAILURE;
   int queued_input = argc == 3 && !strcmp( argv[2], "--queued-input" );
   int debugger_step = argc == 3 && !strcmp( argv[2], "--debugger-step" );
+  int debugger_watchpoint = argc == 3 && !strcmp( argv[2], "--debugger-watchpoint" );
   int disk_lifecycle = argc == 4 && !strcmp( argv[2], "--disk-lifecycle" );
   int tape_record = argc == 4 && !strcmp( argv[2], "--record-tape" );
   int parked_eject = argc == 4 && !strcmp( argv[2], "--parked-tape-eject" );
@@ -445,7 +503,7 @@ main( int argc, char **argv )
       ( argc == 3 && ( !strcmp( argv[2], "--open" ) || !strcmp( argv[2], "--save-disk" ) ||
                       !strcmp( argv[2], "--disk-lifecycle" ) || !strcmp( argv[2], "--tape-lifecycle" ) || !strcmp( argv[2], "--replace-tape" ) ||
                       !strcmp( argv[2], "--record-tape" ) || !strcmp( argv[2], "--parked-tape-eject" ) || !strcmp( argv[2], "--save-snapshot" ) || !strcmp( argv[2], "--filesystem" ) || !strcmp( argv[2], "--divmmc" ) ) ) ) {
-    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --queued-input | --debugger-step]\n", argv[0] );
+    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
     return EXIT_FAILURE;
   }
   if( filesystem || divmmc ) {
@@ -458,6 +516,7 @@ main( int argc, char **argv )
   }
   provider.queued_input = queued_input;
   provider.debugger_step = debugger_step;
+  provider.debugger_watchpoint = debugger_watchpoint;
   provider.directory = argv[1]; /* Borrowed through shutdown, not passed as engine CLI. */
   config = fuse_host_config_alloc();
   if( fuse_host_config_set_machine( config, disk_save || disk_lifecycle ? "plus3" : "48" ) ||
@@ -486,6 +545,10 @@ main( int argc, char **argv )
   }
   if( parked_eject ) {
     if( !parked_eject_demo( argv[3], &frame_turns ) ) status = EXIT_SUCCESS;
+    goto cleanup;
+  }
+  if( debugger_watchpoint ) {
+    if( !watchpoint_demo( &budget_turns ) ) status = EXIT_SUCCESS;
     goto cleanup;
   }
   if( debugger_step ) {

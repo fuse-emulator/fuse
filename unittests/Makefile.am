@@ -378,6 +378,11 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    'host: Continue reached the same breakpoint again' \
 	    'host: shutdown; frame turns=0; budget turns=1; ROM requests=1; releases=1' > expected-debugger-step; \
 	  printf '%s\n' 'host: prepared 48' \
+	    'host: write watchpoint at 8000; stopped at PC 0005' \
+	    'host: read watchpoint at 8000; stopped at PC 000a with A=42' \
+	    'host: Continue honored the execute breakpoint at PC 000a' \
+	    'host: shutdown; frame turns=0; budget turns=1; ROM requests=1; releases=1' > expected-debugger-watchpoint; \
+	  printf '%s\n' 'host: prepared 48' \
 	    'host: parked for eject; handled focus loss; checked cancel, save and stale replies' \
 	    'host: shutdown; frame turns=4; budget turns=0; ROM requests=1; releases=1' > expected-parked-eject; \
 	  printf '%s\n' 'host: prepared 48' \
@@ -427,6 +432,8 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    cmp expected-queued-input "$$consumer-queued-input.out"; \
 	    "$$program" empty --debugger-step > "$$consumer-debugger-step.out" 2> "$$consumer-debugger-step.err"; \
 	    cmp expected-debugger-step "$$consumer-debugger-step.out"; \
+	    "$$program" empty --debugger-watchpoint > "$$consumer-debugger-watchpoint.out" 2> "$$consumer-debugger-watchpoint.err"; \
+	    cmp expected-debugger-watchpoint "$$consumer-debugger-watchpoint.out"; \
 	    "$$program" only48 --parked-tape-eject parked.pzx > "$$consumer-parked.out" 2> "$$consumer-parked.err"; \
 	    cmp expected-parked-eject "$$consumer-parked.out"; rm parked.pzx; \
 	    "$$program" only48 --replace-tape sample.tap malformed.tzx > "$$consumer-replacement.out" 2> "$$consumer-replacement.err"; \

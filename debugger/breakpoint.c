@@ -264,8 +264,11 @@ debugger_check( debugger_breakpoint_type type, libspectrum_dword value )
   if( signal_breakpoints_updated )
       ui_breakpoints_updated();
 
-  /* Debugger mode could have been reset by a breakpoint command */
-  return ( debugger_mode == DEBUGGER_MODE_HALTED );
+  /* Debugger mode could have been reset by a breakpoint command. */
+  if( debugger_mode != DEBUGGER_MODE_HALTED ) return 0;
+  if( type == DEBUGGER_BREAKPOINT_TYPE_READ || type == DEBUGGER_BREAKPOINT_TYPE_WRITE )
+    debugger_note_watchpoint( type, value );
+  return 1;
 }
 
 void
