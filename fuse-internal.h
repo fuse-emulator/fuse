@@ -112,7 +112,6 @@ typedef enum fuse_host_operation_result {
   FUSE_HOST_OPERATION_NEEDS_DECISION,
   FUSE_HOST_OPERATION_CANCELLED,
   FUSE_HOST_OPERATION_STALE,
-  FUSE_HOST_OPERATION_UNSUPPORTED_DIRTY_MEDIA,
   FUSE_HOST_OPERATION_READY_TO_SHUT_DOWN
 } fuse_host_operation_result;
 
@@ -125,7 +124,7 @@ typedef enum fuse_media_decision_choice {
 } fuse_media_decision_choice;
 
 typedef enum fuse_quit_media {
-  FUSE_QUIT_TAPE, FUSE_QUIT_FLOPPY, FUSE_QUIT_MICRODRIVE
+  FUSE_QUIT_TAPE, FUSE_QUIT_FLOPPY, FUSE_QUIT_MICRODRIVE, FUSE_QUIT_MASS_STORAGE
 } fuse_quit_media;
 
 /* On NEEDS_DECISION only, id is nonzero. OK is not a quit outcome.
@@ -136,10 +135,12 @@ typedef struct fuse_quit_request {
   fuse_disk_controller controller;
   int slot;
   int has_save_target; /* Save can pass NULL to reuse the target. */
+  periph_type mass_storage_controller;
+  libspectrum_ide_unit mass_storage_unit;
 } fuse_quit_request;
 
-/* Resolve tape, floppies then Microdrives. Refuses dirty IDE/MMC before any
-   eject. READY_TO_SHUT_DOWN prevents more execution; call fuse_shutdown(). */
+/* Resolve tape, floppies, Microdrives then IDE/MMC in legacy order.
+   READY_TO_SHUT_DOWN prevents more execution; call fuse_shutdown(). */
 fuse_host_operation_result fuse_host_request_quit( fuse_quit_request *request );
 
 /* A reply may return the next decision. Other host operations are BUSY while
@@ -202,11 +203,12 @@ typedef enum fuse_open_question {
   FUSE_OPEN_NO_QUESTION,
   FUSE_OPEN_SAVE_TAPE,
   FUSE_OPEN_SAVE_FLOPPY,
-  FUSE_OPEN_MAP_JOYSTICK
+  FUSE_OPEN_MAP_JOYSTICK,
+  FUSE_OPEN_SAVE_MASS_STORAGE
 } fuse_open_question;
 
-/* Copied by value. Reply with the matching tape eject, disk eject or
-   snapshot joystick answer. Tape Save always needs a chosen path. */
+/* Copied by value. Use the matching answer for the question. Tape Save needs
+   a chosen path; IDE/MMC Save always commits to the attached backing. */
 typedef struct fuse_open_request {
   fuse_media_decision_id id;
   fuse_open_question question;
@@ -220,6 +222,10 @@ typedef struct fuse_open_request {
       libspectrum_joystick type;
       int inputs;
     } joystick;
+    struct {
+      periph_type controller;
+      libspectrum_ide_unit unit;
+    } mass_storage;
   } detail;
 } fuse_open_request;
 
@@ -274,15 +280,20 @@ fuse_host_operation_result fuse_host_copy_mass_storage_info(
   periph_type controller, libspectrum_ide_unit unit,
   fuse_mass_storage_info **info );
 void fuse_mass_storage_info_free( fuse_mass_storage_info *info );
-fuse_host_operation_result fuse_host_eject_mass_storage( periph_type controller,
-                                                         libspectrum_ide_unit
-                                                         unit );
+fuse_host_operation_result fuse_host_eject_mass_storage(
+  periph_type controller, libspectrum_ide_unit unit,
+  fuse_media_decision_id *request );
 
 /* Commit uses the controller's existing reporting; success is not durability. */
 fuse_host_operation_result fuse_host_commit_mass_storage(
   periph_type controller, libspectrum_ide_unit unit );
 fuse_host_operation_result fuse_host_insert_mass_storage(
-  periph_type controller, libspectrum_ide_unit unit, const char *filename );
+  periph_type controller, libspectrum_ide_unit unit, const char *filename,
+  fuse_media_decision_id *request );
+/* Dirty changes return NEEDS_DECISION. Replacement retains the path, not the
+   image bytes. Save commits to the attached backing; no Save As. */
+fuse_host_operation_result fuse_host_answer_mass_storage_eject(
+  fuse_media_decision_id id, fuse_media_decision_choice choice );
 
 /* Chosen-target Save Snapshot, not File Open or an owned checkpoint/buffer API.
    Borrows a nonempty path through return; engine infers format from the filename

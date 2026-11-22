@@ -530,6 +530,13 @@ open_demo( const char *filename, unsigned int *completed )
       result = fuse_host_answer_disk_eject( request.id,
                                             FUSE_MEDIA_DECISION_DISCARD, NULL );
       break;
+    case FUSE_OPEN_SAVE_MASS_STORAGE:
+      printf( "host: modified IDE/MMC controller=%d unit=%d; discard\n",
+              (int)request.detail.mass_storage.controller,
+              (int)request.detail.mass_storage.unit );
+      result = fuse_host_answer_mass_storage_eject( request.id,
+                                                    FUSE_MEDIA_DECISION_DISCARD );
+      break;
     case FUSE_OPEN_MAP_JOYSTICK:
       printf( "host: snapshot joystick %s; %s\n",
               libspectrum_joystick_name( request.detail.joystick.type ),
@@ -656,13 +663,14 @@ main( int argc, char **argv )
     goto cleanup;
   }
   if( divmmc ) {
+    fuse_media_decision_id id;
     fuse_mass_storage_info *drive = NULL;
     int mounted;
-    if( operation( "insert DivMMC", fuse_host_insert_mass_storage( PERIPH_TYPE_DIVMMC, LIBSPECTRUM_IDE_MASTER, "media/card.hdf" ) ) ||
+    if( operation( "insert DivMMC", fuse_host_insert_mass_storage( PERIPH_TYPE_DIVMMC, LIBSPECTRUM_IDE_MASTER, "media/card.hdf", &id ) ) ||
         operation( "observe DivMMC", fuse_host_copy_mass_storage_info( PERIPH_TYPE_DIVMMC, LIBSPECTRUM_IDE_MASTER, &drive ) ) ) goto cleanup;
     mounted = drive->active && drive->backing_name && !strcmp( drive->backing_name, "media/card.hdf" );
     if( !mounted || operation( "commit DivMMC", fuse_host_commit_mass_storage( PERIPH_TYPE_DIVMMC, LIBSPECTRUM_IDE_MASTER ) ) ||
-        operation( "eject DivMMC", fuse_host_eject_mass_storage( PERIPH_TYPE_DIVMMC, LIBSPECTRUM_IDE_MASTER ) ) ) {
+        operation( "eject DivMMC", fuse_host_eject_mass_storage( PERIPH_TYPE_DIVMMC, LIBSPECTRUM_IDE_MASTER, &id ) ) ) {
       fuse_mass_storage_info_free( drive );
       goto cleanup;
     }
@@ -702,7 +710,7 @@ main( int argc, char **argv )
       ok = drive->active && drive->backing_name && !strcmp( drive->backing_name, "media/drive.hdf" );
       fuse_mass_storage_info_free( drive );
       if( !ok || operation( "commit ZXCF", fuse_host_commit_mass_storage( PERIPH_TYPE_ZXCF, LIBSPECTRUM_IDE_MASTER ) ) ||
-          operation( "eject ZXCF", fuse_host_eject_mass_storage( PERIPH_TYPE_ZXCF, LIBSPECTRUM_IDE_MASTER ) ) ) goto cleanup;
+          operation( "eject ZXCF", fuse_host_eject_mass_storage( PERIPH_TYPE_ZXCF, LIBSPECTRUM_IDE_MASTER, &disk_request ) ) ) goto cleanup;
     }
     puts( "host: effective filesystem; tape/snapshot roundtrip; ZXCF lifecycle; handles balanced" );
     status = EXIT_SUCCESS;

@@ -176,10 +176,9 @@ zxatasp_backing_attached( libspectrum_ide_unit unit )
 }
 
 int
-zxatasp_has_dirty_media( void )
+zxatasp_dirty( libspectrum_ide_unit unit )
 {
-  return ( attached[0] && libspectrum_ide_dirty( zxatasp_idechn0, LIBSPECTRUM_IDE_MASTER ) ) ||
-         ( attached[1] && libspectrum_ide_dirty( zxatasp_idechn0, LIBSPECTRUM_IDE_SLAVE ) );
+  return attached[unit] && libspectrum_ide_dirty( zxatasp_idechn0, unit );
 }
 
 static int
@@ -277,15 +276,30 @@ zxatasp_commit( libspectrum_ide_unit unit )
   return error;
 }
 
-int
-zxatasp_eject( libspectrum_ide_unit unit )
+static int
+zxatasp_eject_choice( libspectrum_ide_unit unit,
+                      const ui_confirm_save_t *choice )
 {
   return ide_master_slave_eject(
     zxatasp_idechn0, unit,
     &settings_current.zxatasp_master_file,
     UI_MENU_ITEM_MEDIA_IDE_ZXATASP_MASTER_EJECT,
     &settings_current.zxatasp_slave_file,
-    UI_MENU_ITEM_MEDIA_IDE_ZXATASP_SLAVE_EJECT, attached );
+    UI_MENU_ITEM_MEDIA_IDE_ZXATASP_SLAVE_EJECT, attached, choice );
+}
+
+int
+zxatasp_eject( libspectrum_ide_unit unit )
+{
+  return zxatasp_eject_choice( unit, NULL );
+}
+
+int
+zxatasp_eject_authorized( libspectrum_ide_unit unit, int save )
+{
+  ui_confirm_save_t choice =
+    save ? UI_CONFIRM_SAVE_SAVE : UI_CONFIRM_SAVE_DONTSAVE;
+  return zxatasp_eject_choice( unit, &choice );
 }
 
 /* Port read/writes */

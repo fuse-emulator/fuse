@@ -264,7 +264,8 @@ open_loaded_file( utils_file *file, int autoload, libspectrum_id_t *type_ptr,
     }
     break;
 
-  case LIBSPECTRUM_CLASS_HARDDISK:
+  case LIBSPECTRUM_CLASS_HARDDISK: {
+    periph_type controller;
     if( !settings_current.simpleide_active &&
 	!settings_current.zxatasp_active   &&
 	!settings_current.divide_enabled   &&
@@ -275,22 +276,24 @@ open_loaded_file( utils_file *file, int autoload, libspectrum_id_t *type_ptr,
       periph_update();
     }
 
-    if( settings_current.zxcf_active ) {
-      error = zxcf_insert( filename );
-    } else if( settings_current.zxatasp_active ) {
-      error = zxatasp_insert( filename, LIBSPECTRUM_IDE_MASTER );
-    } else if( settings_current.simpleide_active ) {
-      error = simpleide_insert( filename, LIBSPECTRUM_IDE_MASTER );
-    } else if( settings_current.divide_enabled ) {
-      error = divide_insert( filename, LIBSPECTRUM_IDE_MASTER );
-    } else if( settings_current.zxmmc_enabled ) {
-      error = zxmmc_insert( filename );
-    } else {
-      error = divmmc_insert( filename );
+    if( settings_current.zxcf_active ) controller = PERIPH_TYPE_ZXCF;
+    else if( settings_current.zxatasp_active ) controller = PERIPH_TYPE_ZXATASP;
+    else if( settings_current.simpleide_active ) controller = PERIPH_TYPE_SIMPLEIDE;
+    else if( settings_current.divide_enabled ) controller = PERIPH_TYPE_DIVIDE;
+    else if( settings_current.zxmmc_enabled ) controller = PERIPH_TYPE_ZXMMC;
+    else controller = PERIPH_TYPE_DIVMMC;
+
+    if( request ) return fuse_mass_storage_request_open( controller, filename, request );
+    switch( controller ) {
+    case PERIPH_TYPE_ZXCF: error = zxcf_insert( filename ); break;
+    case PERIPH_TYPE_ZXATASP: error = zxatasp_insert( filename, LIBSPECTRUM_IDE_MASTER ); break;
+    case PERIPH_TYPE_SIMPLEIDE: error = simpleide_insert( filename, LIBSPECTRUM_IDE_MASTER ); break;
+    case PERIPH_TYPE_DIVIDE: error = divide_insert( filename, LIBSPECTRUM_IDE_MASTER ); break;
+    case PERIPH_TYPE_ZXMMC: error = zxmmc_insert( filename ); break;
+    default: error = divmmc_insert( filename ); break;
     }
-    if( error ) return error;
-    
     break;
+  }
 
   case LIBSPECTRUM_CLASS_AUXILIARY:
     if( type == LIBSPECTRUM_ID_AUX_POK ) {

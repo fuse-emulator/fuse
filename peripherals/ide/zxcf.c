@@ -213,12 +213,27 @@ zxcf_commit( void )
   return error;
 }
 
+static int
+zxcf_eject_choice( const ui_confirm_save_t *choice )
+{
+  return ide_eject( zxcf_idechn, LIBSPECTRUM_IDE_MASTER,
+                    &settings_current.zxcf_pri_file,
+                    UI_MENU_ITEM_MEDIA_IDE_ZXCF_EJECT, &backing_attached,
+                    choice );
+}
+
 int
 zxcf_eject( void )
 {
-  return ide_eject( zxcf_idechn, LIBSPECTRUM_IDE_MASTER,
-		    &settings_current.zxcf_pri_file,
-		    UI_MENU_ITEM_MEDIA_IDE_ZXCF_EJECT, &backing_attached );
+  return zxcf_eject_choice( NULL );
+}
+
+int
+zxcf_eject_authorized( int save )
+{
+  ui_confirm_save_t choice =
+    save ? UI_CONFIRM_SAVE_SAVE : UI_CONFIRM_SAVE_DONTSAVE;
+  return zxcf_eject_choice( &choice );
 }
 
 static void

@@ -44,7 +44,8 @@ int divide_insert( const char *filename, libspectrum_ide_unit unit );
 int divide_commit( libspectrum_ide_unit unit );
 int divide_eject( libspectrum_ide_unit unit );
 int divide_backing_attached( libspectrum_ide_unit unit );
-int divide_has_dirty_media( void );
+int divide_dirty( libspectrum_ide_unit unit );
+int divide_eject_authorized( libspectrum_ide_unit unit, int save );
 
 int divide_unittest( void );
 

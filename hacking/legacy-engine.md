@@ -268,14 +268,12 @@ host contract.
 
 ## Host Quit
 
-`fuse_host_request_quit(&request)` checks for dirty IDE/MMC media before
-closing anything. If found, it returns UNSUPPORTED_DIRTY_MEDIA. An existing
-media decision returns BUSY and must be resolved first.
-
-Quit closes the tape, then walks floppies in registration order and Microdrives
-in slot order, including cartridges retained when Interface 1 is unavailable.
-Each dirty item returns NEEDS_DECISION with its ID and media kind, plus the slot
-for a floppy or Microdrive and controller for a floppy.
+An existing media decision returns BUSY and must be resolved before
+`fuse_host_request_quit(&request)`. Quit closes the tape, then walks floppies in
+registration order, Microdrives in slot order, and IDE/MMC in legacy controller
+and unit order. Retained attachments are included even if their peripheral is
+inactive. Each dirty item returns NEEDS_DECISION with its ID, media kind and
+applicable slot or controller/unit. IDE/MMC replies always pass a NULL path.
 Use `fuse_host_answer_quit()` to answer; it may return the next decision. While
 waiting, run turns are blocked and other host operations return BUSY. Cancel or
 a failed Save stops the walk and retains the current item, but does not restore
@@ -519,11 +517,14 @@ accept master and slave. ZXCF, DivMMC and ZXMMC accept master only. Explicit
 operations require an active controller and do not change general File Open's
 controller selection. `fuse_host_config_set_divmmc` enables DivMMC at preparation.
 
-Insert and eject retain the existing synchronous dirty-media decision. If eject
-is refused, replacement does not open the new backing; the host receives
-`MEDIA_ERROR` rather than legacy insert's no-op success. A failed insert after
-successful eject can leave the drive empty. Commit retains legacy reporting
-and does not guarantee that cached writes reached storage.
+Dirty insert and eject return NEEDS_DECISION. Hard-disk File Open returns the
+same question, with the controller and unit chosen by the existing dispatcher.
+Reply using `fuse_host_answer_mass_storage_eject()`: Save commits to the attached
+backing, Discard ejects without committing, and Cancel keeps the attachment.
+Replacement retains the path, not the backing bytes; opening the new backing
+occurs after an approved eject. A failed insert after eject can leave the drive
+empty. Save and Commit retain legacy backend reporting, not a durability
+guarantee. Legacy menus continue to ask synchronously.
 
 `fuse_host_copy_mass_storage_info` returns an independent value; release it with
 `fuse_mass_storage_info_free`. A NULL backing name means no backing is attached,

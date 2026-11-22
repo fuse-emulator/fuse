@@ -80,10 +80,9 @@ simpleide_backing_attached( libspectrum_ide_unit unit )
 }
 
 int
-simpleide_has_dirty_media( void )
+simpleide_dirty( libspectrum_ide_unit unit )
 {
-  return ( attached[0] && libspectrum_ide_dirty( simpleide_idechn, LIBSPECTRUM_IDE_MASTER ) ) ||
-         ( attached[1] && libspectrum_ide_dirty( simpleide_idechn, LIBSPECTRUM_IDE_SLAVE ) );
+  return attached[unit] && libspectrum_ide_dirty( simpleide_idechn, unit );
 }
 
 static int
@@ -157,15 +156,30 @@ simpleide_commit( libspectrum_ide_unit unit )
   return error;
 }
 
-int
-simpleide_eject( libspectrum_ide_unit unit )
+static int
+simpleide_eject_choice( libspectrum_ide_unit unit,
+                        const ui_confirm_save_t *choice )
 {
   return ide_master_slave_eject(
     simpleide_idechn, unit,
     &settings_current.simpleide_master_file,
     UI_MENU_ITEM_MEDIA_IDE_SIMPLE8BIT_MASTER_EJECT,
     &settings_current.simpleide_slave_file,
-    UI_MENU_ITEM_MEDIA_IDE_SIMPLE8BIT_SLAVE_EJECT, attached );
+    UI_MENU_ITEM_MEDIA_IDE_SIMPLE8BIT_SLAVE_EJECT, attached, choice );
+}
+
+int
+simpleide_eject( libspectrum_ide_unit unit )
+{
+  return simpleide_eject_choice( unit, NULL );
+}
+
+int
+simpleide_eject_authorized( libspectrum_ide_unit unit, int save )
+{
+  ui_confirm_save_t choice =
+    save ? UI_CONFIRM_SAVE_SAVE : UI_CONFIRM_SAVE_DONTSAVE;
+  return simpleide_eject_choice( unit, &choice );
 }
 
 /* Port read/writes */

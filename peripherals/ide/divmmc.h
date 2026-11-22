@@ -45,6 +45,7 @@ void divmmc_commit( void );
 int divmmc_eject( void );
 int divmmc_backing_attached( void );
 int divmmc_has_dirty_media( void );
+int divmmc_eject_authorized( int save );
 
 int divmmc_unittest( void );
 

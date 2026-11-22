@@ -216,13 +216,13 @@ eject_fn_wrapper( void *context )
 }
 
 static int
-mmc_eject( libspectrum_mmc_card *card )
+mmc_eject( libspectrum_mmc_card *card, const ui_confirm_save_t *choice )
 {
   return ide_eject_mass_storage( dirty_fn_wrapper, commit_fn_wrapper,
       eject_fn_wrapper, card,
       "Card has been modified.\nDo you want to save it?",
       &settings_current.divmmc_file,
-      eject_menu_item );
+      eject_menu_item, choice );
 }
 
 int
@@ -233,7 +233,7 @@ divmmc_insert( const char *filename )
   /* Remove any currently inserted card; abort if we want to keep the current
      card */
   if( settings_current.divmmc_file )
-    if( mmc_eject( card ) )
+    if( mmc_eject( card, NULL ) )
       return 0;
 
   settings_set_string( &settings_current.divmmc_file, filename );
@@ -252,7 +252,15 @@ divmmc_commit( void )
 int
 divmmc_eject( void )
 {
-  return mmc_eject( card );
+  return mmc_eject( card, NULL );
+}
+
+int
+divmmc_eject_authorized( int save )
+{
+  ui_confirm_save_t choice =
+    save ? UI_CONFIRM_SAVE_SAVE : UI_CONFIRM_SAVE_DONTSAVE;
+  return mmc_eject( card, &choice );
 }
 
 /* Port read/writes */

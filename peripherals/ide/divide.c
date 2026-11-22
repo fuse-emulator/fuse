@@ -102,10 +102,9 @@ divide_backing_attached( libspectrum_ide_unit unit )
 }
 
 int
-divide_has_dirty_media( void )
+divide_dirty( libspectrum_ide_unit unit )
 {
-  return ( attached[0] && libspectrum_ide_dirty( divide_idechn0, LIBSPECTRUM_IDE_MASTER ) ) ||
-         ( attached[1] && libspectrum_ide_dirty( divide_idechn0, LIBSPECTRUM_IDE_SLAVE ) );
+  return attached[unit] && libspectrum_ide_dirty( divide_idechn0, unit );
 }
 
 static int
@@ -196,15 +195,30 @@ divide_commit( libspectrum_ide_unit unit )
   return error;
 }
 
-int
-divide_eject( libspectrum_ide_unit unit )
+static int
+divide_eject_choice( libspectrum_ide_unit unit,
+                     const ui_confirm_save_t *choice )
 {
   return ide_master_slave_eject(
     divide_idechn0, unit,
     &settings_current.divide_master_file,
     UI_MENU_ITEM_MEDIA_IDE_DIVIDE_MASTER_EJECT,
     &settings_current.divide_slave_file,
-    UI_MENU_ITEM_MEDIA_IDE_DIVIDE_SLAVE_EJECT, attached );
+    UI_MENU_ITEM_MEDIA_IDE_DIVIDE_SLAVE_EJECT, attached, choice );
+}
+
+int
+divide_eject( libspectrum_ide_unit unit )
+{
+  return divide_eject_choice( unit, NULL );
+}
+
+int
+divide_eject_authorized( libspectrum_ide_unit unit, int save )
+{
+  ui_confirm_save_t choice =
+    save ? UI_CONFIRM_SAVE_SAVE : UI_CONFIRM_SAVE_DONTSAVE;
+  return divide_eject_choice( unit, &choice );
 }
 
 /* Port read/writes */

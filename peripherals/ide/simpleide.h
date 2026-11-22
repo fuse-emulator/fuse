@@ -30,6 +30,7 @@ int simpleide_insert( const char *filename, libspectrum_ide_unit unit );
 int simpleide_commit( libspectrum_ide_unit unit );
 int simpleide_eject( libspectrum_ide_unit unit );
 int simpleide_backing_attached( libspectrum_ide_unit unit );
-int simpleide_has_dirty_media( void );
+int simpleide_dirty( libspectrum_ide_unit unit );
+int simpleide_eject_authorized( libspectrum_ide_unit unit, int save );
 
 #endif                 /* #ifndef FUSE_SIMPLEIDE_H */

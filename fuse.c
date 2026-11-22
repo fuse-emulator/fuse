@@ -1389,6 +1389,7 @@ static int fuse_end(void)
      shutdown entry deliberately cannot. Disarm before invoking callbacks. */
   legacy_ownership.phase = LEGACY_STOPPING;
   fuse_host_clear_quit();
+  fuse_mass_storage_cancel_pending();
   snapshot_cancel_pending();
 
   movie_stop();

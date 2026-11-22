@@ -91,7 +91,7 @@ ide_insert( const char *filename, libspectrum_ide_channel *chn,
   /* Remove any currently inserted disk; abort if we want to keep the current
      disk */
   if( *setting )
-    if( ide_eject( chn, unit, setting, item, attached ) )
+    if( ide_eject( chn, unit, setting, item, attached, NULL ) )
       return 0;
 
   settings_set_string( setting, filename );
@@ -106,13 +106,16 @@ int
 ide_master_slave_eject(
   libspectrum_ide_channel *channel, libspectrum_ide_unit unit,
   char **master_setting, ui_menu_item master_menu_item,
-  char **slave_setting, ui_menu_item slave_menu_item, int attached[2] )
+  char **slave_setting, ui_menu_item slave_menu_item, int attached[2],
+  const ui_confirm_save_t *choice )
 {
   switch( unit ) {
   case LIBSPECTRUM_IDE_MASTER:
-    return ide_eject( channel, unit, master_setting, master_menu_item, &attached[unit] );
+    return ide_eject( channel, unit, master_setting, master_menu_item,
+                      &attached[unit], choice );
   case LIBSPECTRUM_IDE_SLAVE:
-    return ide_eject( channel, unit, slave_setting, slave_menu_item, &attached[unit] );
+    return ide_eject( channel, unit, slave_setting, slave_menu_item,
+                      &attached[unit], choice );
   default: return 1;
   }
 }
@@ -122,13 +125,14 @@ ide_eject_mass_storage(
     int (*is_dirty_fn)( void *context ),
     libspectrum_error (*commit_fn)( void *context ),
     libspectrum_error (*eject_fn)( void *context ),
-    void *context, const char *message, char **setting, ui_menu_item item )
+    void *context, const char *message, char **setting, ui_menu_item item,
+    const ui_confirm_save_t *choice )
 {
   int error;
 
   if( is_dirty_fn( context ) ) {
     
-    ui_confirm_save_t confirm = ui_confirm_save( "%s", message );
+    ui_confirm_save_t confirm = choice ? *choice : ui_confirm_save( "%s", message );
   
     switch( confirm ) {
 
@@ -184,11 +188,12 @@ eject_fn_wrapper( void *context )
 
 int
 ide_eject( libspectrum_ide_channel *chn, libspectrum_ide_unit unit,
-	   char **setting, ui_menu_item item, int *attached )
+           char **setting, ui_menu_item item, int *attached,
+           const ui_confirm_save_t *choice )
 {
   struct eject_fn_context ctx = { chn, unit, attached };
   return ide_eject_mass_storage( dirty_fn_wrapper, commit_fn_wrapper,
       eject_fn_wrapper, &ctx,
       "Hard disk has been modified.\nDo you want to save it?",
-      setting, item );
+      setting, item, choice );
 }

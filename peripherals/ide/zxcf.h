@@ -33,6 +33,7 @@ int zxcf_commit( void );
 int zxcf_eject( void );
 int zxcf_backing_attached( void );
 int zxcf_has_dirty_media( void );
+int zxcf_eject_authorized( int save );
 libspectrum_byte zxcf_last_memctl( void );
 
 int zxcf_unittest( void );

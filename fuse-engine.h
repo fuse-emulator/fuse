@@ -36,7 +36,8 @@ typedef enum fuse_decision_owner {
   FUSE_DECISION_TAPE,
   FUSE_DECISION_FLOPPY,
   FUSE_DECISION_SNAPSHOT,
-  FUSE_DECISION_MICRODRIVE
+  FUSE_DECISION_MICRODRIVE,
+  FUSE_DECISION_MASS_STORAGE
 } fuse_decision_owner;
 fuse_decision_owner fuse_engine_pending_decision( void );
 fuse_media_decision_id fuse_engine_request_decision( fuse_decision_owner owner );
@@ -47,6 +48,10 @@ void fuse_engine_retire_decision( fuse_decision_owner owner );
 
 int fuse_host_quit_pending( void );
 void fuse_host_clear_quit( void );
+void fuse_mass_storage_cancel_pending( void );
+int fuse_mass_storage_request_open( periph_type controller,
+                                    const char *filename,
+                                    fuse_open_request *request );
 fuse_host_operation_result fuse_disk_quit_next( fuse_quit_request *request );
 fuse_host_operation_result fuse_microdrive_quit_next(
   fuse_quit_request *request );

@@ -47,17 +47,21 @@ int
 ide_master_slave_eject(
   libspectrum_ide_channel *channel, libspectrum_ide_unit unit,
   char **master_setting, ui_menu_item master_menu_item,
-  char **slave_setting, ui_menu_item slave_menu_item, int attached[2] );
+  char **slave_setting, ui_menu_item slave_menu_item, int attached[2],
+  const ui_confirm_save_t *choice );
 
 int
 ide_eject( libspectrum_ide_channel *chn, libspectrum_ide_unit unit,
-	   char **setting, ui_menu_item item, int *attached );
+	   char **setting, ui_menu_item item, int *attached,
+           const ui_confirm_save_t *choice );
 
+/* NULL keeps the legacy prompt; a supplied answer never opens it. */
 int
 ide_eject_mass_storage(
     int (*is_dirty_fn)( void *context ),
     libspectrum_error (*commit_fn)( void *context ),
     libspectrum_error (*eject_fn)( void *context ),
-    void *context, const char *message, char **setting, ui_menu_item item );
+    void *context, const char *message, char **setting, ui_menu_item item,
+    const ui_confirm_save_t *choice );
 
 #endif			/* #ifndef FUSE_IDE_H */
