@@ -44,6 +44,13 @@ GSList *debugger_breakpoints;
 /* The next breakpoint ID to use */
 static size_t next_breakpoint_id;
 
+/* Commands run synchronously but can unlink either of these list nodes.
+   Keep every active dispatch cursor up to date before releasing a node. */
+static struct breakpoint_dispatch {
+  GSList *current, *next;
+  struct breakpoint_dispatch *outer;
+} *active_dispatch;
+
 /* Textual representations of the breakpoint types and lifetimes */
 const char *debugger_breakpoint_type_text[] = {
   "Execute", "Read", "Write", "Port Read", "Port Write", "Time", "Event",
@@ -224,45 +231,68 @@ breakpoint_add( debugger_breakpoint_type type, debugger_breakpoint_value value,
   return 0;
 }
 
+static void
+unlink_breakpoint( GSList *link )
+{
+  struct breakpoint_dispatch *dispatch;
+  debugger_breakpoint *bp = link->data;
+
+  for( dispatch = active_dispatch; dispatch; dispatch = dispatch->outer ) {
+    if( dispatch->current == link ) dispatch->current = NULL;
+    if( dispatch->next == link ) dispatch->next = link->next;
+  }
+  debugger_breakpoints = g_slist_delete_link( debugger_breakpoints, link );
+  free_breakpoint( bp, NULL );
+}
+
+void
+debugger_dispatch_breakpoints( int ( *matches )( debugger_breakpoint *,
+                                                 void * ),
+                               void *context )
+{
+  struct breakpoint_dispatch dispatch = { NULL, debugger_breakpoints,
+                                          active_dispatch };
+  int signal_breakpoints_updated = 0;
+
+  active_dispatch = &dispatch;
+  while( dispatch.next ) {
+    debugger_breakpoint *bp = dispatch.next->data;
+    dispatch.current = dispatch.next;
+    dispatch.next = dispatch.current->next;
+    if( !matches( bp, context ) ) continue;
+
+    debugger_mode = DEBUGGER_MODE_HALTED;
+    debugger_command_evaluate( bp->commands );
+    if( dispatch.current && bp->life == DEBUGGER_BREAKPOINT_LIFE_ONESHOT ) {
+      unlink_breakpoint( dispatch.current );
+      signal_breakpoints_updated = 1;
+    }
+  }
+  active_dispatch = dispatch.outer;
+  if( signal_breakpoints_updated && !debugger_host_context() )
+    ui_breakpoints_updated();
+}
+
+struct breakpoint_hit {
+  debugger_breakpoint_type type;
+  libspectrum_dword value;
+};
+
+static int
+matches_hit( debugger_breakpoint *bp, void *context )
+{
+  const struct breakpoint_hit *hit = context;
+  return breakpoint_check( bp, hit->type, hit->value );
+}
+
 /* Check whether the debugger should become active at this point */
 int
 debugger_check( debugger_breakpoint_type type, libspectrum_dword value )
 {
-  GSList *ptr; debugger_breakpoint *bp;
-  GSList *ptr_next;
-
-  int signal_breakpoints_updated = 0;
-
-  switch( debugger_mode ) {
-
-  case DEBUGGER_MODE_INACTIVE: return 0;
-
-  case DEBUGGER_MODE_ACTIVE:
-    for( ptr = debugger_breakpoints; ptr; ptr = ptr_next ) {
-
-      bp = ptr->data;
-      ptr_next = ptr->next;
-
-      if( breakpoint_check( bp, type, value ) ) {
-        debugger_mode = DEBUGGER_MODE_HALTED;
-        debugger_command_evaluate( bp->commands );
-
-        if( bp->life == DEBUGGER_BREAKPOINT_LIFE_ONESHOT ) {
-          debugger_breakpoints = g_slist_remove( debugger_breakpoints, bp );
-          libspectrum_free( bp );
-          signal_breakpoints_updated = 1;
-        }
-      }
-
-    }
-    break;
-
-  case DEBUGGER_MODE_HALTED: return 1;
-
-  }
-
-  if( signal_breakpoints_updated && !debugger_host_context() )
-    ui_breakpoints_updated();
+  struct breakpoint_hit hit = { type, value };
+  if( debugger_mode == DEBUGGER_MODE_INACTIVE ) return 0;
+  if( debugger_mode == DEBUGGER_MODE_HALTED ) return 1;
+  debugger_dispatch_breakpoints( matches_hit, &hit );
 
   /* Debugger mode could have been reset by a breakpoint command. */
   if( debugger_mode != DEBUGGER_MODE_HALTED ) return 0;
@@ -386,10 +416,6 @@ debugger_breakpoint_remove( size_t id )
 
   bp = get_breakpoint_by_id( id ); if( !bp ) return 1;
 
-  debugger_breakpoints = g_slist_remove( debugger_breakpoints, bp );
-  if( debugger_mode == DEBUGGER_MODE_ACTIVE && !debugger_breakpoints )
-    debugger_mode = DEBUGGER_MODE_INACTIVE;
-
   /* If this was a timed breakpoint, remove the event as well */
   if( bp->type == DEBUGGER_BREAKPOINT_TYPE_TIME ) {
 
@@ -401,7 +427,9 @@ debugger_breakpoint_remove( size_t id )
     event_foreach( remove_time, &remove );
   }
 
-  libspectrum_free( bp );
+  unlink_breakpoint( g_slist_find( debugger_breakpoints, bp ) );
+  if( debugger_mode == DEBUGGER_MODE_ACTIVE && !debugger_breakpoints )
+    debugger_mode = DEBUGGER_MODE_INACTIVE;
 
   if( !debugger_host_context() ) ui_breakpoints_updated();
 
@@ -455,8 +483,6 @@ int
 debugger_breakpoint_clear( libspectrum_word address )
 {
   GSList *ptr;
-  gpointer ptr_data;
-
   int found = 0;
 
   while( 1 ) {
@@ -467,12 +493,10 @@ debugger_breakpoint_clear( libspectrum_word address )
 
     found++;
 
-    ptr_data = ptr->data;
-    debugger_breakpoints = g_slist_remove( debugger_breakpoints, ptr_data );
+    unlink_breakpoint( ptr );
     if( debugger_mode == DEBUGGER_MODE_ACTIVE && !debugger_breakpoints )
       debugger_mode = DEBUGGER_MODE_INACTIVE;
 
-    free_breakpoint( ptr_data, NULL );
   }
 
   if( !found ) {
@@ -509,6 +533,9 @@ find_breakpoint_by_address( gconstpointer data, gconstpointer user_data )
 int
 debugger_breakpoint_remove_all( void )
 {
+  struct breakpoint_dispatch *dispatch;
+  for( dispatch = active_dispatch; dispatch; dispatch = dispatch->outer )
+    dispatch->current = dispatch->next = NULL;
   g_slist_foreach( debugger_breakpoints, free_breakpoint, NULL );
   g_slist_free( debugger_breakpoints ); debugger_breakpoints = NULL;
 

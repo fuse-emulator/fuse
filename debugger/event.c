@@ -86,14 +86,18 @@ debugger_event_is_registered( const char *type, const char *detail )
   return 0;
 }
 
+static int
+matches_event( debugger_breakpoint *bp, void *context )
+{
+  const debugger_event_t *event = context;
+  return bp->type == DEBUGGER_BREAKPOINT_TYPE_EVENT &&
+         event_matches( &bp->value.event, event->type, event->detail ) &&
+         debugger_breakpoint_trigger( bp );
+}
+
 void
 debugger_event( int event_code )
 {
-  const debugger_event_t *event;
-  debugger_breakpoint *bp;
-  GSList *ptr, *ptr_next;
-
-  int signal_breakpoints_updated = 0;
 
   if( event_code >= registered_events->len ) {
     ui_error( UI_ERROR_ERROR, "internal error: invalid debugger event %d",
@@ -101,30 +105,10 @@ debugger_event( int event_code )
     fuse_abort();
   }
 
-  event = &g_array_index( registered_events, debugger_event_t, event_code );
-
-  for( ptr = debugger_breakpoints; ptr; ptr = ptr_next ) {
-
-    bp = ptr->data;
-    ptr_next = ptr->next;
-
-    if( bp->type != DEBUGGER_BREAKPOINT_TYPE_EVENT ) continue;
-
-    if( event_matches( &bp->value.event, event->type, event->detail ) &&
-        debugger_breakpoint_trigger( bp ) ) {
-      debugger_mode = DEBUGGER_MODE_HALTED;
-      debugger_command_evaluate( bp->commands );
-
-      if( bp->life == DEBUGGER_BREAKPOINT_LIFE_ONESHOT ) {
-        debugger_breakpoints = g_slist_remove( debugger_breakpoints, bp );
-        libspectrum_free( bp );
-        signal_breakpoints_updated = 1;
-      }
-    }
-  }
-
-  if( signal_breakpoints_updated && !debugger_host_context() )
-    ui_breakpoints_updated();
+  debugger_dispatch_breakpoints( matches_event,
+                                 &g_array_index( registered_events,
+                                                 debugger_event_t,
+                                                 event_code ) );
 }
 
 /* Tidy-up function called at end of emulation */

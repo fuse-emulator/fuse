@@ -45,6 +45,9 @@ int debugger_breakpoint_set_condition( size_t id,
 				       debugger_expression *condition );
 int debugger_breakpoint_set_commands( size_t id, const char *commands );
 int debugger_breakpoint_trigger( debugger_breakpoint *bp );
+void debugger_dispatch_breakpoints( int ( *matches )( debugger_breakpoint *,
+                                                      void * ),
+                                    void *context );
 
 int debugger_poke( libspectrum_word address, libspectrum_byte value );
 int debugger_port_write( libspectrum_word address, libspectrum_byte value );

@@ -428,6 +428,57 @@ check_debugger_other_stops( int argc, char **argv )
 }
 
 static void
+check_breakpoint_action_removal( int argc, char **argv )
+{
+  int event_code;
+  fuse_debugger_views *views;
+
+  assert( fuse_legacy_prepare( argc, argv ) == FUSE_INIT_READY );
+  z80.pc.w = 0x8000;
+  writebyte_internal( 0x8000, 0 );
+  assert( !debugger_breakpoint_add_address( DEBUGGER_BREAKPOINT_TYPE_EXECUTE,
+                                            memory_source_any, 0, 0x8000, 0,
+                                            DEBUGGER_BREAKPOINT_LIFE_ONESHOT,
+                                            NULL ) );
+  assert( !debugger_breakpoint_add_address( DEBUGGER_BREAKPOINT_TYPE_EXECUTE,
+                                            memory_source_any, 0, 0x8000, 0,
+                                            DEBUGGER_BREAKPOINT_LIFE_PERMANENT,
+                                            NULL ) );
+  assert( !debugger_breakpoint_add_address( DEBUGGER_BREAKPOINT_TYPE_EXECUTE,
+                                            memory_source_any, 0, 0x8000, 0,
+                                            DEBUGGER_BREAKPOINT_LIFE_ONESHOT,
+                                            NULL ) );
+  assert( !debugger_breakpoint_set_commands( 1, "delete 1\ndelete 2" ) );
+  assert( !debugger_breakpoint_set_commands( 2, "set 0x9000 2" ) );
+  assert( !debugger_breakpoint_set_commands( 3, "set 0x9000 3\ncontinue" ) );
+  assert( fuse_run_tstates( 1 ) == FUSE_RUN_COMPLETED );
+  assert( z80.pc.w == 0x8001 && readbyte_internal( 0x9000 ) == 3 );
+  assert( !debugger_breakpoints );
+
+  event_code = debugger_event_register( "test", "action-removal" );
+  assert( !debugger_breakpoint_add_event( DEBUGGER_BREAKPOINT_TYPE_EVENT,
+                                          "test", "action-removal", 0,
+                                          DEBUGGER_BREAKPOINT_LIFE_ONESHOT,
+                                          NULL ) );
+  assert( !debugger_breakpoint_add_event( DEBUGGER_BREAKPOINT_TYPE_EVENT,
+                                          "test", "action-removal", 0,
+                                          DEBUGGER_BREAKPOINT_LIFE_PERMANENT,
+                                          NULL ) );
+  assert( !debugger_breakpoint_set_commands( 4, "delete\nbreak 0x8001" ) );
+  assert( !debugger_breakpoint_set_commands( 5, "set 0x9000 5" ) );
+  debugger_event( event_code );
+  assert( fuse_run_tstates( 1 ) == FUSE_RUN_DEBUGGER_STOPPED );
+  assert( readbyte_internal( 0x9000 ) == 3 );
+  assert( fuse_host_debugger_copy_views( &views ) == FUSE_HOST_OPERATION_OK );
+  assert( views->breakpoint_count == 1 && views->breakpoints[0].id == 1 );
+  assert( views->breakpoints[0].type == DEBUGGER_BREAKPOINT_TYPE_EXECUTE );
+  assert( views->breakpoints[0].value.address.offset == 0x8001 );
+  fuse_debugger_views_free( views );
+  fuse_shutdown();
+  check_closed();
+}
+
+static void
 check_budget_contract( int argc, char **argv )
 {
   int type, i;
@@ -681,6 +732,8 @@ legacy_lifecycle_test( int argc, char **argv )
     check_debugger_stop( argc - 1, argv + 1 );
   } else if( !strcmp( argv[1], "debugger-other-stops" ) ) {
     check_debugger_other_stops( argc - 1, argv + 1 );
+  } else if( !strcmp( argv[1], "breakpoint-action-removal" ) ) {
+    check_breakpoint_action_removal( argc - 1, argv + 1 );
   } else if( !strcmp( argv[1], "debugger-step" ) ||
              !strcmp( argv[1], "debugger-step-frame" ) ) {
     check_debugger_step( argc - 1, argv + 1, !strcmp( argv[1], "debugger-step-frame" ) );
