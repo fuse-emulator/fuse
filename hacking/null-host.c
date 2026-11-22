@@ -247,6 +247,7 @@ static int
 debugger_step_demo( unsigned int *budget_turns )
 {
   processor before, after;
+  fuse_debugger_views *views = NULL;
 
   if( operation( "request debugger break", fuse_host_debugger_break() ) ||
       fuse_run_frame() != FUSE_RUN_DEBUGGER_STOPPED ||
@@ -267,6 +268,11 @@ debugger_step_demo( unsigned int *budget_turns )
       operation( "inspect breakpoint", fuse_host_debugger_copy_registers( &before ) ) ||
       before.pc.w != 0 ) goto fail;
   puts( "host: debugger stopped at PC 0000" );
+  if( operation( "copy debugger panes",
+                 fuse_host_debugger_copy_views( &views ) ) ||
+      views->breakpoint_count != 1 ||
+      views->breakpoints[0].value.address.offset != 0 ||
+      !views->page_count || !views->event_count ) goto fail;
 
   if( operation( "arm single-step", fuse_host_debugger_step() ) ||
       fuse_run_tstates( 1 ) != FUSE_RUN_COMPLETED ) goto fail;
@@ -283,9 +289,18 @@ debugger_step_demo( unsigned int *budget_turns )
       after.pc.w != 0 || ( after.af.w >> 8 ) != (unsigned char)( ( before.af.w >> 8 ) + 2 ) )
     goto fail;
   puts( "host: Continue reached the same breakpoint again" );
+  if( operation( "delete breakpoints",
+                 fuse_host_debugger_command( "delete", NULL ) ) ||
+      views->breakpoint_count != 1 ||
+      views->breakpoints[0].type != DEBUGGER_BREAKPOINT_TYPE_EXECUTE ||
+      !views->pages[0].source || !views->events[0].name ) goto fail;
+  puts(
+    "host: copied debugger panes survived Continue and breakpoint deletion" );
+  fuse_debugger_views_free( views );
   return 0;
 
 fail:
+  fuse_debugger_views_free( views );
   fputs( "host: debugger step probe did not complete\n", stderr );
   return 1;
 }

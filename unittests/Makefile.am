@@ -383,6 +383,7 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    'host: debugger stopped at PC 0000' \
 	    'host: one instruction stepped; PC 0001 after budget boundary' \
 	    'host: Continue reached the same breakpoint again' \
+	    'host: copied debugger panes survived Continue and breakpoint deletion' \
 	    'host: shutdown; frame turns=0; budget turns=1; ROM requests=1; releases=1' > expected-debugger-step; \
 	  printf '%s\n' 'host: prepared 48' \
 	    'host: write watchpoint at 8000; stopped at PC 0005' \

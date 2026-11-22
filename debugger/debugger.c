@@ -34,6 +34,7 @@
 #include "mempool.h"
 #include "periph.h"
 #include "ui/ui.h"
+#include "utils.h"
 #include "z80/z80.h"
 #include "z80/z80_macros.h"
 
@@ -280,6 +281,130 @@ fuse_host_debugger_disassemble( libspectrum_word address, char *text,
   if( !host_debug.stopped ) return FUSE_HOST_OPERATION_NOT_READY;
   debugger_disassemble( text, capacity, length, address );
   return FUSE_HOST_OPERATION_OK;
+}
+
+static void
+copy_breakpoint_info( fuse_debugger_breakpoint_info *info,
+                      const debugger_breakpoint *bp )
+{
+  info->id = bp->id;
+  info->ignore = bp->ignore;
+  info->type = bp->type;
+  info->life = bp->life;
+  if( bp->condition ) {
+    char text[80]; /* Match the legacy breakpoint pane. */
+    debugger_expression_deparse( text, sizeof( text ), bp->condition );
+    info->condition = utils_safe_strdup( text );
+  }
+  switch( bp->type ) {
+  case DEBUGGER_BREAKPOINT_TYPE_EXECUTE:
+  case DEBUGGER_BREAKPOINT_TYPE_READ:
+  case DEBUGGER_BREAKPOINT_TYPE_WRITE:
+    if( bp->value.address.source != memory_source_any )
+      info->value.address.source = utils_safe_strdup(
+        memory_source_description( bp->value.address.source ) );
+    info->value.address.page = bp->value.address.page;
+    info->value.address.offset = bp->value.address.offset;
+    break;
+  case DEBUGGER_BREAKPOINT_TYPE_PORT_READ:
+  case DEBUGGER_BREAKPOINT_TYPE_PORT_WRITE:
+    info->value.port = bp->value.port;
+    break;
+  case DEBUGGER_BREAKPOINT_TYPE_TIME:
+    info->value.tstates = bp->value.time.tstates;
+    break;
+  case DEBUGGER_BREAKPOINT_TYPE_EVENT:
+    info->value.event.type = utils_safe_strdup( bp->value.event.type );
+    info->value.event.detail = utils_safe_strdup( bp->value.event.detail );
+    break;
+  }
+}
+
+static void
+copy_event_info( gpointer data, gpointer user_data )
+{
+  const event_t *event = data;
+  GArray *events = user_data;
+  fuse_debugger_event_info info;
+  if( event->type == event_type_null ) return;
+  info.tstates = event->tstates;
+  info.name = utils_safe_strdup( event_name( event->type ) );
+  g_array_append_val( events, info );
+}
+
+fuse_host_operation_result
+fuse_host_debugger_copy_views( fuse_debugger_views **views )
+{
+  fuse_debugger_views *copy;
+  const GSList *item;
+  GArray *events;
+  size_t i;
+  fuse_host_operation_result result;
+  if( !views ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *views = NULL;
+  result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !host_debug.stopped ) return FUSE_HOST_OPERATION_NOT_READY;
+
+  copy = libspectrum_new0( fuse_debugger_views, 1 );
+  copy->breakpoint_count = g_slist_length( debugger_breakpoints );
+  if( copy->breakpoint_count ) copy->breakpoints =
+      libspectrum_new0( fuse_debugger_breakpoint_info, copy->breakpoint_count );
+  for( i = 0, item = debugger_breakpoints; item; i++, item = item->next )
+    copy_breakpoint_info( &copy->breakpoints[i], item->data );
+
+  copy->page_count = MEMORY_PAGES_IN_64K;
+  copy->pages = libspectrum_new( fuse_debugger_page_info, copy->page_count );
+  for( i = 0; i < copy->page_count; i++ ) {
+    const memory_page *page = &memory_map_read[i];
+    fuse_debugger_page_info *info = &copy->pages[i];
+    info->source =
+      utils_safe_strdup( memory_source_description( page->source ) );
+    info->address = i * MEMORY_PAGE_SIZE;
+    info->length = MEMORY_PAGE_SIZE;
+    info->offset = page->offset;
+    info->page = page->page_num;
+    info->writable = page->writable;
+    info->contended = page->contended;
+  }
+
+  events = g_array_new( FALSE, FALSE, sizeof( fuse_debugger_event_info ) );
+  event_foreach( copy_event_info, events );
+  copy->event_count = events->len;
+  copy->events = (fuse_debugger_event_info *)g_array_free( events, FALSE );
+  *views = copy;
+  return FUSE_HOST_OPERATION_OK;
+}
+
+void
+fuse_debugger_views_free( fuse_debugger_views *views )
+{
+  size_t i;
+  if( !views ) return;
+  for( i = 0; i < views->breakpoint_count; i++ ) {
+    fuse_debugger_breakpoint_info *info = &views->breakpoints[i];
+    libspectrum_free( info->condition );
+    switch( info->type ) {
+    case DEBUGGER_BREAKPOINT_TYPE_EXECUTE:
+    case DEBUGGER_BREAKPOINT_TYPE_READ:
+    case DEBUGGER_BREAKPOINT_TYPE_WRITE:
+      libspectrum_free( info->value.address.source );
+      break;
+    case DEBUGGER_BREAKPOINT_TYPE_EVENT:
+      libspectrum_free( info->value.event.type );
+      libspectrum_free( info->value.event.detail );
+      break;
+    default: break;
+    }
+  }
+  for( i = 0; i < views->page_count;
+       i++ ) libspectrum_free( views->pages[i].source );
+  for( i = 0; i < views->event_count;
+       i++ ) libspectrum_free( views->events[i].name );
+  libspectrum_free( views->breakpoints );
+  libspectrum_free( views->pages );
+  g_free( views->events );
+  libspectrum_free( views );
 }
 
 fuse_host_operation_result

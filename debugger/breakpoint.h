@@ -25,6 +25,8 @@
 #ifndef FUSE_DEBUGGER_BREAKPOINT_H
 #define FUSE_DEBUGGER_BREAKPOINT_H
 
+#include <glib.h>
+
 #include "memory_pages.h"
 
 /* Types of breakpoint */

@@ -278,6 +278,12 @@ itself. `disassemble` can return a requested pane address, and
 existing disassembler. A parse error does not undo earlier commands in the
 same input. Semantic diagnostics retain existing debugger reporting.
 
+`fuse_host_debugger_copy_views()` copies the breakpoint list, mapped read
+pages, and scheduled events while stopped. The copy has no pointers into
+live engine state and survives Continue and shutdown. Release it with
+`fuse_debugger_views_free()`. Build the stack pane from the copied registers
+and mapped-memory reads; use the existing command language for editing.
+
 ## Host Quit
 
 An existing media decision returns BUSY and must be resolved before

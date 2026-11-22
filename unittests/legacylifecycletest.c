@@ -265,6 +265,7 @@ extern int null_ui_debugger_activate_calls;
 static void
 check_debugger_stop( int argc, char **argv )
 {
+  fuse_debugger_views *views;
   processor registers;
   libspectrum_dword before;
   int status = -1;
@@ -293,7 +294,15 @@ check_debugger_stop( int argc, char **argv )
   assert( fuse_run_tstates( 100 ) == FUSE_RUN_DEBUGGER_STOPPED );
   assert( tstates == before + 14 && z80.pc.w == 0x8000 && z80.af.b.h == 0x43 );
   assert( registers.af.b.h == 0x42 && !null_ui_debugger_activate_calls );
+  assert( fuse_host_debugger_command( "break 0x8001 if 1", NULL ) ==
+          FUSE_HOST_OPERATION_OK );
+  assert( fuse_host_debugger_copy_views( &views ) == FUSE_HOST_OPERATION_OK );
+  assert( views->breakpoint_count == 2 && views->page_count &&
+          views->event_count );
   fuse_shutdown();
+  assert( views->breakpoints[1].condition || views->breakpoints[0].condition );
+  assert( *views->pages[0].source && *views->events[0].name );
+  fuse_debugger_views_free( views );
   assert( fuse_host_debugger_continue() == FUSE_HOST_OPERATION_NOT_READY );
   check_closed();
 }
