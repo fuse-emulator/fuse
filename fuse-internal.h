@@ -68,6 +68,7 @@ int fuse_host_config_set_tape_traps( fuse_host_config *config, int enabled );
 
 /* Set DivMMC enablement at preparation; not a runtime toggle. */
 int fuse_host_config_set_divmmc( fuse_host_config *config, int enabled );
+int fuse_host_config_set_interface1( fuse_host_config *config, int enabled );
 
 /* A synchronous ROM result, not a filesystem path. Provider context remains
    borrowed through shutdown, including failed-startup cleanup. On every acquire,
@@ -123,16 +124,21 @@ typedef enum fuse_media_decision_choice {
   FUSE_MEDIA_DECISION_SAVE
 } fuse_media_decision_choice;
 
-/* A quit decision names either the tape deck or a floppy controller/slot.
-   On NEEDS_DECISION only, id is nonzero. OK is not a quit outcome. */
+typedef enum fuse_quit_media {
+  FUSE_QUIT_TAPE, FUSE_QUIT_FLOPPY, FUSE_QUIT_MICRODRIVE
+} fuse_quit_media;
+
+/* On NEEDS_DECISION only, id is nonzero. OK is not a quit outcome.
+   Slots are zero-based; controller applies only to floppy requests. */
 typedef struct fuse_quit_request {
   fuse_media_decision_id id;
-  int floppy;
+  fuse_quit_media media;
   fuse_disk_controller controller;
   int slot;
+  int has_save_target; /* Save can pass NULL to reuse the target. */
 } fuse_quit_request;
 
-/* Resolve tape then floppies. Refuses dirty Microdrive/IDE/MMC before any
+/* Resolve tape, floppies then Microdrives. Refuses dirty IDE/MMC before any
    eject. READY_TO_SHUT_DOWN prevents more execution; call fuse_shutdown(). */
 fuse_host_operation_result fuse_host_request_quit( fuse_quit_request *request );
 
@@ -141,6 +147,31 @@ fuse_host_operation_result fuse_host_request_quit( fuse_quit_request *request );
 fuse_host_operation_result fuse_host_answer_quit(
   fuse_media_decision_id id, fuse_media_decision_choice choice,
   const char *path, fuse_quit_request *next );
+
+/* Slots 0–7 correspond to Microdrives 1–8. Filename is owned by the copy. */
+typedef struct fuse_microdrive_info {
+  int available, inserted, modified, write_protected;
+  char *filename;
+} fuse_microdrive_info;
+
+fuse_host_operation_result fuse_host_copy_microdrive_info(
+  int slot, fuse_microdrive_info **info );
+void fuse_microdrive_info_free( fuse_microdrive_info *info );
+fuse_host_operation_result fuse_host_insert_microdrive(
+  int slot, const char *filename, fuse_media_decision_id *request );
+fuse_host_operation_result fuse_host_new_microdrive(
+  int slot, fuse_media_decision_id *request );
+fuse_host_operation_result fuse_host_eject_microdrive(
+  int slot, fuse_media_decision_id *request );
+/* Save uses an authorized path, or NULL if the cartridge has a retained
+   filename. As in legacy Fuse, saving an unnamed cartridge leaves it unnamed. */
+fuse_host_operation_result fuse_host_save_microdrive( int slot,
+                                                      const char *filename );
+fuse_host_operation_result fuse_host_answer_microdrive_eject(
+  fuse_media_decision_id id, fuse_media_decision_choice choice,
+  const char *path );
+fuse_host_operation_result fuse_host_set_microdrive_write_protected(
+  int slot, int write_protected );
 
 typedef enum fuse_host_reset_kind {
   FUSE_HOST_RESET_SOFT, FUSE_HOST_RESET_HARD

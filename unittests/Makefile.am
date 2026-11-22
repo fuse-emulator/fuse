@@ -363,6 +363,8 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	  "$$root/legacyenginelinktest$(EXEEXT)" --host-operations-test disk-fixture "$$roms"; \
 	  "$$root/legacyenginelinktest$(EXEEXT)" --host-operations-test snapshot-joystick-fixture "$$roms"; \
 	  cp "$$roms/48.rom" 48.rom; cp "$$roms/48.rom" only48/48.rom; \
+	  mkdir interface1; cp 48.rom interface1/48.rom; \
+	  dd if=/dev/zero of=interface1/if1-2.rom bs=8192 count=1 2>/dev/null; \
 	  printf '%s\n' 'host: prepared 48' \
 	    'host: driving execution and handling input between turns' \
 	    'host: holding execution; delivering Space and joystick 1 fire' \
@@ -449,6 +451,9 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    cmp expected-open "$$consumer-open.out"; \
 	    "$$program" only48 --open joystick.szx > "$$consumer-open-joystick.out" 2> "$$consumer-open-joystick.err"; \
 	    cmp expected-open-joystick "$$consumer-open-joystick.out"; \
+	    "$$program" interface1 --microdrive "$$consumer.mdr" > "$$consumer-microdrive.out" 2> "$$consumer-microdrive.err"; \
+	    grep -Fx 'host: Microdrive 2 kept on Cancel and saved on Quit' "$$consumer-microdrive.out" > /dev/null; \
+	    test -s "$$consumer.mdr"; rm "$$consumer.mdr"; \
 	    "$$program" only48 --open-over-tape sample.tap > "$$consumer-open-tape.out" 2> "$$consumer-open-tape.err"; \
 	    grep -Fx 'host: modified tape; discard' "$$consumer-open-tape.out" > /dev/null; \
 	    "$$program" "$$roms" --open-over-floppy sample.udi > "$$consumer-open-floppy.out" 2> "$$consumer-open-floppy.err"; \
@@ -575,7 +580,7 @@ check-host-operations: unittests/legacyenginelinktest unittests/legacyenginesour
 	  for consumer in legacyenginelinktest legacyenginesourcetest; do \
 	    for mode in success filesystem-oracle filesystem tape-contract tape-info trapped-recording snapshot-roundtrip autoload-success autoload-failure \
 	      open-auto open-noauto open-custom open-reset-failure open-snapshot open-snapshot-joystick open-fallback open-rzx-stop open-floppy \
-	      disk-save disk-save-beta host-quit host-quit-shutdown \
+	      disk-save disk-save-beta microdrive host-quit host-quit-shutdown \
 	      reset-failure select-failure peripheral-reset-failure peripheral-select-failure; do \
 	      "$$root/$$consumer$(EXEEXT)" --host-operations-test "$$mode" "$$roms"; \
 	    done; \

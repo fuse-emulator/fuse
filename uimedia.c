@@ -667,9 +667,10 @@ fuse_disk_quit_next( fuse_quit_request *request )
     if( result != FUSE_HOST_OPERATION_OK ) {
       if( result == FUSE_HOST_OPERATION_NEEDS_DECISION ) {
         pending_disk_quit = 1;
-        request->floppy = 1;
+        request->media = FUSE_QUIT_FLOPPY;
         request->controller = drive->controller_index;
         request->slot = drive->drive_index;
+        request->has_save_target = drive->fdd->disk.filename != NULL;
       }
       break;
     }

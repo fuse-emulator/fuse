@@ -171,6 +171,14 @@ acquire_rom( void *context, const char *name, fuse_host_rom *rom )
     else if( !strcmp( name, "128p-1.rom" ) ) filename = "128-1.rom";
     else if( !strcmp( name, "trdos.rom" ) ) filename = "48.rom";
   }
+  /* Cartridge operations do not execute Interface 1 firmware. */
+  if( !strcmp( name, "if1-2.rom" ) ) {
+    provider.bytes = calloc( 8192, 1 );
+    assert( provider.bytes );
+    rom->data = provider.bytes;
+    rom->length = 8192;
+    return 0;
+  }
   assert( snprintf( path, sizeof(path), "%s/%s", provider.directory, filename ) < sizeof(path) );
   file = fopen( path, "rb" );
   assert( file && !fseek( file, 0, SEEK_END ) );
@@ -1145,6 +1153,85 @@ check_open_floppy( void )
 }
 
 static void
+check_microdrive( void )
+{
+  fuse_media_decision_id id, old;
+  fuse_microdrive_info *info, *saved;
+  assert( fuse_host_new_microdrive( 8,
+                                    &id ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_host_new_microdrive( 2, &id ) == OK && !id );
+  assert( fuse_host_new_microdrive( 5, &id ) == OK && !id );
+  assert( fuse_host_set_microdrive_write_protected( 2, 1 ) == OK );
+  assert( fuse_host_copy_microdrive_info( 2, &info ) == OK );
+  assert( info->available && info->inserted && info->modified &&
+          info->write_protected && !info->filename );
+  fuse_microdrive_info_free( info );
+  assert( fuse_host_save_microdrive( 2, "incoming.mdr" ) == OK );
+  assert( fuse_host_eject_microdrive( 2, &id ) == OK && !id );
+  assert( fuse_host_new_microdrive( 2, &id ) == OK && !id );
+  assert( fuse_host_insert_microdrive( 2, "missing.mdr", &id ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR && !id );
+  assert( fuse_host_insert_microdrive( 2, "incoming.mdr", &id ) ==
+          FUSE_HOST_OPERATION_NEEDS_DECISION );
+  old = id;
+  assert( fuse_run_frame() == FUSE_RUN_NEEDS_DECISION );
+  assert( fuse_host_eject_microdrive( 5,
+                                      &id ) == FUSE_HOST_OPERATION_BUSY &&
+          !id );
+  assert( fuse_host_answer_microdrive_eject( old, FUSE_MEDIA_DECISION_SAVE,
+                                             NULL ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_host_answer_microdrive_eject( old, FUSE_MEDIA_DECISION_CANCEL,
+                                             NULL ) ==
+          FUSE_HOST_OPERATION_CANCELLED );
+  assert( fuse_host_insert_microdrive( 2, "incoming.mdr", &id ) ==
+          FUSE_HOST_OPERATION_NEEDS_DECISION && id != old );
+  assert( fuse_host_answer_microdrive_eject( old, FUSE_MEDIA_DECISION_DISCARD,
+                                             NULL ) ==
+          FUSE_HOST_OPERATION_STALE );
+  assert( !remove( "incoming.mdr" ) );
+  assert( fuse_host_answer_microdrive_eject( id, FUSE_MEDIA_DECISION_SAVE,
+                                             "missing-directory/old.mdr" ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( fuse_host_copy_microdrive_info( 2, &info ) == OK );
+  assert( info->inserted && info->modified && !info->write_protected &&
+          !info->filename );
+  fuse_microdrive_info_free( info );
+  assert( fuse_host_save_microdrive( 5, "incoming.mdr" ) == OK );
+  assert( fuse_host_insert_microdrive( 2, "incoming.mdr", &id ) ==
+          FUSE_HOST_OPERATION_NEEDS_DECISION );
+  assert( !remove( "incoming.mdr" ) );
+  assert( fuse_host_answer_microdrive_eject( id, FUSE_MEDIA_DECISION_DISCARD,
+                                             NULL ) == OK );
+  assert( fuse_host_copy_microdrive_info( 2, &saved ) == OK );
+  assert( saved->inserted && !saved->modified && !strcmp( saved->filename,
+                                                          "incoming.mdr" ) );
+  assert( fuse_host_set_microdrive_write_protected( 2, 1 ) == OK );
+  assert( fuse_host_new_microdrive( 2,
+                                    &id ) ==
+          FUSE_HOST_OPERATION_NEEDS_DECISION );
+  assert( !fuse_emulation_pause() );
+  assert( fuse_host_answer_microdrive_eject( id, FUSE_MEDIA_DECISION_SAVE,
+                                             NULL ) == OK );
+  assert( fuse_emulation_paused == 1 && !fuse_emulation_unpause() );
+  assert( fuse_host_copy_microdrive_info( 2, &info ) == OK );
+  assert( info->inserted && info->modified && !info->write_protected &&
+          !info->filename );
+  assert( !strcmp( saved->filename, "incoming.mdr" ) );
+  fuse_microdrive_info_free( saved );
+  fuse_microdrive_info_free( info );
+  assert( fuse_host_copy_microdrive_info( 5, &info ) == OK );
+  assert( info->inserted && !info->modified && !info->filename );
+  fuse_microdrive_info_free( info );
+  assert( fuse_host_insert_microdrive( 2, "incoming.mdr", &id ) ==
+          FUSE_HOST_OPERATION_NEEDS_DECISION );
+  assert( !remove( "incoming.mdr" ) );
+  fuse_shutdown(); /* Releases the staged file without requiring a reply. */
+  assert( fuse_run_frame() == FUSE_RUN_NOT_READY );
+}
+
+static void
 check_host_quit( int shutdown_pending )
 {
   const fuse_disk_controller controller = FUSE_DISK_CONTROLLER_PLUS3;
@@ -1154,6 +1241,8 @@ check_host_quit( int shutdown_pending )
   ui_media_drive_info_t *b = ui_media_drive_find( controller, 1 );
   static const unsigned char tap[] = { 2, 0, 0xff, 0xff };
 
+  assert( fuse_host_new_microdrive( 3, &id ) == OK && !id );
+  assert( fuse_host_new_microdrive( 1, &id ) == OK && !id );
   assert( fuse_host_select_machine( "plus3" ) == OK );
   assert( new_disk_without_decision( controller, 0 ) == OK );
   assert( new_disk_without_decision( controller, 1 ) == OK );
@@ -1165,7 +1254,9 @@ check_host_quit( int shutdown_pending )
   assert( fuse_host_request_quit( &request ) == FUSE_HOST_OPERATION_BUSY && !request.id );
   assert( fuse_host_answer_tape_eject( id, FUSE_MEDIA_DECISION_CANCEL, NULL ) == FUSE_HOST_OPERATION_CANCELLED );
   assert( !fuse_emulation_pause() );
-  assert( fuse_host_request_quit( &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION && !request.floppy );
+  assert( fuse_host_request_quit( &request ) ==
+          FUSE_HOST_OPERATION_NEEDS_DECISION &&
+          request.media == FUSE_QUIT_TAPE );
   tape_id = request.id;
   if( shutdown_pending ) {
     fuse_shutdown();
@@ -1178,11 +1269,11 @@ check_host_quit( int shutdown_pending )
   assert( fuse_host_answer_tape_eject( tape_id, FUSE_MEDIA_DECISION_DISCARD, NULL ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_host_answer_quit( tape_id, FUSE_MEDIA_DECISION_SAVE, NULL, &request ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
   assert( fuse_host_answer_quit( tape_id, FUSE_MEDIA_DECISION_DISCARD, NULL, &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
-  assert( request.floppy && request.controller == controller && request.slot == 0 && !tape_present() );
+  assert( request.media == FUSE_QUIT_FLOPPY && request.controller == controller && request.slot == 0 && !tape_present() );
   id = request.id;
   assert( fuse_host_answer_quit( tape_id, FUSE_MEDIA_DECISION_CANCEL, NULL, &request ) == FUSE_HOST_OPERATION_STALE );
   assert( fuse_host_answer_quit( id, FUSE_MEDIA_DECISION_DISCARD, NULL, &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
-  assert( request.floppy && request.slot == 1 && !a->fdd->loaded && b->fdd->loaded );
+  assert( request.media == FUSE_QUIT_FLOPPY && request.slot == 1 && !a->fdd->loaded && b->fdd->loaded );
   assert( fuse_host_answer_quit( request.id, FUSE_MEDIA_DECISION_CANCEL, NULL, &request ) == FUSE_HOST_OPERATION_CANCELLED );
   assert( !request.id && b->fdd->loaded && b->fdd->disk.dirty && fuse_run_frame() == FUSE_RUN_PAUSED );
   assert( fuse_host_request_quit( &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION && request.slot == 1 );
@@ -1191,8 +1282,30 @@ check_host_quit( int shutdown_pending )
   assert( b->fdd->loaded && b->fdd->disk.dirty );
   assert( fuse_host_request_quit( &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION && request.slot == 1 );
   assert( fuse_host_answer_quit( request.id, FUSE_MEDIA_DECISION_SAVE,
-    "quit.udi", &request ) == FUSE_HOST_OPERATION_READY_TO_SHUT_DOWN );
-  assert( !request.id && !b->fdd->loaded && fuse_run_frame() == FUSE_RUN_EXITING );
+                                 "quit.udi",
+                                 &request ) ==
+          FUSE_HOST_OPERATION_NEEDS_DECISION );
+  assert( request.media == FUSE_QUIT_MICRODRIVE && request.slot == 1 &&
+          !request.has_save_target && !b->fdd->loaded );
+  assert( fuse_host_answer_microdrive_eject( request.id,
+                                             FUSE_MEDIA_DECISION_DISCARD,
+                                             NULL ) ==
+          FUSE_HOST_OPERATION_BUSY );
+  assert( fuse_host_answer_quit( request.id, FUSE_MEDIA_DECISION_DISCARD, NULL,
+                                 &request ) ==
+          FUSE_HOST_OPERATION_NEEDS_DECISION );
+  assert( request.media == FUSE_QUIT_MICRODRIVE && request.slot == 3 );
+  assert( fuse_host_answer_quit( request.id, FUSE_MEDIA_DECISION_CANCEL, NULL,
+                                 &request ) == FUSE_HOST_OPERATION_CANCELLED );
+  assert( fuse_host_request_quit( &request ) ==
+          FUSE_HOST_OPERATION_NEEDS_DECISION &&
+          request.media == FUSE_QUIT_MICRODRIVE && request.slot == 3 );
+  assert( fuse_host_answer_quit( request.id, FUSE_MEDIA_DECISION_SAVE,
+                                 "quit.mdr",
+                                 &request ) ==
+          FUSE_HOST_OPERATION_READY_TO_SHUT_DOWN );
+  assert( !remove( "quit.mdr" ) );
+  assert( !request.id && fuse_run_frame() == FUSE_RUN_EXITING );
   assert( !remove( "quit.udi" ) );
   assert( !fuse_emulation_unpause() );
 }
@@ -1468,6 +1581,8 @@ host_operations_test( int argc, char **argv )
     assert( !fuse_host_config_set_machine( config, "plus3" ) );
   if( !strcmp( argv[1], "disk-save-beta" ) ) assert( !fuse_host_config_set_machine( config, "pentagon" ) );
   assert( !fuse_host_config_set_sound( config, 0 ) );
+  if( !strcmp( argv[1], "microdrive" ) || !strncmp( argv[1], "host-quit", 9 ) )
+    assert( !fuse_host_config_set_interface1( config, 1 ) );
   assert( fuse_host_config_set_auto_load( NULL, 0 ) );
   assert( fuse_host_config_set_auto_load( config, 2 ) );
   assert( fuse_host_config_set_tape_traps( NULL, 0 ) );
@@ -1521,6 +1636,8 @@ host_operations_test( int argc, char **argv )
     check_lifecycle_disk_file();
   } else if( !strcmp( argv[1], "disk-save" ) || !strcmp( argv[1], "disk-save-beta" ) ) {
     check_disk_save( !strcmp( argv[1], "disk-save" ) ? FUSE_DISK_CONTROLLER_PLUS3 : FUSE_DISK_CONTROLLER_BETA );
+  } else if( !strcmp( argv[1], "microdrive" ) ) {
+    check_microdrive();
   } else if( !strcmp( argv[1], "host-quit" ) || !strcmp( argv[1], "host-quit-shutdown" ) ) {
     check_host_quit( !strcmp( argv[1], "host-quit-shutdown" ) );
   } else if( !strcmp( argv[1], "open-floppy" ) ) {

@@ -268,13 +268,14 @@ host contract.
 
 ## Host Quit
 
-`fuse_host_request_quit(&request)` checks for dirty Microdrive and IDE/MMC
-media before closing anything. If found, it returns UNSUPPORTED_DIRTY_MEDIA;
-this workflow does not save or discard those changes. An existing media
-decision returns BUSY and must be resolved first.
+`fuse_host_request_quit(&request)` checks for dirty IDE/MMC media before
+closing anything. If found, it returns UNSUPPORTED_DIRTY_MEDIA. An existing
+media decision returns BUSY and must be resolved first.
 
-Quit closes the tape, then walks floppies in registration order. Each dirty
-item returns NEEDS_DECISION with its ID and, for floppies, controller and slot.
+Quit closes the tape, then walks floppies in registration order and Microdrives
+in slot order, including cartridges retained when Interface 1 is unavailable.
+Each dirty item returns NEEDS_DECISION with its ID and media kind, plus the slot
+for a floppy or Microdrive and controller for a floppy.
 Use `fuse_host_answer_quit()` to answer; it may return the next decision. While
 waiting, run turns are blocked and other host operations return BUSY. Cancel or
 a failed Save stops the walk and retains the current item, but does not restore
@@ -283,6 +284,21 @@ media already ejected. Existing pauses are preserved.
 READY_TO_SHUT_DOWN prevents further execution. The host then calls
 `fuse_shutdown()`, which is unconditional teardown, including if called while
 a decision is pending. Legacy Quit keeps its existing modal workflow.
+
+## Microdrive cartridges
+
+Enable Interface 1 with `fuse_host_config_set_interface1()` before preparation.
+Slots 0–7 correspond to drives 1–8. The host can copy slot state, insert a file,
+create an unformatted cartridge, eject, save to a chosen or retained target,
+and set write protection. A copied filename remains valid after replacement.
+
+Dirty eject, Insert and New return a decision ID for
+`fuse_host_answer_microdrive_eject()`. Incoming file bytes are staged before
+asking. A failed read, Cancel or failed Save retains the old cartridge; a
+load failure after an approved eject does not restore it. Save needs a path
+for an unnamed cartridge. As in legacy Fuse, saving an unnamed cartridge
+leaves it unnamed. `--microdrive OUTPUT` in `hacking/null-host.c` demonstrates
+Cancel retaining a cartridge and Quit saving it to the supplied target.
 
 ## File → Open
 

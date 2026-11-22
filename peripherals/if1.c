@@ -34,6 +34,8 @@
 
 #include "compat.h"
 #include "debugger/debugger.h"
+#include "fuse-engine.h"
+#include "fuse.h"
 #include "if1.h"
 #include "infrastructure/startup_manager.h"
 #include "machine.h"
@@ -64,7 +66,6 @@ enum {
 */
  
 typedef struct microdrive_t {
-  utils_file file;
   char *filename;		/* old filename */
   int inserted;
   int modified;
@@ -362,10 +363,28 @@ if1_init( void *context )
   return 0;
 }
 
+static struct {
+  int slot;
+  int replace;
+  int quit;
+  utils_file file;
+} pending_microdrive;
+
+static void
+retire_microdrive( void )
+{
+  utils_file_free( &pending_microdrive.file );
+  pending_microdrive.replace = 0;
+  pending_microdrive.quit = 0;
+  fuse_engine_retire_decision( FUSE_DECISION_MICRODRIVE );
+}
+
 static void
 if1_end( void )
 {
   int m;
+
+  retire_microdrive();
 
   if( if1_ula.fd_r >= 0 ) close( if1_ula.fd_r );
   if( if1_ula.fd_t >= 0 ) close( if1_ula.fd_t );
@@ -377,6 +396,8 @@ if1_end( void )
       libspectrum_microdrive_free( microdrive[m].cartridge );
     if( error ) ui_error( UI_ERROR_ERROR, "Could not release microdrive %d", m );
     microdrive[m].cartridge = NULL;
+    libspectrum_free( microdrive[m].filename );
+    microdrive[m].filename = NULL;
   }
 }
 
@@ -1185,19 +1206,21 @@ if1_mdr_insert_internal( int which, const char *filename,
       return 1;
     }
   } else {
-    if( utils_read_file( filename, &mdr->file ) ) {
+    utils_file source;
+    if( utils_read_file( filename, &source ) ) {
+      utils_close_file( &source );
       ui_error( UI_ERROR_ERROR, "Failed to open cartridge image" );
       return 1;
     }
 
-    if( libspectrum_microdrive_mdr_read( mdr->cartridge, mdr->file.buffer,
-                                         mdr->file.length ) ) {
-      utils_close_file( &mdr->file );
+    if( libspectrum_microdrive_mdr_read( mdr->cartridge, source.buffer,
+                                         source.length ) ) {
+      utils_close_file( &source );
       ui_error( UI_ERROR_ERROR, "Failed to open cartridge image" );
       return 1;
     }
 
-    utils_close_file( &mdr->file );
+    utils_close_file( &source );
   }
 
   mdr->inserted = 1;
@@ -1226,14 +1249,14 @@ if1_mdr_insert_loaded( int which, const utils_file *file )
   return if1_mdr_insert_internal( which, file->filename, file );
 }
 
-int
-if1_has_dirty_media( void )
+static void
+if1_mdr_finish_eject( int which )
 {
-  int i;
-  for( i = 0; i < 8; i++ ) {
-    if( microdrive[i].inserted && microdrive[i].modified ) return 1;
-  }
-  return 0;
+  microdrive_t *mdr = &microdrive[which];
+  mdr->inserted = 0;
+  libspectrum_free( mdr->filename );
+  mdr->filename = NULL;
+  update_menu( UMENU_MDRV1 + which );
 }
 
 int
@@ -1269,13 +1292,7 @@ if1_mdr_eject( int which )
     }
   }
 
-  mdr->inserted = 0;
-  if( mdr->filename != NULL ) {
-    libspectrum_free( mdr->filename );
-    mdr->filename = NULL;
-  }
-
-  update_menu( UMENU_MDRV1 + which );
+  if1_mdr_finish_eject( which );
   return 0;
 }
 
@@ -1301,21 +1318,235 @@ if1_mdr_save( int which, int saveas )
 int
 if1_mdr_write( int which, const char *filename )
 {
-  microdrive_t *mdr = &microdrive[which];  
-  
-  libspectrum_microdrive_mdr_write( mdr->cartridge, &mdr->file.buffer,
-			            &mdr->file.length );
+  microdrive_t *mdr = &microdrive[which];
+  libspectrum_byte *buffer;
+  size_t length;
+  int error;
 
-  if( filename == NULL ) filename = mdr->filename;	/* Write over the original file */
-
-  if( utils_write_file( filename, mdr->file.buffer, mdr->file.length ) )
-    return 1;
+  if( !filename ) filename = mdr->filename;
+  if( !filename ) return 1;
+  libspectrum_microdrive_mdr_write( mdr->cartridge, &buffer, &length );
+  error = utils_write_file( filename, buffer, length );
+  libspectrum_free( buffer );
+  if( error ) return 1;
 
   if( mdr->filename && strcmp( filename, mdr->filename ) ) {
     libspectrum_free( mdr->filename );
     mdr->filename = utils_safe_strdup( filename );
   }
   return 0;
+}
+
+static fuse_host_operation_result
+check_microdrive_slot( int slot )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  return slot < 0 || slot >= 8 ? FUSE_HOST_OPERATION_INVALID_ARGUMENT : result;
+}
+
+static fuse_host_operation_result
+check_microdrive_change( int slot )
+{
+  fuse_host_operation_result result = check_microdrive_slot( slot );
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( fuse_engine_pending_decision() != FUSE_DECISION_NONE )
+    return FUSE_HOST_OPERATION_BUSY;
+  return if1_available ? result : FUSE_HOST_OPERATION_MEDIA_ERROR;
+}
+
+void
+fuse_microdrive_info_free( fuse_microdrive_info *info )
+{
+  if( !info ) return;
+  libspectrum_free( info->filename );
+  libspectrum_free( info );
+}
+
+fuse_host_operation_result
+fuse_host_copy_microdrive_info( int slot, fuse_microdrive_info **info )
+{
+  const microdrive_t *mdr;
+  fuse_host_operation_result result;
+  if( !info ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *info = NULL;
+  result = check_microdrive_slot( slot );
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  mdr = &microdrive[slot];
+  *info = libspectrum_new0( fuse_microdrive_info, 1 );
+  (*info )->available = if1_available;
+  (*info )->inserted = mdr->inserted;
+  if( mdr->inserted ) {
+    (*info )->modified = mdr->modified;
+    (*info )->write_protected =
+      libspectrum_microdrive_write_protect( mdr->cartridge );
+    (*info )->filename = utils_safe_strdup( mdr->filename );
+  }
+  return result;
+}
+
+static fuse_host_operation_result
+change_microdrive( int slot, int replace, utils_file *file,
+                   fuse_media_decision_id *request )
+{
+  microdrive_t *mdr = &microdrive[slot];
+  if( mdr->inserted ) {
+    if( mdr->modified ) {
+      *request = fuse_engine_request_decision( FUSE_DECISION_MICRODRIVE );
+      pending_microdrive.slot = slot;
+      pending_microdrive.replace = replace;
+      if( file ) {
+        pending_microdrive.file = *file;
+        utils_file_init( file, NULL );
+      }
+      return FUSE_HOST_OPERATION_NEEDS_DECISION;
+    }
+    if1_mdr_finish_eject( slot );
+  }
+  if( replace && if1_mdr_insert_internal( slot, file ? file->filename : NULL,
+                                          file ) )
+    return FUSE_HOST_OPERATION_MEDIA_ERROR;
+  return FUSE_HOST_OPERATION_OK;
+}
+
+static fuse_host_operation_result
+host_change_microdrive( int slot, int replace, const char *filename,
+                        fuse_media_decision_id *request )
+{
+  fuse_host_operation_result result;
+  utils_file file;
+  if( !request ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *request = 0;
+  result = check_microdrive_change( slot );
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  fuse_engine_begin_operation();
+  if( filename ) {
+    utils_file_init( &file, filename );
+    result = utils_file_read( &file ) ? FUSE_HOST_OPERATION_MEDIA_ERROR :
+             change_microdrive( slot, replace, &file, request );
+    utils_file_free( &file );
+  } else {
+    result = change_microdrive( slot, replace, NULL, request );
+  }
+  fuse_engine_end_operation();
+  return result;
+}
+
+fuse_host_operation_result
+fuse_host_insert_microdrive( int slot, const char *filename,
+                             fuse_media_decision_id *request )
+{
+  if( !filename || !*filename ) {
+    if( request ) *request = 0;
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  }
+  return host_change_microdrive( slot, 1, filename, request );
+}
+
+fuse_host_operation_result
+fuse_host_new_microdrive( int slot, fuse_media_decision_id *request )
+{
+  return host_change_microdrive( slot, 1, NULL, request );
+}
+
+fuse_host_operation_result
+fuse_host_eject_microdrive( int slot, fuse_media_decision_id *request )
+{
+  return host_change_microdrive( slot, 0, NULL, request );
+}
+
+static int
+save_microdrive_authorized( int slot, const char *filename )
+{
+  int error;
+  fuse_emulation_pause();
+  error = if1_mdr_write( slot, filename );
+  fuse_emulation_unpause();
+  if( !error ) microdrive[slot].modified = 0;
+  return error;
+}
+
+fuse_host_operation_result
+fuse_host_save_microdrive( int slot, const char *filename )
+{
+  fuse_host_operation_result result = check_microdrive_change( slot );
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( filename && !*filename ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( !microdrive[slot].inserted ||
+      ( !filename && !microdrive[slot].filename ) )
+    return FUSE_HOST_OPERATION_MEDIA_ERROR;
+  fuse_engine_begin_operation();
+  if( save_microdrive_authorized( slot, filename ) )
+    result = FUSE_HOST_OPERATION_MEDIA_ERROR;
+  fuse_engine_end_operation();
+  return result;
+}
+
+fuse_host_operation_result
+fuse_host_answer_microdrive_eject( fuse_media_decision_id id,
+                                   fuse_media_decision_choice choice,
+                                   const char *path )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  int slot;
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  slot = pending_microdrive.slot;
+  result = fuse_engine_validate_decision( FUSE_DECISION_MICRODRIVE, id, choice,
+                                          path, !microdrive[slot].filename );
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  fuse_engine_begin_operation();
+  if( choice == FUSE_MEDIA_DECISION_CANCEL ) {
+    result = FUSE_HOST_OPERATION_CANCELLED;
+  } else if( !microdrive[slot].inserted ||
+             ( !pending_microdrive.quit && !if1_available ) ) {
+    result = FUSE_HOST_OPERATION_STALE;
+  } else if( choice == FUSE_MEDIA_DECISION_SAVE &&
+             save_microdrive_authorized( slot, path ) ) {
+    result = FUSE_HOST_OPERATION_MEDIA_ERROR;
+  } else {
+    utils_file *file = &pending_microdrive.file;
+    if1_mdr_finish_eject( slot );
+    if( pending_microdrive.replace &&
+        if1_mdr_insert_internal( slot, file->filename, file ) )
+      result = FUSE_HOST_OPERATION_MEDIA_ERROR;
+  }
+  retire_microdrive();
+  fuse_engine_end_operation();
+  return result;
+}
+
+fuse_host_operation_result
+fuse_microdrive_quit_next( fuse_quit_request *request )
+{
+  int slot;
+  fuse_host_operation_result result = FUSE_HOST_OPERATION_OK;
+  fuse_engine_begin_operation();
+  for( slot = 0; slot < 8; slot++ ) {
+    result = change_microdrive( slot, 0, NULL, &request->id );
+    if( result == FUSE_HOST_OPERATION_NEEDS_DECISION ) {
+      pending_microdrive.quit = 1;
+      request->media = FUSE_QUIT_MICRODRIVE;
+      request->slot = slot;
+      request->has_save_target = microdrive[slot].filename != NULL;
+      break;
+    }
+  }
+  fuse_engine_end_operation();
+  return result;
+}
+
+fuse_host_operation_result
+fuse_host_set_microdrive_write_protected( int slot, int write_protected )
+{
+  fuse_host_operation_result result = check_microdrive_change( slot );
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( write_protected != 0 && write_protected != 1 )
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( !microdrive[slot].inserted ) return FUSE_HOST_OPERATION_MEDIA_ERROR;
+  fuse_engine_begin_operation();
+  if1_mdr_writeprotect( slot, write_protected );
+  fuse_engine_end_operation();
+  return result;
 }
 
 #ifndef O_NONBLOCK

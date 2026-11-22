@@ -470,6 +470,40 @@ done:
 }
 
 static int
+microdrive_demo( const char *filename )
+{
+  fuse_media_decision_id id;
+  fuse_quit_request quit;
+  fuse_microdrive_info *info;
+  int retained;
+
+  if( operation( "new cartridge", fuse_host_new_microdrive( 1, &id ) ) ||
+      fuse_host_eject_microdrive( 1,
+                                  &id ) != FUSE_HOST_OPERATION_NEEDS_DECISION ||
+      fuse_run_frame() != FUSE_RUN_NEEDS_DECISION ||
+      fuse_host_answer_microdrive_eject( id, FUSE_MEDIA_DECISION_CANCEL,
+                                         NULL ) !=
+      FUSE_HOST_OPERATION_CANCELLED ||
+      operation( "observe cartridge",
+                 fuse_host_copy_microdrive_info( 1, &info ) ) )
+    return 1;
+  retained = info->available && info->inserted && info->modified &&
+             !info->filename;
+  fuse_microdrive_info_free( info );
+  if( !retained ||
+      fuse_host_request_quit( &quit ) != FUSE_HOST_OPERATION_NEEDS_DECISION ||
+      quit.media != FUSE_QUIT_MICRODRIVE || quit.slot != 1 ||
+      quit.has_save_target ||
+      fuse_run_frame() != FUSE_RUN_NEEDS_DECISION ||
+      fuse_host_answer_quit( quit.id, FUSE_MEDIA_DECISION_SAVE, filename,
+                             &quit ) !=
+      FUSE_HOST_OPERATION_READY_TO_SHUT_DOWN ||
+      fuse_run_frame() != FUSE_RUN_EXITING ) return 1;
+  puts( "host: Microdrive 2 kept on Cancel and saved on Quit" );
+  return 0;
+}
+
+static int
 open_demo( const char *filename, unsigned int *completed )
 {
   const fuse_host_joystick keyboard = FUSE_HOST_JOYSTICK_KEYBOARD;
@@ -543,21 +577,23 @@ main( int argc, char **argv )
   int disk_save = argc == 5 && !strcmp( argv[2], "--save-disk" );
   int tape_lifecycle = argc == 5 && !strcmp( argv[2], "--tape-lifecycle" );
   int tape_replacement = argc == 5 && !strcmp( argv[2], "--replace-tape" );
+  int microdrive = argc >= 3 && !strcmp( argv[2], "--microdrive" );
   int open_over_tape = argc >= 3 && !strcmp( argv[2], "--open-over-tape" );
   int open_over_floppy = argc >= 3 && !strcmp( argv[2], "--open-over-floppy" );
   int plus3 = disk_save || disk_lifecycle || open_over_floppy;
 
   if( ( argc != 2 && argc != 3 && argc != 4 && argc != 5 ) ||
-      ( ( open_over_tape || open_over_floppy ) && argc != 4 ) ||
+      ( ( microdrive || open_over_tape || open_over_floppy ) && argc != 4 ) ||
       ( argc == 4 && strcmp( argv[2],
                              "--open" ) && !open_over_tape &&
-        !open_over_floppy && !disk_lifecycle && !tape_record && !parked_eject &&
+        !open_over_floppy && !microdrive && !disk_lifecycle && !tape_record &&
+        !parked_eject &&
         !snapshot_save && !filesystem && !divmmc ) ||
       ( argc == 5 && !disk_save && !tape_lifecycle && !tape_replacement ) ||
       ( argc == 3 && ( !strcmp( argv[2], "--open" ) || !strcmp( argv[2], "--save-disk" ) ||
                       !strcmp( argv[2], "--disk-lifecycle" ) || !strcmp( argv[2], "--tape-lifecycle" ) || !strcmp( argv[2], "--replace-tape" ) ||
                       !strcmp( argv[2], "--record-tape" ) || !strcmp( argv[2], "--parked-tape-eject" ) || !strcmp( argv[2], "--save-snapshot" ) || !strcmp( argv[2], "--filesystem" ) || !strcmp( argv[2], "--divmmc" ) ) ) ) {
-    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
+    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
     return EXIT_FAILURE;
   }
   if( filesystem || divmmc ) {
@@ -579,6 +615,7 @@ main( int argc, char **argv )
         fuse_host_config_set_tape_traps( config, 0 ) ) ||
       ( filesystem && fuse_host_config_set_auto_load( config, 0 ) ) ||
       ( divmmc && fuse_host_config_set_divmmc( config, 1 ) ) ||
+      ( microdrive && fuse_host_config_set_interface1( config, 1 ) ) ||
       fuse_host_config_set_joystick( config, FUSE_HOST_JOYSTICK_1,
                                     JOYSTICK_TYPE_KEMPSTON ) ) {
     fprintf( stderr, "host: configuration rejected\n" );
@@ -593,6 +630,11 @@ main( int argc, char **argv )
   }
   prepared = 1;
   puts( plus3 ? "host: prepared plus3" : "host: prepared 48" );
+  if( microdrive ) {
+    if( !microdrive_demo( argv[3] ) ) status = EXIT_SUCCESS;
+    else fputs( "host: Microdrive scenario failed\n", stderr );
+    goto cleanup;
+  }
   if( tape_replacement ) {
     if( !replacement_demo( argv[3], argv[4], &frame_turns ) ) status = EXIT_SUCCESS;
     goto cleanup;
