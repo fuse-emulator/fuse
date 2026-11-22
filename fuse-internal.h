@@ -253,6 +253,13 @@ fuse_host_operation_result fuse_host_record_rzx_from_snapshot(
   fuse_open_request *request );
 fuse_host_operation_result fuse_host_continue_rzx_recording(
   const char *filename, fuse_open_request *request );
+/* Owned array of frame positions, indexed by snapshot ordinal. Free with
+   libspectrum_free(). Select against the current recording, not an old list. */
+fuse_host_operation_result fuse_host_copy_rzx_rollback_points( size_t **frames,
+                                                               size_t *count );
+fuse_host_operation_result fuse_host_rollback_rzx( fuse_open_request *request );
+fuse_host_operation_result fuse_host_rollback_rzx_to( size_t point,
+                                                      fuse_open_request *request );
 fuse_host_operation_result fuse_host_insert_rzx_snapshot( void );
 fuse_host_operation_result fuse_host_stop_rzx( void );
 fuse_host_operation_result fuse_host_finalise_rzx( const char *filename );

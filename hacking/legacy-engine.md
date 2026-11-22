@@ -356,6 +356,15 @@ recording and writes back to that path on Stop. Both can return joystick
 questions through the same reply API as File Open. Fuse stages the decoded
 input until the choices are resolved; recording starts only after restore.
 
+During a non-competition recording, `fuse_host_copy_rzx_rollback_points()`
+returns an owned array of snapshot frame positions. Roll back to the latest
+snapshot with `fuse_host_rollback_rzx()` or choose a zero-based snapshot ordinal
+with `fuse_host_rollback_rzx_to()`. Use the list from the current recording;
+it is an observation, not a token. The chosen snapshot must match the current
+machine. Rollback truncates the recording before restoring and can park for
+joystick mapping. Declining a mapping does not cancel rollback. Recording
+resumes after restore; a failed restore does not undo the truncation.
+
 OK means the dispatcher completed, which in the legacy branches can include cancelled/no-op
 insertion; it does not prove replacement or program-loading completion. MEDIA_ERROR
 maps nonzero, not a uniform unchanged-state or safe-to-continue outcome. File Open

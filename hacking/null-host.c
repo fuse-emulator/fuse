@@ -652,6 +652,8 @@ main( int argc, char **argv )
         frames( 1, &frame_turns ) ||
         operation( "insert RZX snapshot", fuse_host_insert_rzx_snapshot() ) ||
         frames( 1, &frame_turns ) ||
+        operation( "roll back RZX", fuse_host_rollback_rzx( &request ) ) ||
+        frames( 1, &frame_turns ) ||
         operation( "stop recording", fuse_host_stop_rzx() ) ||
         operation( "continue RZX",
                    fuse_host_continue_rzx_recording( argv[3], &request ) ) ||

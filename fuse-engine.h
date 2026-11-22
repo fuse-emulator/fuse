@@ -73,6 +73,11 @@ int snapshot_request_rzx_recording( libspectrum_snap *snap,
                                     const char *filename,
                                     fuse_open_request *request );
 int rzx_finish_requested_recording( int error );
+int rzx_finish_rollback( int error );
+int snapshot_request_rzx_rollback( libspectrum_snap *snap,
+                                   fuse_open_request *request );
+int snapshot_rzx_rollback_pending( void );
+void snapshot_cancel_rzx_rollback( void );
 void rzx_cancel_pending_recording( void );
 
 /* General File Open with host decisions. */

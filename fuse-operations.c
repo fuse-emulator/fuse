@@ -59,6 +59,7 @@ fuse_host_select_machine( const char *id )
   fuse_host_operation_result result = fuse_engine_check_operation();
   if( result != FUSE_HOST_OPERATION_OK ) return result;
   if( !id ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( snapshot_rzx_rollback_pending() ) return FUSE_HOST_OPERATION_BUSY;
   for( i = 0; i < machine_count; i++ )
     if( !strcmp( id, machine_types[i]->id ) ) break;
   if( i == machine_count ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;

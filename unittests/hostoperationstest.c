@@ -1073,6 +1073,49 @@ check_rzx_recording_operations( void )
 }
 
 static void
+check_rzx_rollback( void )
+{
+  fuse_open_request request;
+  size_t *frames, count;
+  const fuse_host_joystick slot = FUSE_HOST_JOYSTICK_2;
+
+  settings_current.joystick_2_output = JOYSTICK_TYPE_SINCLAIR_1;
+  z80.pc.w = 0x8123;
+  assert( fuse_host_start_rzx_recording( "rollback.rzx", 1 ) == OK );
+  assert( fuse_run_frame() == FUSE_RUN_COMPLETED );
+  z80.pc.w = 0x8234;
+  assert( fuse_host_insert_rzx_snapshot() == OK );
+  assert( fuse_run_frame() == FUSE_RUN_COMPLETED );
+  z80.pc.w = 0x8345;
+  assert( fuse_host_insert_rzx_snapshot() == OK );
+  assert( fuse_run_frame() == FUSE_RUN_COMPLETED );
+  assert( fuse_host_copy_rzx_rollback_points( &frames, &count ) == OK );
+  assert( count == 3 && frames[0] == 0 && frames[1] == 1 && frames[2] == 2 );
+  assert( fuse_host_rollback_rzx_to( count, &request ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT && !request.id );
+  assert( fuse_host_rollback_rzx( &request ) == OK && z80.pc.w == 0x8345 );
+  settings_current.joystick_2_output = JOYSTICK_TYPE_NONE;
+  assert( fuse_host_rollback_rzx_to( 1,
+                                     &request ) ==
+          FUSE_HOST_OPERATION_NEEDS_DECISION );
+  assert( request.question == FUSE_OPEN_MAP_JOYSTICK );
+  assert( rzx_recording && z80.pc.w == 0x8345 );
+  assert( fuse_run_frame() == FUSE_RUN_NEEDS_DECISION );
+  assert( fuse_host_select_machine( "128" ) == FUSE_HOST_OPERATION_BUSY );
+  assert( fuse_host_answer_snapshot_joystick( request.id, &slot,
+                                              &request ) == OK );
+  assert( !request.id && z80.pc.w == 0x8234 && rzx_recording );
+  assert( frames[2] == 2 ); /* Independent of the truncated recording. */
+  libspectrum_free( frames );
+  assert( fuse_host_copy_rzx_rollback_points( &frames, &count ) == OK );
+  assert( count == 2 && frames[1] == 1 );
+  libspectrum_free( frames );
+  assert( fuse_run_frame() == FUSE_RUN_COMPLETED );
+  assert( fuse_host_stop_rzx() == OK && !rzx_recording );
+  assert( !remove( "rollback.rzx" ) && !null_ui_confirm_joystick_calls );
+}
+
+static void
 check_rzx_recording_restore( void )
 {
   fuse_open_request request;
@@ -1790,6 +1833,8 @@ host_operations_test( int argc, char **argv )
     check_host_quit( !strcmp( argv[1], "host-quit-shutdown" ) );
   } else if( !strcmp( argv[1], "open-floppy" ) ) {
     check_open_floppy();
+  } else if( !strcmp( argv[1], "record-rzx-rollback" ) ) {
+    check_rzx_rollback();
   } else if( !strcmp( argv[1], "record-rzx-restore" ) ) {
     check_rzx_recording_restore();
   } else if( !strcmp( argv[1], "record-rzx" ) ) {

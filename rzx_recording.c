@@ -72,7 +72,7 @@ static void start_recording( libspectrum_rzx *to_rzx, int competition_mode );
 static void autosave_prune( void );
 static void autosave_frame( void );
 static void autosave_reset( void );
-static GSList *get_rollback_list( libspectrum_rzx *from_rzx );
+static GSList *get_rollback_list( libspectrum_rzx *from_rzx, int include_end );
 static int start_after_rollback( libspectrum_snap *snap );
 
 void
@@ -157,6 +157,9 @@ int rzx_stop_recording( void )
   libspectrum_error libspec_error; int error;
 
   if( !rzx_recording ) return 0;
+
+  /* A parked host rollback borrows a snapshot from this recording. */
+  snapshot_cancel_rzx_rollback();
 
   /* Stop recording data */
   rzx_recording = 0;
@@ -626,7 +629,7 @@ int rzx_store_byte( libspectrum_byte value )
 }
 
 static GSList*
-get_rollback_list( libspectrum_rzx *from_rzx )
+get_rollback_list( libspectrum_rzx *from_rzx, int include_end )
 {
   libspectrum_rzx_iterator it;
   GSList *rollback_points;
@@ -646,7 +649,7 @@ get_rollback_list( libspectrum_rzx *from_rzx )
 
     case LIBSPECTRUM_RZX_SNAPSHOT_BLOCK:
       rollback_points = g_slist_append( rollback_points,
-					GINT_TO_POINTER( frames ) );
+                                        GSIZE_TO_POINTER( frames ) );
       break;
 
     default:
@@ -657,9 +660,9 @@ get_rollback_list( libspectrum_rzx *from_rzx )
   }
 
   /* Add the final IRB in, if any */
-  if( frames )
+  if( include_end && frames )
     rollback_points = g_slist_append( rollback_points,
-				      GINT_TO_POINTER( frames ) );
+                                      GSIZE_TO_POINTER( frames ) );
 
   return rollback_points;
 }
@@ -672,6 +675,12 @@ start_after_rollback( libspectrum_snap *snap )
   autosave_pending = 0;
 
   error = snapshot_copy_from( snap );
+  return rzx_finish_rollback( error );
+}
+
+int
+rzx_finish_rollback( int error )
+{
   if( error ) return error;
 
   libspectrum_rzx_start_input( rzx, tstates );
@@ -700,6 +709,97 @@ rzx_rollback( void )
   return 0;
 }
 
+static fuse_host_operation_result
+check_host_rollback( void )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( fuse_engine_pending_decision() != FUSE_DECISION_NONE )
+    return FUSE_HOST_OPERATION_BUSY;
+  if( !rzx_recording || rzx_competition_mode )
+    return FUSE_HOST_OPERATION_MEDIA_ERROR;
+  return FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_copy_rzx_rollback_points( size_t **frames, size_t *count )
+{
+  GSList *points, *item;
+  size_t i = 0;
+  fuse_host_operation_result result;
+  if( !frames || !count ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *frames = NULL;
+  *count = 0;
+  result = check_host_rollback();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  points = get_rollback_list( rzx, 0 );
+  *count = g_slist_length( points );
+  if( *count ) *frames = libspectrum_new( size_t, *count );
+  for( item = points; item; item = item->next )
+    (*frames )[i++] = GPOINTER_TO_SIZE( item->data );
+  g_slist_free( points );
+  return FUSE_HOST_OPERATION_OK;
+}
+
+static fuse_host_operation_result
+host_rollback( int latest, size_t point, fuse_open_request *request )
+{
+  libspectrum_snap *snap = NULL;
+  libspectrum_rzx_iterator it;
+  size_t remaining = point;
+  fuse_host_operation_result result;
+  int error;
+
+  if( !request ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *request = (fuse_open_request){ 0 };
+  result = check_host_rollback();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+
+  /* Validate before truncating. Changing machines stops the recording and
+     would invalidate its borrowed snapshot. */
+  for( it = libspectrum_rzx_iterator_begin( rzx ); it;
+       it = libspectrum_rzx_iterator_next( it ) ) {
+    if( libspectrum_rzx_iterator_get_type( it ) !=
+        LIBSPECTRUM_RZX_SNAPSHOT_BLOCK )
+      continue;
+    if( latest || !remaining ) snap = libspectrum_rzx_iterator_get_snap( it );
+    if( !latest && !remaining ) break;
+    if( !latest ) remaining--;
+  }
+  if( !snap ) return latest ? FUSE_HOST_OPERATION_MEDIA_ERROR :
+           FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( libspectrum_snap_machine( snap ) != machine_current->machine )
+    return FUSE_HOST_OPERATION_MEDIA_ERROR;
+
+  fuse_engine_begin_operation();
+  fuse_emulation_pause();
+  error = latest ? libspectrum_rzx_rollback( rzx, &snap ) :
+          libspectrum_rzx_rollback_to( rzx, &snap, point );
+  if( !error ) {
+    autosave_pending = 0;
+    error = snapshot_request_rzx_rollback( snap, request );
+    if( !request->id ) error = rzx_finish_rollback( error );
+  }
+  if( !error && !request->id ) display_refresh_all();
+  fuse_emulation_unpause();
+  fuse_engine_end_operation();
+  if( error ) return FUSE_HOST_OPERATION_MEDIA_ERROR;
+  return request->id ? FUSE_HOST_OPERATION_NEEDS_DECISION :
+         FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_rollback_rzx( fuse_open_request *request )
+{
+  return host_rollback( 1, 0, request );
+}
+
+fuse_host_operation_result
+fuse_host_rollback_rzx_to( size_t point, fuse_open_request *request )
+{
+  return host_rollback( 0, point, request );
+}
+
 int
 rzx_rollback_to( void )
 {
@@ -707,7 +807,7 @@ rzx_rollback_to( void )
   libspectrum_snap *snap;
   int which, error;
 
-  rollback_points = get_rollback_list( rzx );
+  rollback_points = get_rollback_list( rzx, 1 );
 
   which = ui_get_rollback_point( rollback_points );
 

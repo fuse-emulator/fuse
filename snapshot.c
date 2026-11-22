@@ -150,7 +150,7 @@ static struct {
   char *filename;
   size_t index;
   enum { SNAPSHOT_FILE, SNAPSHOT_RZX_EMBEDDED, SNAPSHOT_RZX_EXTERNAL,
-         SNAPSHOT_RZX_RECORDING } source;
+         SNAPSHOT_RZX_RECORDING, SNAPSHOT_RZX_ROLLBACK } source;
   int borrowed;
   fuse_media_decision_id id;
   joystick_type_t outputs[3];
@@ -262,6 +262,32 @@ snapshot_request_rzx_recording( libspectrum_snap *snap, const char *filename,
 }
 
 int
+snapshot_rzx_rollback_pending( void )
+{
+  return pending_snapshot.source == SNAPSHOT_RZX_ROLLBACK;
+}
+
+void
+snapshot_cancel_rzx_rollback( void )
+{
+  if( snapshot_rzx_rollback_pending() )
+    snapshot_cancel_pending();
+}
+
+int
+snapshot_request_rzx_rollback( libspectrum_snap *snap,
+                               fuse_open_request *request )
+{
+  int error;
+  pending_snapshot.snap = snap;
+  pending_snapshot.borrowed = 1;
+  pending_snapshot.source = SNAPSHOT_RZX_ROLLBACK;
+  error = snapshot_stage_restore( request );
+  if( !request->id ) snapshot_cancel_pending();
+  return error;
+}
+
+int
 snapshot_request_open( const libspectrum_file *file,
                        fuse_open_request *request )
 {
@@ -319,6 +345,8 @@ fuse_host_answer_snapshot_joystick( fuse_media_decision_id id,
         error = rzx_finish_requested_playback( pending_snapshot.snap, error );
       else if( pending_snapshot.source == SNAPSHOT_RZX_RECORDING )
         error = rzx_finish_requested_recording( error );
+      else if( pending_snapshot.source == SNAPSHOT_RZX_ROLLBACK )
+        error = rzx_finish_rollback( error );
       else
         pokemem_find_pokfile( pending_snapshot.filename );
       snapshot_cancel_pending();
