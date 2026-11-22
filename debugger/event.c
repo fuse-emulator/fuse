@@ -123,8 +123,8 @@ debugger_event( int event_code )
     }
   }
 
-  if( signal_breakpoints_updated )
-      ui_breakpoints_updated();
+  if( signal_breakpoints_updated && !debugger_host_context() )
+    ui_breakpoints_updated();
 }
 
 /* Tidy-up function called at end of emulation */

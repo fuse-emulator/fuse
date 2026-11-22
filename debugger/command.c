@@ -41,14 +41,19 @@ static char *command_buffer = NULL;
 
 /* And a pointer as to how much we've parsed */
 static char *command_ptr;
+static int command_parse_error;
 
 int yyparse( void );
 
 /* Evaluate the debugger command given in 'command' */
-void
+int
 debugger_command_evaluate( const char *command )
 {
-  if( !command ) return;
+  static int parsing;
+  int result;
+  if( !command ) return 0;
+  if( parsing ) return 1;
+  parsing = 1;
 
   if( command_buffer ) libspectrum_free( command_buffer );
 
@@ -58,12 +63,16 @@ debugger_command_evaluate( const char *command )
   command_ptr = command_buffer;
     
   /* Parse the command */
-  yyparse();
+  command_parse_error = 0;
+  result = yyparse();
+  if( command_parse_error ) result = 1;
 
   /* And free any memory we allocated while parsing */
   mempool_free( debugger_memory_pool );
 
-  ui_debugger_update();
+  parsing = 0;
+  if( !debugger_host_context() ) ui_debugger_update();
+  return result;
 }
 
 /* Called to get up to 'max_size' bytes of the command to be parsed */
@@ -91,5 +100,9 @@ debugger_command_input( char *buf, int *result, int max_size )
 void
 yyerror( const char *s )
 {
-  ui_error( UI_ERROR_ERROR, "Invalid debugger command: %s", s );
+  command_parse_error = 1;
+  if( debugger_host_context() )
+    ui_error_console( UI_ERROR_ERROR, "Invalid debugger command: %s", s );
+  else
+    ui_error( UI_ERROR_ERROR, "Invalid debugger command: %s", s );
 }

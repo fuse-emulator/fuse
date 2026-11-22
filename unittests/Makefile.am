@@ -379,6 +379,7 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    'host: keyboard read saw queued Space press; next frame drained release' \
 	    'host: shutdown; frame turns=2; budget turns=0; ROM requests=1; releases=1' > expected-queued-input; \
 	  printf '%s\n' 'host: prepared 48' \
+	    'host: manual debugger break at PC 0000' \
 	    'host: debugger stopped at PC 0000' \
 	    'host: one instruction stepped; PC 0001 after budget boundary' \
 	    'host: Continue reached the same breakpoint again' \
@@ -653,7 +654,7 @@ check-legacy-lifecycle: unittests/legacyenginelinktest unittests/legacyenginesou
 	    done; \
 	    "$$program" --lifecycle-test zero "$$rom" > /dev/null; \
 	    for kind in frame-contract frame-shutdown budget-contract debugger-stop \
-	                debugger-step debugger-step-frame; do \
+	                debugger-step debugger-step-frame debugger-other-stops; do \
 	      "$$program" --lifecycle-test "$$kind" --machine 48 --rom-48 "$$rom" \
 	        --no-autosave-settings --no-sound > /dev/null; \
 	    done; \

@@ -244,12 +244,16 @@ query is provided; do not read live globals concurrently from a UI thread.
 
 ## Host debugger stops
 
-An execute breakpoint can end a frame or T-state turn before the trapped
-opcode and without opening the debugger window. While stopped, the host can
+`fuse_host_debugger_break()` requests a manual stop at the next opcode boundary
+of a host turn. Execute breakpoints stop before the trapped opcode. Port, time,
+and event breakpoints stop at the next opcode boundary, after the triggering
+instruction or event dispatch. These stops do not open the debugger window.
+While stopped, the host can
 copy the registers with `fuse_host_debugger_copy_registers()`, choose Continue
 or Step, or shut down. Neither debugger command runs the CPU itself. Continue
-bypasses the execute check once if the next opcode is at the stopped address;
-the breakpoint stays installed.
+bypasses the execute check once after an execute breakpoint or ordinary Step
+stop if the next opcode is still at the stopped address. The breakpoint stays
+installed.
 
 `fuse_host_debugger_step()` arms a stop at the next opcode boundary after the
 one-shot bypass, as in legacy Step. Due events and interrupts can run before
@@ -262,9 +266,17 @@ boundary. The triggering access and instruction finish first. Copy the access
 kind and address with `fuse_host_debugger_copy_watchpoint()`; the copied
 registers describe the stop, not the triggering access. A frame or budget limit
 can return before the stop is reported. Continue after a watchpoint does not
-skip an execute breakpoint at the new PC. Legacy execution retains its debugger
-UI; port watchpoints and memory accesses from event callbacks are outside this
-host contract.
+skip an execute breakpoint at the new PC. Port hits and memory accesses from
+event callbacks do not populate the CPU watchpoint details. Legacy execution
+retains its debugger UI.
+
+While stopped, `fuse_host_debugger_command()` evaluates the existing command
+language without refreshing or deactivating the linked debugger. A resume
+command changes what the next host turn will do; it does not run the CPU by
+itself. `disassemble` can return a requested pane address, and
+`fuse_host_debugger_disassemble()` decodes a single instruction using the
+existing disassembler. A parse error does not undo earlier commands in the
+same input. Semantic diagnostics retain existing debugger reporting.
 
 ## Host Quit
 

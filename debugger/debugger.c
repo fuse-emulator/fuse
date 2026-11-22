@@ -40,11 +40,35 @@
 /* The current activity state of the debugger */
 enum debugger_mode_t debugger_mode;
 static struct z80_host_debug {
-  int stopped, skip_execute, stepping;
+  int stopped, skip_execute, stepping, manual_break, resume_past_opcode;
   int running_batch, has_watchpoint;
   libspectrum_word pc;
   fuse_debugger_watchpoint watchpoint;
 } host_debug;
+
+static int host_context;
+static int *host_disassembly_address;
+static void host_continue( void );
+static void host_step( void );
+
+int
+debugger_host_context( void )
+{
+  return host_context;
+}
+
+void
+debugger_host_set_context( int enabled )
+{
+  host_context = enabled;
+}
+
+void
+debugger_command_disassemble( libspectrum_word address )
+{
+  if( !host_context ) ui_debugger_disassemble( address );
+  else if( host_disassembly_address ) *host_disassembly_address = address;
+}
 
 /* Which base should we display things in */
 int debugger_output_base;
@@ -126,8 +150,13 @@ debugger_arm_step( void )
 int
 debugger_step( void )
 {
-  debugger_arm_step();
-  ui_debugger_deactivate( 0 );
+  if( host_context ) {
+    if( host_debug.stopped ) host_step();
+    else debugger_arm_step();
+  } else {
+    debugger_arm_step();
+    ui_debugger_deactivate( 0 );
+  }
   return 0;
 }
 
@@ -164,8 +193,9 @@ debugger_resume_execution( void )
 int
 debugger_run( void )
 {
-  debugger_resume_execution();
-  ui_debugger_deactivate( 1 );
+  if( host_context && host_debug.stopped ) host_continue();
+  else debugger_resume_execution();
+  if( !host_context ) ui_debugger_deactivate( 1 );
   return 0;
 }
 
@@ -189,9 +219,12 @@ debugger_before_opcode( libspectrum_word pc, struct z80_host_debug *host )
     if( host->pc == pc ) return 0;
   }
   if( !debugger_check( DEBUGGER_BREAKPOINT_TYPE_EXECUTE, pc ) ) return 0;
-  if( host && ( execute_check || host->stepping || host->has_watchpoint ) ) {
+  if( host ) {
     host->pc = PC;
+    host->resume_past_opcode = execute_check ||
+                               ( host->stepping && !host->has_watchpoint );
     host->stepping = 0;
+    host->manual_break = 0;
     host->stopped = 1;
     return 1;
   }
@@ -218,7 +251,35 @@ debugger_host_stopped( void )
 int
 debugger_host_pending( void )
 {
-  return host_debug.stopped || host_debug.stepping || host_debug.has_watchpoint;
+  return host_debug.stopped || host_debug.stepping || host_debug.manual_break ||
+         host_debug.has_watchpoint;
+}
+
+fuse_host_operation_result
+fuse_host_debugger_break( void )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( fuse_engine_pending_decision() != FUSE_DECISION_NONE )
+    return FUSE_HOST_OPERATION_BUSY;
+  if( host_debug.stopped ) return FUSE_HOST_OPERATION_OK;
+  host_debug.manual_break = 1;
+  host_debug.skip_execute = 0;
+  debugger_arm_step();
+  return FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_debugger_disassemble( libspectrum_word address, char *text,
+                                size_t capacity, size_t *length )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !text || !capacity ||
+      !length ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( !host_debug.stopped ) return FUSE_HOST_OPERATION_NOT_READY;
+  debugger_disassemble( text, capacity, length, address );
+  return FUSE_HOST_OPERATION_OK;
 }
 
 fuse_host_operation_result
@@ -249,11 +310,18 @@ fuse_host_debugger_continue( void )
   fuse_host_operation_result result = fuse_engine_check_operation();
   if( result != FUSE_HOST_OPERATION_OK ) return result;
   if( !host_debug.stopped ) return FUSE_HOST_OPERATION_NOT_READY;
+  host_continue();
+  return FUSE_HOST_OPERATION_OK;
+}
+
+static void
+host_continue( void )
+{
   host_debug.stopped = 0;
   debugger_resume_execution();
-  host_debug.skip_execute = !host_debug.has_watchpoint && debugger_mode == DEBUGGER_MODE_ACTIVE;
+  host_debug.skip_execute = host_debug.resume_past_opcode &&
+                            debugger_mode == DEBUGGER_MODE_ACTIVE;
   host_debug.has_watchpoint = 0;
-  return FUSE_HOST_OPERATION_OK;
 }
 
 fuse_host_operation_result
@@ -262,12 +330,40 @@ fuse_host_debugger_step( void )
   fuse_host_operation_result result = fuse_engine_check_operation();
   if( result != FUSE_HOST_OPERATION_OK ) return result;
   if( !host_debug.stopped ) return FUSE_HOST_OPERATION_NOT_READY;
+  host_step();
+  return FUSE_HOST_OPERATION_OK;
+}
+
+static void
+host_step( void )
+{
   debugger_arm_step();
   host_debug.stopped = 0;
   host_debug.skip_execute = 1;
   host_debug.stepping = 1;
   host_debug.has_watchpoint = 0;
-  return FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_debugger_command( const char *command, int *disassembly_address )
+{
+  int error;
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( disassembly_address ) *disassembly_address = -1;
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !command || !*command ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( fuse_engine_pending_decision() != FUSE_DECISION_NONE )
+    return FUSE_HOST_OPERATION_BUSY;
+  if( !host_debug.stopped ) return FUSE_HOST_OPERATION_NOT_READY;
+
+  fuse_engine_begin_operation();
+  debugger_host_set_context( 1 );
+  host_disassembly_address = disassembly_address;
+  error = debugger_command_evaluate( command );
+  host_disassembly_address = NULL;
+  debugger_host_set_context( 0 );
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_INVALID_ARGUMENT : FUSE_HOST_OPERATION_OK;
 }
 
 /* Exit from the last CALL etc by setting a oneshot breakpoint at

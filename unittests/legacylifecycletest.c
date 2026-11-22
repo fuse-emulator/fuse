@@ -353,6 +353,72 @@ check_debugger_step( int argc, char **argv, int frame_edge )
 }
 
 static void
+check_debugger_other_stops( int argc, char **argv )
+{
+  libspectrum_dword before;
+  processor registers;
+  int event_code, address;
+  char instruction[40];
+  size_t length;
+
+  assert( fuse_legacy_prepare( argc, argv ) == FUSE_INIT_READY );
+  writebyte_internal( 0x8000, 0xd3 ); /* OUT (ff),A */
+  writebyte_internal( 0x8001, 0xff );
+  writebyte_internal( 0x8002, 0x00 );
+  writebyte_internal( 0x8003, 0x00 );
+  z80.pc.w = 0x8000;
+  z80.iff1 = z80.iff2 = 0;
+  before = tstates;
+  assert( fuse_host_debugger_break() == FUSE_HOST_OPERATION_OK );
+  assert( fuse_run_tstates( 100 ) == FUSE_RUN_DEBUGGER_STOPPED );
+  assert( tstates == before && z80.pc.w == 0x8000 );
+  assert( fuse_host_debugger_command( "disassemble 0x8123", &address ) ==
+          FUSE_HOST_OPERATION_OK );
+  assert( address == 0x8123 );
+  assert( fuse_host_debugger_disassemble( 0x8002, instruction,
+                                          sizeof( instruction ),
+                                          &length ) == FUSE_HOST_OPERATION_OK );
+  assert( length == 1 && !strcmp( instruction, "NOP" ) );
+  assert( fuse_host_debugger_command( "break port write", &address ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( address == -1 && fuse_run_frame() == FUSE_RUN_DEBUGGER_STOPPED );
+  assert( !debugger_breakpoint_add_port( DEBUGGER_BREAKPOINT_TYPE_PORT_WRITE,
+                                         0xff, 0xff, 0,
+                                         DEBUGGER_BREAKPOINT_LIFE_ONESHOT,
+                                         NULL ) );
+  assert( fuse_host_debugger_continue() == FUSE_HOST_OPERATION_OK );
+  assert( fuse_run_tstates( 100 ) == FUSE_RUN_DEBUGGER_STOPPED );
+  assert( fuse_host_debugger_copy_registers( &registers ) ==
+          FUSE_HOST_OPERATION_OK );
+  assert( registers.pc.w == 0x8002 );
+  assert( !debugger_breakpoint_add_time( DEBUGGER_BREAKPOINT_TYPE_TIME,
+                                         tstates + 4, 0,
+                                         DEBUGGER_BREAKPOINT_LIFE_ONESHOT,
+                                         NULL ) );
+  assert( fuse_host_debugger_continue() == FUSE_HOST_OPERATION_OK );
+  assert( fuse_run_tstates( 100 ) == FUSE_RUN_DEBUGGER_STOPPED );
+  assert( z80.pc.w == 0x8003 );
+  event_code = debugger_event_register( "test", "stop" );
+  assert( !debugger_breakpoint_add_event( DEBUGGER_BREAKPOINT_TYPE_EVENT,
+                                          "test", "stop", 0,
+                                          DEBUGGER_BREAKPOINT_LIFE_ONESHOT,
+                                          NULL ) );
+  assert( fuse_host_debugger_continue() == FUSE_HOST_OPERATION_OK );
+  debugger_event( event_code );
+  before = tstates;
+  assert( fuse_run_tstates( 100 ) == FUSE_RUN_DEBUGGER_STOPPED );
+  assert( tstates == before && z80.pc.w == 0x8003 &&
+          !null_ui_debugger_activate_calls );
+  assert( fuse_host_debugger_command( "step",
+                                      NULL ) == FUSE_HOST_OPERATION_OK );
+  assert( tstates == before && z80.pc.w == 0x8003 );
+  assert( fuse_run_tstates( 100 ) == FUSE_RUN_DEBUGGER_STOPPED &&
+          z80.pc.w == 0x8004 );
+  fuse_shutdown();
+  check_closed();
+}
+
+static void
 check_budget_contract( int argc, char **argv )
 {
   int type, i;
@@ -604,6 +670,8 @@ legacy_lifecycle_test( int argc, char **argv )
     check_budget_contract( argc - 1, argv + 1 );
   } else if( !strcmp( argv[1], "debugger-stop" ) ) {
     check_debugger_stop( argc - 1, argv + 1 );
+  } else if( !strcmp( argv[1], "debugger-other-stops" ) ) {
+    check_debugger_other_stops( argc - 1, argv + 1 );
   } else if( !strcmp( argv[1], "debugger-step" ) ||
              !strcmp( argv[1], "debugger-step-frame" ) ) {
     check_debugger_step( argc - 1, argv + 1, !strcmp( argv[1], "debugger-step-frame" ) );

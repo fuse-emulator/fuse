@@ -219,7 +219,7 @@ breakpoint_add( debugger_breakpoint_type type, debugger_breakpoint_value value,
   if( type == DEBUGGER_BREAKPOINT_TYPE_TIME )
     event_add( value.time.tstates, debugger_breakpoint_event );
 
-  ui_breakpoints_updated();
+  if( !debugger_host_context() ) ui_breakpoints_updated();
 
   return 0;
 }
@@ -261,8 +261,8 @@ debugger_check( debugger_breakpoint_type type, libspectrum_dword value )
 
   }
 
-  if( signal_breakpoints_updated )
-      ui_breakpoints_updated();
+  if( signal_breakpoints_updated && !debugger_host_context() )
+    ui_breakpoints_updated();
 
   /* Debugger mode could have been reset by a breakpoint command. */
   if( debugger_mode != DEBUGGER_MODE_HALTED ) return 0;
@@ -403,7 +403,7 @@ debugger_breakpoint_remove( size_t id )
 
   libspectrum_free( bp );
 
-  ui_breakpoints_updated();
+  if( !debugger_host_context() ) ui_breakpoints_updated();
 
   return 0;
 }
@@ -482,7 +482,7 @@ debugger_breakpoint_clear( libspectrum_word address )
       ui_error( UI_ERROR_ERROR, "No breakpoint at 0x%04x", address );
     }
   } else {
-      ui_breakpoints_updated();
+    if( !debugger_host_context() ) ui_breakpoints_updated();
   }
 
   return 0;
@@ -518,7 +518,7 @@ debugger_breakpoint_remove_all( void )
   /* Restart the breakpoint numbering */
   next_breakpoint_id = 1;
 
-  ui_breakpoints_updated();
+  if( !debugger_host_context() ) ui_breakpoints_updated();
 
   return 0;
 }

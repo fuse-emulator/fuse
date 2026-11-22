@@ -123,6 +123,12 @@ disassemble_main( libspectrum_word address, char *buffer, size_t buflen,
     use_hl = b == 0xdd ? USE_IX : USE_IY;
     address++;
     prefix_length++;
+    if( prefix_length == 0x10000 ) {
+      /* The address space contains nothing but prefixes. */
+      snprintf( buffer, buflen, "DB 0x%02X", (unsigned)b );
+      *length = 1;
+      return;
+    }
     b = readbyte_internal( address );
   }
 

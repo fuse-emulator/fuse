@@ -406,11 +406,14 @@ fuse_dispatch_legacy_batch( void )
 static void
 fuse_dispatch_host_batch( const libspectrum_dword *deadline )
 {
+  debugger_host_set_context( 1 );
   debugger_host_run_batch( deadline );
   /* Return at the breakpoint without dispatching any more emulated work. */
-  if( debugger_host_stopped() ) return;
-  event_do_events();
-  fuse_check_execution_limits();
+  if( !debugger_host_stopped() ) {
+    event_do_events();
+    fuse_check_execution_limits();
+  }
+  debugger_host_set_context( 0 );
 }
 
 /* Host turns and the legacy runner share one automation session. Resuming

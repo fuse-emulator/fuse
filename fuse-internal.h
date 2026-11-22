@@ -546,7 +546,20 @@ fuse_run_result fuse_run_frame( void );
    argument validation; other lifecycle and blocking rules match run_frame. */
 fuse_run_result fuse_run_tstates( unsigned long budget );
 
-/* Available at a host breakpoint or single-step stop. Copy by value. */
+/* Request a manual stop at the next opcode boundary of a host turn. */
+fuse_host_operation_result fuse_host_debugger_break( void );
+
+/* Evaluate existing debugger syntax while stopped. An optional disassembly
+   address receives -1 unless the command requested a new pane address.
+   A parse failure does not undo commands already evaluated. */
+fuse_host_operation_result fuse_host_debugger_command( const char *command,
+                                                       int *disassembly_address );
+
+/* Decode one instruction from mapped memory while stopped. */
+fuse_host_operation_result fuse_host_debugger_disassemble(
+  libspectrum_word address, char *text, size_t capacity, size_t *length );
+
+/* Available at a host debugger stop. Copy by value. */
 fuse_host_operation_result fuse_host_debugger_copy_registers(
   processor *registers );
 

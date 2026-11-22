@@ -76,7 +76,10 @@ libspectrum_word debugger_search_instruction( libspectrum_word address,
                                               int delta );
 
 /* Evaluate a debugger command */
-void debugger_command_evaluate( const char *command );
+int debugger_command_evaluate( const char *command );
+int debugger_host_context( void );
+void debugger_host_set_context( int enabled );
+void debugger_command_disassemble( libspectrum_word address );
 
 /* Get a deparsed expression */
 int debugger_expression_deparse( char *buffer, size_t length,

@@ -248,9 +248,21 @@ debugger_step_demo( unsigned int *budget_turns )
 {
   processor before, after;
 
-  /* Breakpoint setup still uses the existing internal debugger API. */
-  if( debugger_breakpoint_add_address( DEBUGGER_BREAKPOINT_TYPE_EXECUTE,
-        memory_source_any, 0, 0, 0, DEBUGGER_BREAKPOINT_LIFE_PERMANENT, NULL ) ||
+  if( operation( "request debugger break", fuse_host_debugger_break() ) ||
+      fuse_run_frame() != FUSE_RUN_DEBUGGER_STOPPED ||
+      operation( "inspect manual break",
+                 fuse_host_debugger_copy_registers( &before ) ) ||
+      before.pc.w != 0 ||
+      operation( "continue manual break",
+                 fuse_host_debugger_continue() ) ) goto fail;
+  puts( "host: manual debugger break at PC 0000" );
+
+  if( operation( "break", fuse_host_debugger_break() ) ||
+      fuse_run_frame() != FUSE_RUN_DEBUGGER_STOPPED ||
+      operation( "install breakpoint",
+                 fuse_host_debugger_command( "break 0", NULL ) ) ||
+      operation( "continue command",
+                 fuse_host_debugger_command( "continue", NULL ) ) ||
       fuse_run_frame() != FUSE_RUN_DEBUGGER_STOPPED ||
       operation( "inspect breakpoint", fuse_host_debugger_copy_registers( &before ) ) ||
       before.pc.w != 0 ) goto fail;
