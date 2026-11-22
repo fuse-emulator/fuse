@@ -449,6 +449,10 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    cmp expected-open "$$consumer-open.out"; \
 	    "$$program" only48 --open joystick.szx > "$$consumer-open-joystick.out" 2> "$$consumer-open-joystick.err"; \
 	    cmp expected-open-joystick "$$consumer-open-joystick.out"; \
+	    "$$program" only48 --open-over-tape sample.tap > "$$consumer-open-tape.out" 2> "$$consumer-open-tape.err"; \
+	    grep -Fx 'host: modified tape; discard' "$$consumer-open-tape.out" > /dev/null; \
+	    "$$program" "$$roms" --open-over-floppy sample.udi > "$$consumer-open-floppy.out" 2> "$$consumer-open-floppy.err"; \
+	    grep -Ex 'host: modified floppy controller=[0-9]+ slot=0; Save needs a path; discard' "$$consumer-open-floppy.out" > /dev/null; \
 	    "$$program" only48 --tape-lifecycle sample.tap tape-life.tzx \
 	      > "$$consumer-tape-life.out" 2> "$$consumer-tape-life.err"; \
 	    cmp expected-tape-life "$$consumer-tape-life.out"; \

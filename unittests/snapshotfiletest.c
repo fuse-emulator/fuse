@@ -47,7 +47,7 @@ check_save_callback( void )
   assert( fuse_emulation_paused == expected_pause );
   if( in_host_save ) {
     assert( fuse_host_save_snapshot_file( "not-written.szx" ) == FUSE_HOST_OPERATION_BUSY );
-    assert( fuse_host_open_file( "not-opened.szx", &(fuse_media_decision_id){ 0 } ) == FUSE_HOST_OPERATION_BUSY );
+    assert( fuse_host_open_file( "not-opened.szx", &(fuse_open_request){ 0 } ) == FUSE_HOST_OPERATION_BUSY );
     assert( fuse_host_reset( FUSE_HOST_RESET_HARD ) == FUSE_HOST_OPERATION_BUSY );
     assert( fuse_run_frame() == FUSE_RUN_BUSY );
   }

@@ -164,23 +164,32 @@ snapshot_cancel_pending( void )
   fuse_engine_retire_decision( FUSE_DECISION_SNAPSHOT );
 }
 
-static fuse_media_decision_id
-snapshot_next_joystick( void )
+static void
+snapshot_next_joystick( fuse_open_request *request )
 {
   size_t count = libspectrum_snap_joystick_active_count( pending_snapshot.snap );
   while( !rzx_playback && pending_snapshot.index < count ) {
     joystick_type_t type = joystick_snapshot_type( libspectrum_snap_joystick_list(
       pending_snapshot.snap, pending_snapshot.index ) );
     if( type != JOYSTICK_TYPE_NONE && type != pending_snapshot.outputs[0] &&
-        type != pending_snapshot.outputs[1] && type != pending_snapshot.outputs[2] )
-      return fuse_engine_request_decision( FUSE_DECISION_SNAPSHOT );
+        type != pending_snapshot.outputs[1] &&
+        type != pending_snapshot.outputs[2] ) {
+      request->id = pending_snapshot.id =
+        fuse_engine_request_decision( FUSE_DECISION_SNAPSHOT );
+      request->question = FUSE_OPEN_MAP_JOYSTICK;
+      request->detail.joystick.type = libspectrum_snap_joystick_list(
+        pending_snapshot.snap, pending_snapshot.index );
+      request->detail.joystick.inputs = libspectrum_snap_joystick_inputs(
+        pending_snapshot.snap, pending_snapshot.index );
+      return;
+    }
     pending_snapshot.index++;
   }
-  return 0;
 }
 
 int
-snapshot_request_open( const libspectrum_file *file, fuse_media_decision_id *request )
+snapshot_request_open( const libspectrum_file *file,
+                       fuse_open_request *request )
 {
   int error;
   pending_snapshot.snap = libspectrum_snap_alloc();
@@ -191,8 +200,8 @@ snapshot_request_open( const libspectrum_file *file, fuse_media_decision_id *req
     pending_snapshot.outputs[0] = settings_current.joystick_1_output;
     pending_snapshot.outputs[1] = settings_current.joystick_2_output;
     pending_snapshot.outputs[2] = settings_current.joystick_keyboard_output;
-    *request = pending_snapshot.id = snapshot_next_joystick();
-    if( *request ) {
+    snapshot_next_joystick( request );
+    if( request->id ) {
       pending_snapshot.filename = utils_safe_strdup( file->filename );
       return 0;
     }
@@ -210,28 +219,15 @@ snapshot_decision_matches( fuse_media_decision_id id )
 }
 
 fuse_host_operation_result
-fuse_host_snapshot_joystick_request( fuse_media_decision_id id,
-                                    fuse_snapshot_joystick_request *request )
-{
-  fuse_host_operation_result result = fuse_engine_check_operation();
-  if( result != FUSE_HOST_OPERATION_OK ) return result;
-  if( !request ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
-  if( !snapshot_decision_matches( id ) ) return FUSE_HOST_OPERATION_STALE;
-  request->type = libspectrum_snap_joystick_list( pending_snapshot.snap, pending_snapshot.index );
-  request->inputs = libspectrum_snap_joystick_inputs( pending_snapshot.snap, pending_snapshot.index );
-  return FUSE_HOST_OPERATION_OK;
-}
-
-fuse_host_operation_result
 fuse_host_answer_snapshot_joystick( fuse_media_decision_id id,
                                    const fuse_host_joystick *slot,
-                                   fuse_media_decision_id *next )
+                                   fuse_open_request *next )
 {
   int error;
   fuse_host_operation_result result;
 
   if( !next ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
-  *next = 0;
+  *next = (fuse_open_request){ 0 };
   result = fuse_engine_check_operation();
   if( result != FUSE_HOST_OPERATION_OK ) return result;
   if( !snapshot_decision_matches( id ) ) return FUSE_HOST_OPERATION_STALE;
@@ -243,8 +239,8 @@ fuse_host_answer_snapshot_joystick( fuse_media_decision_id id,
     libspectrum_snap_joystick_list( pending_snapshot.snap, pending_snapshot.index ) );
   pending_snapshot.index++;
   fuse_engine_retire_decision( FUSE_DECISION_SNAPSHOT );
-  *next = pending_snapshot.id = snapshot_next_joystick();
-  if( !*next ) {
+  snapshot_next_joystick( next );
+  if( !next->id ) {
     error = snapshot_restore( pending_snapshot.snap, pending_snapshot.outputs );
     pokemem_find_pokfile( pending_snapshot.filename );
     display_refresh_all();

@@ -558,10 +558,16 @@ request_disk_change( const ui_media_drive_info_t *drive, disk_change change,
 
 int
 ui_media_drive_request_open( const ui_media_drive_info_t *drive, utils_file *file,
-                             int autoload, fuse_media_decision_id *request )
+                             int autoload, fuse_open_request *request )
 {
   fuse_host_operation_result result = request_disk_change(
-    drive, DISK_CHANGE_INSERT, file, autoload, 1, request );
+    drive, DISK_CHANGE_INSERT, file, autoload, 1, &request->id );
+  if( result == FUSE_HOST_OPERATION_NEEDS_DECISION ) {
+    request->question = FUSE_OPEN_SAVE_FLOPPY;
+    request->detail.floppy.controller = drive->controller_index;
+    request->detail.floppy.slot = drive->drive_index;
+    request->detail.floppy.has_save_target = drive->fdd->disk.filename != NULL;
+  }
   return result != FUSE_HOST_OPERATION_OK && result != FUSE_HOST_OPERATION_NEEDS_DECISION;
 }
 

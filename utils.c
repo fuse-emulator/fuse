@@ -94,7 +94,7 @@ automation_disk_controller_name( fuse_disk_controller controller )
 
 static int
 utils_insert_disk( fuse_disk_controller controller, utils_file *file,
-                   int autoload, fuse_media_decision_id *request )
+                   int autoload, fuse_open_request *request )
 {
   ui_media_drive_info_t *drive = ui_media_drive_find( controller, 0 );
 #ifdef ENABLE_AUTOMATION
@@ -126,7 +126,7 @@ utils_open_file( const char *filename, int autoload,
 
 static int
 open_loaded_file( utils_file *file, int autoload, libspectrum_id_t *type_ptr,
-                  fuse_media_decision_id *request )
+                  fuse_open_request *request )
 {
   int error;
 
@@ -165,14 +165,18 @@ open_loaded_file( utils_file *file, int autoload, libspectrum_id_t *type_ptr,
   case LIBSPECTRUM_CLASS_SNAPSHOT:
     error = request ? snapshot_request_open( file, request ) :
       snapshot_read_buffer( file->buffer, file->length, file->type );
-    if( request && *request ) return error;
+    if( request && request->id ) return error;
     pokemem_find_pokfile( file->filename );
     break;
 
   case LIBSPECTRUM_CLASS_TAPE:
     if( request ) {
-      error = tape_request_insert( file, filename, type, autoload, 1, request );
-      if( *request ) return error;
+      error = tape_request_insert( file, filename, type, autoload, 1,
+                                   &request->id );
+      if( request->id ) {
+        request->question = FUSE_OPEN_SAVE_TAPE;
+        return error;
+      }
     } else {
       error = tape_read_buffer( file->buffer, file->length, type, filename, autoload );
     }
@@ -316,7 +320,7 @@ utils_open_loaded_file( utils_file *file, int autoload, libspectrum_id_t *type )
 
 int
 utils_open_file_with_decision( const char *filename, int autoload,
-                               fuse_media_decision_id *request )
+                               fuse_open_request *request )
 {
   utils_file file;
   int error;

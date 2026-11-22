@@ -167,19 +167,36 @@ typedef enum fuse_host_joystick {
   FUSE_HOST_JOYSTICK_1, FUSE_HOST_JOYSTICK_2, FUSE_HOST_JOYSTICK_KEYBOARD
 } fuse_host_joystick;
 
-typedef struct fuse_snapshot_joystick_request {
-  libspectrum_joystick type;
-  int inputs;
-} fuse_snapshot_joystick_request;
+typedef enum fuse_open_question {
+  FUSE_OPEN_NO_QUESTION,
+  FUSE_OPEN_SAVE_TAPE,
+  FUSE_OPEN_SAVE_FLOPPY,
+  FUSE_OPEN_MAP_JOYSTICK
+} fuse_open_question;
 
-/* Inspect a pending snapshot joystick decision; other decision IDs are stale. */
-fuse_host_operation_result fuse_host_snapshot_joystick_request(
-  fuse_media_decision_id id, fuse_snapshot_joystick_request *request );
+/* Copied by value. Reply with the matching tape eject, disk eject or
+   snapshot joystick answer. Tape Save always needs a chosen path. */
+typedef struct fuse_open_request {
+  fuse_media_decision_id id;
+  fuse_open_question question;
+  union {
+    struct {
+      fuse_disk_controller controller;
+      int slot;
+      int has_save_target; /* Save may pass NULL to reuse that target. */
+    } floppy;
+    struct {
+      libspectrum_joystick type;
+      int inputs;
+    } joystick;
+  } detail;
+} fuse_open_request;
+
 /* NULL declines the mapping, not the snapshot. A valid reply consumes the
-   ID; NEEDS_DECISION returns the next ID, all other results clear it. */
+   ID; NEEDS_DECISION returns the next question, all other results clear it. */
 fuse_host_operation_result fuse_host_answer_snapshot_joystick(
   fuse_media_decision_id id, const fuse_host_joystick *slot,
-  fuse_media_decision_id *next );
+  fuse_open_request *next );
 
 /* Engine interface selection, deliberately separate from input delivery. */
 int fuse_host_config_set_joystick( fuse_host_config *config,
@@ -208,10 +225,10 @@ fuse_host_operation_result fuse_host_nmi( void );
    cancelled/no-op insertion; MEDIA_ERROR means legacy nonzero. No rollback,
    unchanged-state or safe-continuation promise on error; legacy fatal paths
    remain. This is not strict ID selection or the tape-only insertion intent. */
-/* Dirty tape/floppy or missing snapshot joystick mappings can return
-   NEEDS_DECISION. Other results clear the request. */
+/* NEEDS_DECISION returns a question with a nonzero ID. Other results clear
+   the request. */
 fuse_host_operation_result fuse_host_open_file( const char *filename,
-                                                fuse_media_decision_id *request );
+                                                fuse_open_request *request );
 
 /* Single-drive controllers use MASTER. The backing name is an owned copy,
    NULL when no backing is attached. */

@@ -46,7 +46,9 @@
 static void
 probing_read( void )
 {
-  assert( fuse_host_open_file( "not-opened.tap", &(fuse_media_decision_id){ 0 } ) == FUSE_HOST_OPERATION_BUSY );
+  assert( fuse_host_open_file( "not-opened.tap",
+                               &(fuse_open_request){ 0 } ) ==
+          FUSE_HOST_OPERATION_BUSY );
 }
 
 static void
@@ -176,24 +178,28 @@ filesystem_tests( void )
   filesystem.unreadable_name = "media/input.pok";
   assert( compat_file_exists( filesystem.unreadable_name ) );
   filesystem.on_read = probing_read;
-  assert( fuse_host_open_file( "media/input.tap", &(fuse_media_decision_id){ 0 } ) == OK );
+  assert( fuse_host_open_file( "media/input.tap",
+                               &(fuse_open_request){ 0 } ) == OK );
   filesystem.on_read = NULL;
   assert( tape_present() && !tape_is_playing() && !pokemem_autoload_pokfile() );
   filesystem.unreadable_name = NULL;
   assert( fuse_host_save_tape_file( "media/copy.pzx" ) == OK );
   assert( fuse_host_request_tape_eject( &request ) == OK && !request );
-  assert( fuse_host_open_file( "media/copy.pzx", &(fuse_media_decision_id){ 0 } ) == OK );
+  assert( fuse_host_open_file( "media/copy.pzx",
+                               &(fuse_open_request){ 0 } ) == OK );
   assert( fuse_host_save_snapshot_file( "media/state.szx" ) == OK );
   file = memory_find( "media/state.szx" );
   assert( file && file->length == length && !memcmp( file->data, expected, length ) );
   z80.pc.w = 0; writebyte_internal( 0x8100, 0 );
-  assert( fuse_host_open_file( "media/state.szx", &(fuse_media_decision_id){ 0 } ) == OK );
+  assert( fuse_host_open_file( "media/state.szx", &(fuse_open_request){ 0 } ) == OK );
   assert( z80.pc.w == 0x8000 && z80.sp.w == 0x9000 && readbyte_internal(0x8100) == 0x5a );
 
   filesystem.fail_open = 1;
   assert( fuse_host_insert_tape_file( "media/input.tap", &request ) == ERROR ); filesystem.fail_open = 0;
   filesystem.fail_read = 1;
-  assert( fuse_host_open_file( "media/state.szx", &(fuse_media_decision_id){ 0 } ) == ERROR ); filesystem.fail_read = 0;
+  assert( fuse_host_open_file( "media/state.szx",
+                               &(fuse_open_request){ 0 } ) == ERROR );
+  filesystem.fail_read = 0;
   tape_modified = 1; filesystem.fail_write = 1;
   assert( fuse_host_save_tape_file( "media/fail.tzx" ) == ERROR && tape_modified ); filesystem.fail_write = 0;
   filesystem.fail_close = 1;
@@ -211,7 +217,9 @@ filesystem_tests( void )
   filesystem.fail_write = 0;
 
   assert( !rzx_start_recording( "media/stop.rzx", 0 ) && rzx_recording );
-  assert( fuse_host_open_file( "missing.tap", &(fuse_media_decision_id){ 0 } ) == ERROR && !rzx_recording );
+  assert( fuse_host_open_file( "missing.tap",
+                               &(fuse_open_request){ 0 } ) == ERROR &&
+          !rzx_recording );
   assert( memory_find( "media/stop.rzx" ) ); /* General Open still stops before validation. */
 #if LIBSPECTRUM_SUPPORTS_WAV
   {
@@ -220,14 +228,14 @@ filesystem_tests( void )
       "\x40\x1f\0\0\x40\x1f\0\0\1\0\10\0data\10\0\0\0"
       "\0\0\xff\xff\0\0\xff\xff";
     seed( "media/pulse.wav", wav, sizeof(wav) - 1 );
-    assert( fuse_host_open_file( "media/pulse.wav", &(fuse_media_decision_id){ 0 } ) == OK && tape_present() );
+    assert( fuse_host_open_file( "media/pulse.wav", &(fuse_open_request){ 0 } ) == OK && tape_present() );
   }
 #endif
   {
     unsigned char hdf[128 + 512] = { 'R','S','-','I','D','E',0x1a,0x11,0,128,0 };
     hdf[24] = 1; hdf[28] = 1; hdf[34] = 1;
     seed( "media/drive.hdf", hdf, sizeof(hdf) );
-    assert( fuse_host_open_file( "media/drive.hdf", &(fuse_media_decision_id){ 0 } ) == OK );
+    assert( fuse_host_open_file( "media/drive.hdf", &(fuse_open_request){ 0 } ) == OK );
     assert( filesystem.opens == filesystem.closes + 1 );
     assert( fuse_host_copy_mass_storage_info( PERIPH_TYPE_ZXCF, LIBSPECTRUM_IDE_MASTER, &retained_drive ) == OK );
     assert( retained_drive->active && !strcmp( retained_drive->backing_name, "media/drive.hdf" ) );

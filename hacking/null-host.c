@@ -469,6 +469,53 @@ done:
   return failed;
 }
 
+static int
+open_demo( const char *filename, unsigned int *completed )
+{
+  const fuse_host_joystick keyboard = FUSE_HOST_JOYSTICK_KEYBOARD;
+  fuse_open_request request;
+  fuse_host_operation_result result = fuse_host_open_file( filename, &request );
+  unsigned int mappings = 0;
+
+  while( result == FUSE_HOST_OPERATION_NEEDS_DECISION ) {
+    if( !request.id || fuse_run_frame() != FUSE_RUN_NEEDS_DECISION ) {
+      fputs( "host: Open decision did not park execution\n", stderr );
+      return 1;
+    }
+    switch( request.question ) {
+    case FUSE_OPEN_SAVE_TAPE:
+      puts( "host: modified tape; discard" );
+      result = fuse_host_answer_tape_eject( request.id,
+                                            FUSE_MEDIA_DECISION_DISCARD, NULL );
+      break;
+    case FUSE_OPEN_SAVE_FLOPPY:
+      printf( "host: modified floppy controller=%d slot=%d; %s; discard\n",
+              (int)request.detail.floppy.controller, request.detail.floppy.slot,
+              request.detail.floppy.has_save_target ? "existing save target" :
+              "Save needs a path" );
+      result = fuse_host_answer_disk_eject( request.id,
+                                            FUSE_MEDIA_DECISION_DISCARD, NULL );
+      break;
+    case FUSE_OPEN_MAP_JOYSTICK:
+      printf( "host: snapshot joystick %s; %s\n",
+              libspectrum_joystick_name( request.detail.joystick.type ),
+              mappings ? "decline mapping" : "map to keyboard" );
+      result = fuse_host_answer_snapshot_joystick( request.id,
+                                                   mappings ? NULL : &keyboard,
+                                                   &request );
+      mappings++;
+      break;
+    default:
+      fputs( "host: unknown Open question\n", stderr );
+      return 1;
+    }
+  }
+  if( operation( "File Open", result ) ) return 1;
+  puts( mappings ? "host: snapshot restored after joystick decision" :
+        "host: File Open returned legacy success" );
+  return frames( 5, completed );
+}
+
 int
 main( int argc, char **argv )
 {
@@ -496,14 +543,21 @@ main( int argc, char **argv )
   int disk_save = argc == 5 && !strcmp( argv[2], "--save-disk" );
   int tape_lifecycle = argc == 5 && !strcmp( argv[2], "--tape-lifecycle" );
   int tape_replacement = argc == 5 && !strcmp( argv[2], "--replace-tape" );
+  int open_over_tape = argc >= 3 && !strcmp( argv[2], "--open-over-tape" );
+  int open_over_floppy = argc >= 3 && !strcmp( argv[2], "--open-over-floppy" );
+  int plus3 = disk_save || disk_lifecycle || open_over_floppy;
 
   if( ( argc != 2 && argc != 3 && argc != 4 && argc != 5 ) ||
-      ( argc == 4 && strcmp( argv[2], "--open" ) && !disk_lifecycle && !tape_record && !parked_eject && !snapshot_save && !filesystem && !divmmc ) ||
+      ( ( open_over_tape || open_over_floppy ) && argc != 4 ) ||
+      ( argc == 4 && strcmp( argv[2],
+                             "--open" ) && !open_over_tape &&
+        !open_over_floppy && !disk_lifecycle && !tape_record && !parked_eject &&
+        !snapshot_save && !filesystem && !divmmc ) ||
       ( argc == 5 && !disk_save && !tape_lifecycle && !tape_replacement ) ||
       ( argc == 3 && ( !strcmp( argv[2], "--open" ) || !strcmp( argv[2], "--save-disk" ) ||
                       !strcmp( argv[2], "--disk-lifecycle" ) || !strcmp( argv[2], "--tape-lifecycle" ) || !strcmp( argv[2], "--replace-tape" ) ||
                       !strcmp( argv[2], "--record-tape" ) || !strcmp( argv[2], "--parked-tape-eject" ) || !strcmp( argv[2], "--save-snapshot" ) || !strcmp( argv[2], "--filesystem" ) || !strcmp( argv[2], "--divmmc" ) ) ) ) {
-    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
+    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
     return EXIT_FAILURE;
   }
   if( filesystem || divmmc ) {
@@ -519,9 +573,9 @@ main( int argc, char **argv )
   provider.debugger_watchpoint = debugger_watchpoint;
   provider.directory = argv[1]; /* Borrowed through shutdown, not passed as engine CLI. */
   config = fuse_host_config_alloc();
-  if( fuse_host_config_set_machine( config, disk_save || disk_lifecycle ? "plus3" : "48" ) ||
+  if( fuse_host_config_set_machine( config, plus3 ? "plus3" : "48" ) ||
       fuse_host_config_set_sound( config, 0 ) ||
-      ( ( tape_record || parked_eject || tape_replacement ) &&
+      ( ( tape_record || parked_eject || tape_replacement || open_over_tape ) &&
         fuse_host_config_set_tape_traps( config, 0 ) ) ||
       ( filesystem && fuse_host_config_set_auto_load( config, 0 ) ) ||
       ( divmmc && fuse_host_config_set_divmmc( config, 1 ) ) ||
@@ -538,7 +592,7 @@ main( int argc, char **argv )
     goto cleanup; /* A rejected prepare does not authorize another session's shutdown. */
   }
   prepared = 1;
-  puts( disk_save || disk_lifecycle ? "host: prepared plus3" : "host: prepared 48" );
+  puts( plus3 ? "host: prepared plus3" : "host: prepared 48" );
   if( tape_replacement ) {
     if( !replacement_demo( argv[3], argv[4], &frame_turns ) ) status = EXIT_SUCCESS;
     goto cleanup;
@@ -576,14 +630,18 @@ main( int argc, char **argv )
     goto cleanup;
   }
   if( filesystem ) {
-    if( operation( "filesystem Tape Open", fuse_host_open_file( "media/input.tap", &(fuse_media_decision_id){ 0 } ) ) ||
+    if( operation( "filesystem Tape Open", fuse_host_open_file( "media/input.tap", &(fuse_open_request){ 0 } ) ) ||
         operation( "filesystem tape save", fuse_host_save_tape_file( "media/copy.pzx" ) ) ||
         eject_saved_tape() ||
-        operation( "filesystem tape reopen", fuse_host_open_file( "media/copy.pzx", &(fuse_media_decision_id){ 0 } ) ) ||
+        operation( "filesystem tape reopen",
+                   fuse_host_open_file( "media/copy.pzx",
+                                        &(fuse_open_request){ 0 } ) ) ||
         frames( 2, &frame_turns ) ||
         operation( "filesystem snapshot save", fuse_host_save_snapshot_file( "media/state.szx" ) ) ||
         operation( "reset", fuse_host_reset( FUSE_HOST_RESET_HARD ) ) ||
-        operation( "filesystem snapshot reopen", fuse_host_open_file( "media/state.szx", &(fuse_media_decision_id){ 0 } ) ) ||
+        operation( "filesystem snapshot reopen",
+                   fuse_host_open_file( "media/state.szx",
+                                        &(fuse_open_request){ 0 } ) ) ||
         frames( 1, &frame_turns ) ) goto cleanup;
     {
       unsigned char hdf[640] = { 'R','S','-','I','D','E',0x1a,0x11,0,128,0 };
@@ -596,7 +654,7 @@ main( int argc, char **argv )
       error = compat_file_write( backing, hdf, sizeof(hdf) );
       if( compat_file_close( backing ) ) error = 1;
       if( error ||
-          operation( "open ZXCF", fuse_host_open_file( "media/drive.hdf", &(fuse_media_decision_id){ 0 } ) ) ||
+          operation( "open ZXCF", fuse_host_open_file( "media/drive.hdf", &(fuse_open_request){ 0 } ) ) ||
           operation( "observe ZXCF", fuse_host_copy_mass_storage_info( PERIPH_TYPE_ZXCF, LIBSPECTRUM_IDE_MASTER, &drive ) ) )
         goto cleanup;
       ok = drive->active && drive->backing_name && !strcmp( drive->backing_name, "media/drive.hdf" );
@@ -612,7 +670,9 @@ main( int argc, char **argv )
     if( frames( 2, &frame_turns ) ||
         operation( "save snapshot", fuse_host_save_snapshot_file( argv[3] ) ) ||
         operation( "reset", fuse_host_reset( FUSE_HOST_RESET_HARD ) ) ||
-        operation( "reopen snapshot", fuse_host_open_file( argv[3], &(fuse_media_decision_id){ 0 } ) ) ||
+        operation( "reopen snapshot",
+                   fuse_host_open_file( argv[3],
+                                        &(fuse_open_request){ 0 } ) ) ||
         frames( 1, &frame_turns ) ) goto cleanup;
     puts( "host: saved snapshot; reset and reopened" );
     status = EXIT_SUCCESS;
@@ -684,31 +744,17 @@ main( int argc, char **argv )
     goto cleanup;
   }
   if( argc == 4 ) {
-    const fuse_host_joystick keyboard = FUSE_HOST_JOYSTICK_KEYBOARD;
-    fuse_media_decision_id request;
-    fuse_host_operation_result result = fuse_host_open_file( argv[3], &request );
-    unsigned int answers = 0;
-    while( result == FUSE_HOST_OPERATION_NEEDS_DECISION ) {
-      fuse_snapshot_joystick_request joystick;
-      if( operation( "snapshot joystick request",
-                     fuse_host_snapshot_joystick_request( request, &joystick ) ) ) goto cleanup;
-      if( fuse_run_frame() != FUSE_RUN_NEEDS_DECISION ) {
-        fputs( "host: snapshot decision did not park execution\n", stderr );
-        goto cleanup;
-      }
-      /* Scripted host policy: map the first request, decline the rest. */
-      printf( "host: snapshot joystick %s; %s\n",
-              libspectrum_joystick_name( joystick.type ),
-              answers ? "decline mapping" : "map to keyboard" );
-      result = fuse_host_answer_snapshot_joystick( request,
-                                                   answers ? NULL : &keyboard, &request );
-      answers++;
-    }
-    if( operation( "File Open", result ) ) goto cleanup;
-    puts( answers ? "host: snapshot restored after joystick decision" :
-                    "host: File Open returned legacy success" );
-    if( frames( 5, &frame_turns ) ) goto cleanup;
-    status = EXIT_SUCCESS;
+    if( open_over_tape &&
+        ( operation( "record", fuse_host_start_tape_recording() ) ||
+          frames( 1, &frame_turns ) ||
+          operation( "stop recording",
+                     fuse_host_stop_tape_recording() ) ) ) goto cleanup;
+    if( open_over_floppy &&
+        operation( "new floppy", fuse_host_new_disk( FUSE_DISK_CONTROLLER_PLUS3,
+                                                     0,
+                                                     &disk_request ) ) ) goto
+      cleanup;
+    if( !open_demo( argv[3], &frame_turns ) ) status = EXIT_SUCCESS;
     goto cleanup; /* Neither dispatch success nor five turns prove loading complete. */
   }
   if( argc == 3 ) {

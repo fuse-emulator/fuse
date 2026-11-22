@@ -286,7 +286,7 @@ a decision is pending. Legacy Quit keeps its existing modal workflow.
 
 ## File → Open
 
-`fuse_host_open_file(path,&id)` invokes the existing general Open dispatcher with
+`fuse_host_open_file(path, &request)` invokes the existing general Open dispatcher with
 `tape_can_autoload()`, then refreshes the display as the legacy menu does. The
 current `auto_load` preference and ROM eligibility remain emulator policy;
 `fuse_host_config_set_auto_load` supplies that existing value during preparation.
@@ -299,18 +299,20 @@ not decoded bytes or a copy of the dispatch rules. There is no media-type gate.
 Native filename selection and command delivery/pause ownership stay with the host.
 
 A dirty outgoing tape or floppy returns NEEDS_DECISION and retains the
-identified input. Reply via `fuse_host_answer_tape_eject()` or
-`fuse_host_answer_disk_eject()`. RZX stops before identification, and floppy
-controller selection and machine fallback occur before the request. A reply
-does not repeat that work. Cancel keeps the outgoing media but does not undo a
+identified input. `fuse_open_request` returns the ID and the question together.
+Reply via `fuse_host_answer_tape_eject()` or `fuse_host_answer_disk_eject()`
+as indicated. Tape Save needs a path; a floppy request names the controller
+and slot and says whether Save can reuse the retained target. RZX stops before
+identification, and floppy controller selection and machine fallback occur
+before the request. A reply does not repeat that work. Cancel keeps the outgoing media but does not undo a
 machine change. Autoload runs only on installation; tape companion POK lookup
 and display refresh run when the attempt completes.
 
 Direct snapshot Open returns NEEDS_DECISION for a supported joystick mapping
-that is not already assigned. Inspect the type and recorded input flags with
-`fuse_host_snapshot_joystick_request()`. Reply with a host input slot or NULL
-(to decline the mapping, not the load) via `fuse_host_answer_snapshot_joystick()`.
-Each reply can return another ID. The decoded snapshot and proposed mappings
+that is not already assigned. The request includes the type and recorded input
+flags. Reply with a host input slot or NULL (to decline the mapping, not the
+load) via `fuse_host_answer_snapshot_joystick()`. Each reply can return the
+next question with a fresh ID. The decoded snapshot and proposed mappings
 stay staged until the last reply, when Fuse restores the snapshot and performs
 companion POK lookup and display refresh. Automatic Kempston enablement is
 independent of the mapping choice. Legacy snapshot loading and RZX snapshot
@@ -545,10 +547,11 @@ still apply.
 An optional tape filename selects a separate scenario: insert on 48K with the
 deck stopped, run five frame turns and shut down. This mode needs only `48.rom`;
 it does not perform the input/reset/128K sequence or wait for tape completion.
-`--open FILE` demonstrates general File → Open followed by five turns. For a
-snapshot joystick decision, the example verifies that execution is parked,
-maps the first requested joystick to keyboard input, and declines any further
-mappings. With standard 48K ROMs, tape autoload requests the ROM again during
+`--open FILE` demonstrates general File → Open followed by five turns. The
+example verifies that execution is parked for a returned question, maps the
+first requested joystick to keyboard input, and declines any further mappings.
+`--open-over-tape FILE` and `--open-over-floppy FILE` first create modified media
+and exercise the same Open dispatcher with scripted Discard replies. With standard 48K ROMs, tape autoload requests the ROM again during
 reset; other files can select machines and require additional ROMs. The log
 reports the Open result, not that program loading finished.
 `--save-disk INPUT OUTPUT` prepares a +3, explicitly inserts into slot 0 and saves

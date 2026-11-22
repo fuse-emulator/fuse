@@ -82,12 +82,12 @@ fuse_host_reset( fuse_host_reset_kind kind )
 }
 
 fuse_host_operation_result
-fuse_host_open_file( const char *filename, fuse_media_decision_id *request )
+fuse_host_open_file( const char *filename, fuse_open_request *request )
 {
   int error;
   fuse_host_operation_result result;
   if( !request ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
-  *request = 0;
+  *request = (fuse_open_request){ 0 };
   result = fuse_engine_check_operation();
   if( result != FUSE_HOST_OPERATION_OK ) return result;
   if( !filename || !*filename ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
@@ -95,10 +95,11 @@ fuse_host_open_file( const char *filename, fuse_media_decision_id *request )
     return FUSE_HOST_OPERATION_BUSY;
   fuse_engine_begin_operation();
   error = utils_open_file_with_decision( filename, tape_can_autoload(), request );
-  if( !*request ) display_refresh_all();
+  if( !request->id ) display_refresh_all();
   fuse_engine_end_operation();
   if( error ) return FUSE_HOST_OPERATION_MEDIA_ERROR;
-  return *request ? FUSE_HOST_OPERATION_NEEDS_DECISION : FUSE_HOST_OPERATION_OK;
+  return request->id ? FUSE_HOST_OPERATION_NEEDS_DECISION :
+         FUSE_HOST_OPERATION_OK;
 }
 
 static fuse_quit_request pending_quit;
