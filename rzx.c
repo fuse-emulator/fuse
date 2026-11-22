@@ -104,6 +104,7 @@ static int prepare_playback( libspectrum_rzx *from_rzx,
 static void finish_playback( libspectrum_rzx *from_rzx,
                              libspectrum_snap *snap );
 static libspectrum_rzx *pending_playback;
+static char *pending_movie_target;
 static fuse_media_decision_id pending_external_id;
 static int creator_is_spin_05( const libspectrum_creator *creator );
 static int creator_has_broken_r7_restore( const libspectrum_creator *creator );
@@ -430,6 +431,8 @@ rzx_cancel_pending( void )
   if( pending_playback ) libspectrum_rzx_free( pending_playback );
   pending_playback = NULL;
   pending_external_id = 0;
+  libspectrum_free( pending_movie_target );
+  pending_movie_target = NULL;
   fuse_engine_retire_decision( FUSE_DECISION_RZX_EXTERNAL );
 }
 
@@ -446,7 +449,13 @@ rzx_finish_requested_playback( libspectrum_snap *snap, int error )
   rzx = pending_playback;
   pending_playback = NULL;
   finish_playback( rzx, snap );
-  return 0;
+  if( pending_movie_target ) {
+    display_refresh_all();
+    error = movie_start_authorized( pending_movie_target );
+    libspectrum_free( pending_movie_target );
+    pending_movie_target = NULL;
+  }
+  return error;
 }
 
 int
@@ -467,7 +476,8 @@ rzx_continue_requested_playback( fuse_open_request *request, int error )
 }
 
 int
-rzx_request_open( const libspectrum_file *file, fuse_open_request *request )
+rzx_request_open( const libspectrum_file *file, const char *movie_target,
+                  fuse_open_request *request )
 {
   int error;
 
@@ -481,6 +491,7 @@ rzx_request_open( const libspectrum_file *file, fuse_open_request *request )
     rzx_cancel_pending();
     return error;
   }
+  pending_movie_target = utils_safe_strdup( movie_target );
   if( !rzx_get_initial_snapshot( pending_playback ) ) {
     request->id = pending_external_id =
       fuse_engine_request_decision( FUSE_DECISION_RZX_EXTERNAL );

@@ -454,6 +454,9 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    cmp expected-open-joystick "$$consumer-open-joystick.out"; \
 	    "$$program" only48 --open joystick.rzx > "$$consumer-open-rzx.out" 2> "$$consumer-open-rzx.err"; \
 	    grep -Fx 'host: snapshot joystick Sinclair 1; map to keyboard' "$$consumer-open-rzx.out" > /dev/null; \
+	    "$$program" only48 --rzx-to-movie joystick.rzx "$$consumer.fmf" > "$$consumer-rzx-movie.out" 2> "$$consumer-rzx-movie.err"; \
+	    grep -Fx 'host: snapshot joystick Sinclair 1; map to keyboard' "$$consumer-rzx-movie.out" > /dev/null; \
+	    test "$$(dd if="$$consumer.fmf" bs=6 count=1 2>/dev/null)" = FMF_V1; rm "$$consumer.fmf"; \
 	    "$$program" only48 --record-rzx "$$consumer.rzx" > "$$consumer-record-rzx.out" 2> "$$consumer-record-rzx.err"; \
 	    grep -Fx 'host: recorded, finalised and reopened RZX' "$$consumer-record-rzx.out" > /dev/null; \
 	    test -s "$$consumer.rzx"; rm "$$consumer.rzx"; \
@@ -585,7 +588,7 @@ check-host-operations: unittests/legacyenginelinktest unittests/legacyenginesour
 	  cd "$$tmp"; export HOME=. XDG_CONFIG_HOME=. USERPROFILE=. WINDIR=. APPDATA=.; \
 	  for consumer in legacyenginelinktest legacyenginesourcetest; do \
 	    for mode in success filesystem-oracle filesystem tape-contract tape-info trapped-recording snapshot-roundtrip autoload-success autoload-failure \
-	      open-auto open-noauto open-custom open-reset-failure open-snapshot open-snapshot-joystick open-fallback open-rzx-stop open-rzx-embedded open-rzx-external record-rzx record-rzx-restore record-rzx-rollback open-floppy \
+	      open-auto open-noauto open-custom open-reset-failure open-snapshot open-snapshot-joystick open-fallback open-rzx-stop open-rzx-embedded open-rzx-external record-rzx record-rzx-restore record-rzx-rollback record-rzx-movie open-floppy \
 	      disk-save disk-save-beta microdrive host-quit host-quit-shutdown \
 	      reset-failure select-failure peripheral-reset-failure peripheral-select-failure; do \
 	      "$$root/$$consumer$(EXEEXT)" --host-operations-test "$$mode" "$$roms"; \

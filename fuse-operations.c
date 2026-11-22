@@ -28,6 +28,7 @@
 #include "input.h"
 #include "keyboard.h"
 #include "machine.h"
+#include "movie.h"
 #include "peripherals/ide/divmmc.h"
 #include "peripherals/ide/simpleide.h"
 #include "peripherals/ide/zxatasp.h"
@@ -539,8 +540,9 @@ check_rzx_operation( void )
   return result;
 }
 
-fuse_host_operation_result
-fuse_host_play_rzx( const char *filename, fuse_open_request *request )
+static fuse_host_operation_result
+host_play_rzx( const char *filename, const char *movie_target,
+               fuse_open_request *request )
 {
   utils_file file;
   int error;
@@ -549,14 +551,16 @@ fuse_host_play_rzx( const char *filename, fuse_open_request *request )
   *request = (fuse_open_request){ 0 };
   result = check_rzx_operation();
   if( result != FUSE_HOST_OPERATION_OK ) return result;
-  if( !filename || !*filename ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
-  if( rzx_recording || rzx_playback || tape_recording )
+  if( !filename || !*filename || ( movie_target && !*movie_target ) )
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( rzx_recording || rzx_playback || tape_recording ||
+      ( movie_target && movie_is_active() ) )
     return FUSE_HOST_OPERATION_BUSY;
 
   fuse_engine_begin_operation();
   fuse_emulation_pause();
   error = utils_read_file( filename, &file );
-  if( !error ) error = rzx_request_open( &file, request );
+  if( !error ) error = rzx_request_open( &file, movie_target, request );
   utils_close_file( &file );
   if( !request->id ) display_refresh_all();
   fuse_emulation_unpause();
@@ -564,6 +568,23 @@ fuse_host_play_rzx( const char *filename, fuse_open_request *request )
   if( error ) return FUSE_HOST_OPERATION_MEDIA_ERROR;
   return request->id ? FUSE_HOST_OPERATION_NEEDS_DECISION :
          FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_play_rzx( const char *filename, fuse_open_request *request )
+{
+  return host_play_rzx( filename, NULL, request );
+}
+
+fuse_host_operation_result
+fuse_host_record_movie_from_rzx( const char *filename, const char *movie_target,
+                                 fuse_open_request *request )
+{
+  if( !movie_target ) {
+    if( request ) *request = (fuse_open_request){ 0 };
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  }
+  return host_play_rzx( filename, movie_target, request );
 }
 
 fuse_host_operation_result

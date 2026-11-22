@@ -342,6 +342,12 @@ still call linked UI services.
 
 `fuse_host_play_rzx()` starts replay from a chosen RZX path and returns the
 same questions as Open, but refuses to replace an active replay or recording.
+`fuse_host_record_movie_from_rzx()` also takes an authorized output path. Fuse
+opens the FMF only after the initial restore and any replies, adding `.fmf`
+if needed. The target may be overwritten without a linked UI prompt. If opening
+the output fails, replay remains active, as in legacy Fuse. The existing
+stop-after-RZX setting still applies. The null host's `--rzx-to-movie INPUT
+OUTPUT` demonstrates this with up to five frame turns before shutdown.
 `fuse_host_start_rzx_recording()` records from the current machine state, with
 an optional embedded snapshot. `fuse_host_insert_rzx_snapshot()` inserts a
 snapshot into the active recording. `fuse_host_stop_rzx()` stops replay or

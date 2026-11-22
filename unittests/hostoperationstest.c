@@ -24,6 +24,7 @@
 #include "settings.h"
 #include "snapshot.h"
 #include "rzx.h"
+#include "movie.h"
 #include "tape.h"
 #include "tape_internals.h"
 #include "ui/ui.h"
@@ -1041,6 +1042,58 @@ check_rzx_open( int embedded )
 }
 
 static void
+check_rzx_movie( void )
+{
+  fuse_open_request request;
+  utils_file movie;
+  char target[] = "capture";
+  int i;
+
+  write_joystick_rzx( "joystick.rzx", 1 );
+  settings_current.joystick_1_output = JOYSTICK_TYPE_KEMPSTON;
+  settings_current.joystick_2_output = JOYSTICK_TYPE_NONE;
+  settings_current.joystick_keyboard_output = JOYSTICK_TYPE_NONE;
+  assert( !utils_write_file( "capture.fmf", (const unsigned char *)"old", 3 ) );
+  assert( fuse_host_record_movie_from_rzx( "joystick.rzx", target, &request ) ==
+          FUSE_HOST_OPERATION_NEEDS_DECISION );
+  target[0] = 'x'; /* The future output path belongs to Fuse. */
+  assert( request.question == FUSE_OPEN_MAP_JOYSTICK );
+  assert( !rzx_playback && !movie_is_active() &&
+          fuse_run_frame() == FUSE_RUN_NEEDS_DECISION );
+  assert( !utils_read_file( "capture.fmf", &movie ) && movie.length == 3 );
+  utils_close_file( &movie );
+  assert( fuse_host_answer_snapshot_joystick( request.id, NULL,
+                                              &request ) == OK );
+  assert( !request.id && rzx_playback && movie_is_active() );
+  for( i = 0; i < 16 && rzx_playback; i++ )
+    assert( fuse_run_frame() == FUSE_RUN_COMPLETED );
+  assert( !rzx_playback && !movie_is_active() );
+  assert( !utils_read_file( "capture.fmf", &movie ) && movie.length > 16 );
+  assert( !memcmp( movie.buffer, "FMF_V1", 6 ) );
+  utils_close_file( &movie );
+  assert( !remove( "capture.fmf" ) );
+  assert( fuse_host_record_movie_from_rzx( "joystick.rzx",
+                                           "missing-directory/out.fmf",
+                                           &request ) ==
+          FUSE_HOST_OPERATION_NEEDS_DECISION );
+  assert( fuse_host_answer_snapshot_joystick( request.id, NULL, &request ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( !request.id && rzx_playback && !movie_is_active() );
+  assert( fuse_host_stop_rzx() == OK && !rzx_playback );
+  write_joystick_rzx( "external.rzx", 0 );
+  assert( fuse_host_record_movie_from_rzx( "external.rzx", "cancelled.fmf",
+                                           &request ) ==
+          FUSE_HOST_OPERATION_NEEDS_DECISION );
+  assert( request.question == FUSE_OPEN_RZX_EXTERNAL_SNAPSHOT );
+  assert( fuse_host_answer_rzx_external_snapshot( request.id, NULL,
+                                                  &request ) ==
+          FUSE_HOST_OPERATION_CANCELLED );
+  assert( !compat_file_exists( "cancelled.fmf" ) && !movie_is_active() );
+  assert( !remove( "external.rzx" ) && !remove( "joystick.rzx" ) &&
+          !remove( "joystick.szx" ) );
+}
+
+static void
 check_rzx_recording_operations( void )
 {
   fuse_open_request request;
@@ -1833,6 +1886,8 @@ host_operations_test( int argc, char **argv )
     check_host_quit( !strcmp( argv[1], "host-quit-shutdown" ) );
   } else if( !strcmp( argv[1], "open-floppy" ) ) {
     check_open_floppy();
+  } else if( !strcmp( argv[1], "record-rzx-movie" ) ) {
+    check_rzx_movie();
   } else if( !strcmp( argv[1], "record-rzx-rollback" ) ) {
     check_rzx_rollback();
   } else if( !strcmp( argv[1], "record-rzx-restore" ) ) {

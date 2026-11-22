@@ -504,11 +504,17 @@ microdrive_demo( const char *filename )
 }
 
 static int
-open_demo( const char *filename, unsigned int *completed )
+open_demo( const char *filename, const char *movie_target,
+           unsigned int *completed )
 {
   const fuse_host_joystick keyboard = FUSE_HOST_JOYSTICK_KEYBOARD;
   fuse_open_request request;
-  fuse_host_operation_result result = fuse_host_open_file( filename, &request );
+  fuse_host_operation_result result = movie_target ?
+                                      fuse_host_record_movie_from_rzx( filename,
+                                                                       movie_target,
+                                                                       &request )
+  :
+                                      fuse_host_open_file( filename, &request );
   unsigned int mappings = 0;
 
   while( result == FUSE_HOST_OPERATION_NEEDS_DECISION ) {
@@ -589,6 +595,7 @@ main( int argc, char **argv )
   int disk_save = argc == 5 && !strcmp( argv[2], "--save-disk" );
   int tape_lifecycle = argc == 5 && !strcmp( argv[2], "--tape-lifecycle" );
   int tape_replacement = argc == 5 && !strcmp( argv[2], "--replace-tape" );
+  int rzx_movie = argc >= 3 && !strcmp( argv[2], "--rzx-to-movie" );
   int rzx_record = argc >= 3 && !strcmp( argv[2], "--record-rzx" );
   int microdrive = argc >= 3 && !strcmp( argv[2], "--microdrive" );
   int open_over_tape = argc >= 3 && !strcmp( argv[2], "--open-over-tape" );
@@ -604,11 +611,12 @@ main( int argc, char **argv )
         !rzx_record &&
         !parked_eject &&
         !snapshot_save && !filesystem && !divmmc ) ||
-      ( argc == 5 && !disk_save && !tape_lifecycle && !tape_replacement ) ||
+      ( rzx_movie && argc != 5 ) ||
+      ( argc == 5 && !disk_save && !tape_lifecycle && !tape_replacement && !rzx_movie ) ||
       ( argc == 3 && ( !strcmp( argv[2], "--open" ) || !strcmp( argv[2], "--save-disk" ) ||
                       !strcmp( argv[2], "--disk-lifecycle" ) || !strcmp( argv[2], "--tape-lifecycle" ) || !strcmp( argv[2], "--replace-tape" ) ||
                       !strcmp( argv[2], "--record-tape" ) || !strcmp( argv[2], "--parked-tape-eject" ) || !strcmp( argv[2], "--save-snapshot" ) || !strcmp( argv[2], "--filesystem" ) || !strcmp( argv[2], "--divmmc" ) ) ) ) {
-    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --record-rzx OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
+    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --record-rzx OUTPUT | --rzx-to-movie INPUT OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
     return EXIT_FAILURE;
   }
   if( filesystem || divmmc ) {
@@ -645,6 +653,10 @@ main( int argc, char **argv )
   }
   prepared = 1;
   puts( plus3 ? "host: prepared plus3" : "host: prepared 48" );
+  if( rzx_movie ) {
+    if( !open_demo( argv[3], argv[4], &frame_turns ) ) status = EXIT_SUCCESS;
+    goto cleanup;
+  }
   if( rzx_record ) {
     fuse_open_request request;
     if( operation( "record RZX",
@@ -833,7 +845,7 @@ main( int argc, char **argv )
                                                      0,
                                                      &disk_request ) ) ) goto
       cleanup;
-    if( !open_demo( argv[3], &frame_turns ) ) status = EXIT_SUCCESS;
+    if( !open_demo( argv[3], NULL, &frame_turns ) ) status = EXIT_SUCCESS;
     goto cleanup; /* Neither dispatch success nor five turns prove loading complete. */
   }
   if( argc == 3 ) {

@@ -346,8 +346,8 @@ movie_start_fmf( const char *name )
   movie_add_area( 0, 0, 40, 240 );
 }
 
-void
-movie_start( const char *name )	/* some init, open file (name)*/
+static int
+movie_start_target( const char *name, int confirm_overwrite )
 {
   char *name_with_ext = NULL;
 
@@ -361,24 +361,44 @@ movie_start( const char *name )	/* some init, open file (name)*/
     name = name_with_ext;
   }
 
-  if( compat_file_exists( name ) ) {
+  if( confirm_overwrite && compat_file_exists( name ) ) {
     const char *basename = strrchr( name, FUSE_DIR_SEP_CHR );
     basename = basename ? basename + 1 : name;
 
     if( !ui_query( "%s already exists.\nDo you want to overwrite it?",
                    basename ) ) {
       libspectrum_free( name_with_ext );
-      return;
+      return 1;
     }
   }
 
   movie_start_fmf( name );
   libspectrum_free( name_with_ext );
-  if( of == NULL ) return;
+  if( of == COMPAT_FILE_OPEN_FAILED ) return 1;
 
   movie_recording = 1;
   ui_menu_activate( UI_MENU_ITEM_FILE_MOVIE_RECORDING, 1 );
   ui_menu_activate( UI_MENU_ITEM_FILE_MOVIE_PAUSE, 1 );
+  return 0;
+}
+
+void
+movie_start( const char *name )
+{
+  movie_start_target( name, 1 );
+}
+
+int
+movie_start_authorized( const char *name )
+{
+  if( movie_recording || movie_paused ) return 1;
+  return movie_start_target( name, 0 );
+}
+
+int
+movie_is_active( void )
+{
+  return movie_recording || movie_paused;
 }
 
 void

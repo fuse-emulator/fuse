@@ -244,6 +244,11 @@ fuse_host_operation_result fuse_host_answer_rzx_external_snapshot(
    rewrites the supplied file. Stop ends either recording or replay. */
 fuse_host_operation_result fuse_host_play_rzx( const char *filename,
                                                fuse_open_request *request );
+/* Use the replay questions before opening the authorized FMF target (which
+   may be overwritten). A target-open failure leaves replay active, as in
+   legacy Fuse. The existing stop-after-RZX preference still applies. */
+fuse_host_operation_result fuse_host_record_movie_from_rzx(
+  const char *filename, const char *movie_target, fuse_open_request *request );
 fuse_host_operation_result fuse_host_start_rzx_recording( const char *filename,
                                                           int embed_snapshot );
 /* Snapshot-based starts may return a joystick question. Recording begins

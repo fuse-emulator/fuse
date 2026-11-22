@@ -64,7 +64,7 @@ int snapshot_request_rzx_restore( libspectrum_snap *snap,
                                   fuse_open_request *request );
 int snapshot_request_rzx_external( const char *filename,
                                    fuse_open_request *request );
-int rzx_request_open( const libspectrum_file *file,
+int rzx_request_open( const libspectrum_file *file, const char *movie_target,
                       fuse_open_request *request );
 int rzx_finish_requested_playback( libspectrum_snap *snap, int error );
 int rzx_continue_requested_playback( fuse_open_request *request, int error );
