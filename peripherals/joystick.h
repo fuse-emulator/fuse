@@ -29,6 +29,11 @@
 #include "libspectrum.h"
 #include "fuse-joystick.h"
 
+joystick_type_t joystick_snapshot_type( libspectrum_joystick type );
+/* Optional three outputs (joystick 1, joystick 2, keyboard), borrowed only
+   during the snapshot module enable pass. NULL selects legacy handling. */
+void joystick_snapshot_set_outputs( const joystick_type_t *outputs );
+
 /* Number of joysticks known about & initialised */
 extern int joysticks_supported;
 

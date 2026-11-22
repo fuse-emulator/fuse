@@ -885,6 +885,65 @@ check_tape_autoload( int fail )
 }
 
 static void
+write_snapshot_joystick_fixture( void )
+{
+  settings_current.joystick_1_output = JOYSTICK_TYPE_KEMPSTON;
+  settings_current.joystick_2_output = JOYSTICK_TYPE_SINCLAIR_1;
+  settings_current.joystick_keyboard_output = JOYSTICK_TYPE_NONE;
+  z80.pc.w = 0x8123;
+  assert( !snapshot_write( "joystick.szx" ) );
+}
+
+extern int null_ui_confirm_joystick_calls;
+
+static void
+check_snapshot_joystick_decisions( void )
+{
+  fuse_media_decision_id id, next;
+  fuse_snapshot_joystick_request request;
+  const fuse_host_joystick keyboard = FUSE_HOST_JOYSTICK_KEYBOARD;
+  const fuse_host_joystick invalid = (fuse_host_joystick)99;
+  int answered = 0;
+
+  write_snapshot_joystick_fixture();
+  settings_current.joystick_1_output = JOYSTICK_TYPE_NONE;
+  settings_current.joystick_2_output = JOYSTICK_TYPE_NONE;
+  settings_current.joystick_keyboard_output = JOYSTICK_TYPE_NONE;
+  settings_current.joy_kempston = 0;
+  z80.pc.w = 0x9000;
+  assert( fuse_host_spectrum_key_event( FUSE_HOST_KEY_A, 1 ) == OK );
+  assert( fuse_host_open_file( "joystick.szx", &id ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
+  assert( !remove( "joystick.szx" ) );
+  assert( fuse_host_answer_snapshot_joystick( id, &invalid, &next ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT && !next );
+  do {
+    fuse_host_operation_result result;
+    assert( answered < 2 );
+    assert( fuse_run_frame() == FUSE_RUN_NEEDS_DECISION && z80.pc.w == 0x9000 );
+    assert( fuse_run_tstates( 100 ) == FUSE_RUN_NEEDS_DECISION );
+    assert( fuse_host_request_tape_eject( &next ) == FUSE_HOST_OPERATION_BUSY && !next );
+    assert( eject_disk_without_decision( FUSE_DISK_CONTROLLER_PLUS3, 0 ) ==
+            FUSE_HOST_OPERATION_MEDIA_ERROR ); /* Controller unavailable on 48K. */
+    assert( settings_current.joystick_keyboard_output == JOYSTICK_TYPE_NONE );
+    assert( fuse_host_snapshot_joystick_request( id, &request ) == OK );
+    assert( request.type == LIBSPECTRUM_JOYSTICK_KEMPSTON ||
+            request.type == LIBSPECTRUM_JOYSTICK_SINCLAIR_1 );
+    result = fuse_host_answer_snapshot_joystick( id,
+      request.type == LIBSPECTRUM_JOYSTICK_SINCLAIR_1 ? &keyboard : NULL, &next );
+    assert( result == ( next ? FUSE_HOST_OPERATION_NEEDS_DECISION : OK ) );
+    assert( fuse_host_snapshot_joystick_request( id, &request ) == FUSE_HOST_OPERATION_STALE );
+    id = next;
+    answered++;
+  } while( id );
+  assert( answered == 2 && z80.pc.w == 0x8123 );
+  assert( settings_current.joystick_1_output == JOYSTICK_TYPE_NONE );
+  assert( settings_current.joystick_keyboard_output == JOYSTICK_TYPE_SINCLAIR_1 );
+  assert( settings_current.joy_kempston );
+  assert( keyboard_return_values[1] == 0xff );
+  assert( !null_ui_confirm_joystick_calls );
+}
+
+static void
 check_file_open( const char *mode )
 {
   const unsigned char bytes[] = { 2, 0, 0xff, 0xff };
@@ -1422,6 +1481,10 @@ host_operations_test( int argc, char **argv )
     check_host_quit( !strcmp( argv[1], "host-quit-shutdown" ) );
   } else if( !strcmp( argv[1], "open-floppy" ) ) {
     check_open_floppy();
+  } else if( !strcmp( argv[1], "snapshot-joystick-fixture" ) ) {
+    write_snapshot_joystick_fixture();
+  } else if( !strcmp( argv[1], "open-snapshot-joystick" ) ) {
+    check_snapshot_joystick_decisions();
   } else if( !strncmp( argv[1], "open-", 5 ) ) {
     check_file_open( argv[1] );
   } else if( !strcmp( argv[1], "tape-contract" ) ) {

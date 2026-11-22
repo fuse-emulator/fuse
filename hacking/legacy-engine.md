@@ -304,8 +304,17 @@ identified input. Reply via `fuse_host_answer_tape_eject()` or
 controller selection and machine fallback occur before the request. A reply
 does not repeat that work. Cancel keeps the outgoing media but does not undo a
 machine change. Autoload runs only on installation; tape companion POK lookup
-and display refresh run when the attempt completes. Other branches retain
-their synchronous behavior.
+and display refresh run when the attempt completes.
+
+Direct snapshot Open returns NEEDS_DECISION for a supported joystick mapping
+that is not already assigned. Inspect the type and recorded input flags with
+`fuse_host_snapshot_joystick_request()`. Reply with a host input slot or NULL
+(to decline the mapping, not the load) via `fuse_host_answer_snapshot_joystick()`.
+Each reply can return another ID. The decoded snapshot and proposed mappings
+stay staged until the last reply, when Fuse restores the snapshot and performs
+companion POK lookup and display refresh. Automatic Kempston enablement is
+independent of the mapping choice. Legacy snapshot loading and RZX snapshot
+paths are unchanged; other File Open branches may still prompt synchronously.
 
 OK means the dispatcher completed, which in the legacy branches can include cancelled/no-op
 insertion; it does not prove replacement or program-loading completion. MEDIA_ERROR
@@ -536,10 +545,12 @@ still apply.
 An optional tape filename selects a separate scenario: insert on 48K with the
 deck stopped, run five frame turns and shut down. This mode needs only `48.rom`;
 it does not perform the input/reset/128K sequence or wait for tape completion.
-`--open FILE` instead demonstrates general File → Open followed by five turns.
-With default standard 48K ROMs, tape autoload requests the ROM again during reset;
-other files can select machines and require additional ROMs. The log reports the
-legacy return, not that the file replaced media or that loading finished.
+`--open FILE` demonstrates general File → Open followed by five turns. For a
+snapshot joystick decision, the example verifies that execution is parked,
+maps the first requested joystick to keyboard input, and declines any further
+mappings. With standard 48K ROMs, tape autoload requests the ROM again during
+reset; other files can select machines and require additional ROMs. The log
+reports the Open result, not that program loading finished.
 `--save-disk INPUT OUTPUT` prepares a +3, explicitly inserts into slot 0 and saves
 through the host controller/slot API, without running the CPU. The core reads and
 encodes the image; the host does not handle disk bytes. This requires the four

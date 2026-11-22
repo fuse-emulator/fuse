@@ -34,7 +34,8 @@ void fuse_engine_end_operation( void );
 typedef enum fuse_decision_owner {
   FUSE_DECISION_NONE,
   FUSE_DECISION_TAPE,
-  FUSE_DECISION_FLOPPY
+  FUSE_DECISION_FLOPPY,
+  FUSE_DECISION_SNAPSHOT
 } fuse_decision_owner;
 fuse_decision_owner fuse_engine_pending_decision( void );
 fuse_media_decision_id fuse_engine_request_decision( fuse_decision_owner owner );
@@ -47,7 +48,11 @@ int fuse_host_quit_pending( void );
 void fuse_host_clear_quit( void );
 fuse_host_operation_result fuse_disk_quit_next( fuse_quit_request *request );
 
-/* General File Open with host decisions for tapes and floppies. */
+int snapshot_request_open( const libspectrum_file *file,
+                           fuse_media_decision_id *request );
+void snapshot_cancel_pending( void );
+
+/* General File Open with host decisions. */
 int utils_open_file_with_decision( const char *filename, int autoload,
                                    fuse_media_decision_id *request );
 struct ui_media_drive_info_t;

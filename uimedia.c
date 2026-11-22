@@ -635,7 +635,8 @@ fuse_host_eject_disk( fuse_disk_controller controller, int slot,
   result = begin_disk_operation( controller, slot, &drive );
   if( result != FUSE_HOST_OPERATION_OK ) return result;
 
-  if( fuse_engine_pending_decision() == FUSE_DECISION_TAPE ||
+  if( ( fuse_engine_pending_decision() != FUSE_DECISION_NONE &&
+        fuse_engine_pending_decision() != FUSE_DECISION_FLOPPY ) ||
       ( pending_eject_drive && ( pending_eject_drive != drive ||
                                  pending_disk_change != DISK_CHANGE_EJECT ) ) ) {
     result = FUSE_HOST_OPERATION_BUSY;

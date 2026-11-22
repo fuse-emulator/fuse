@@ -84,9 +84,12 @@ ui_confirm_save_specific( const char *message )
   return UI_CONFIRM_SAVE_DONTSAVE;
 }
 
+int null_ui_confirm_joystick_calls;
+
 ui_confirm_joystick_t
 ui_confirm_joystick( libspectrum_joystick libspectrum_type, int inputs )
 {
+  null_ui_confirm_joystick_calls++;
   return UI_CONFIRM_JOYSTICK_NONE;
 }
 

@@ -361,6 +361,7 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	  printf '\002\000\377\377' > sample.tap; printf x > malformed.tap; printf x > malformed.udi; \
 	  printf 'not a TZX header\n' > malformed.tzx; \
 	  "$$root/legacyenginelinktest$(EXEEXT)" --host-operations-test disk-fixture "$$roms"; \
+	  "$$root/legacyenginelinktest$(EXEEXT)" --host-operations-test snapshot-joystick-fixture "$$roms"; \
 	  cp "$$roms/48.rom" 48.rom; cp "$$roms/48.rom" only48/48.rom; \
 	  printf '%s\n' 'host: prepared 48' \
 	    'host: driving execution and handling input between turns' \
@@ -392,6 +393,10 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    'host: shutdown; frame turns=5; budget turns=0; ROM requests=1; releases=1' > expected-tape; \
 	  printf '%s\n' 'host: prepared 48' 'host: File Open returned legacy success' \
 	    'host: shutdown; frame turns=5; budget turns=0; ROM requests=2; releases=2' > expected-open; \
+	  printf '%s\n' 'host: prepared 48' \
+	    'host: snapshot joystick Sinclair 1; map to keyboard' \
+	    'host: snapshot restored after joystick decision' \
+	    'host: shutdown; frame turns=5; budget turns=0; ROM requests=2; releases=2' > expected-open-joystick; \
 	  printf '%s\n' 'host: prepared 48' \
 	    'host: playing tape copy; present=1; playing=1; recording=0; modified=0; current=0; blocks=1' \
 	    'host: tape row 0; Standard Speed Data; 2 bytes' \
@@ -442,6 +447,8 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    cmp expected-tape "$$consumer-tape.out"; \
 	    "$$program" only48 --open sample.tap > "$$consumer-open.out" 2> "$$consumer-open.err"; \
 	    cmp expected-open "$$consumer-open.out"; \
+	    "$$program" only48 --open joystick.szx > "$$consumer-open-joystick.out" 2> "$$consumer-open-joystick.err"; \
+	    cmp expected-open-joystick "$$consumer-open-joystick.out"; \
 	    "$$program" only48 --tape-lifecycle sample.tap tape-life.tzx \
 	      > "$$consumer-tape-life.out" 2> "$$consumer-tape-life.err"; \
 	    cmp expected-tape-life "$$consumer-tape-life.out"; \
@@ -563,7 +570,7 @@ check-host-operations: unittests/legacyenginelinktest unittests/legacyenginesour
 	  cd "$$tmp"; export HOME=. XDG_CONFIG_HOME=. USERPROFILE=. WINDIR=. APPDATA=.; \
 	  for consumer in legacyenginelinktest legacyenginesourcetest; do \
 	    for mode in success filesystem-oracle filesystem tape-contract tape-info trapped-recording snapshot-roundtrip autoload-success autoload-failure \
-	      open-auto open-noauto open-custom open-reset-failure open-snapshot open-fallback open-rzx-stop open-floppy \
+	      open-auto open-noauto open-custom open-reset-failure open-snapshot open-snapshot-joystick open-fallback open-rzx-stop open-floppy \
 	      disk-save disk-save-beta host-quit host-quit-shutdown \
 	      reset-failure select-failure peripheral-reset-failure peripheral-select-failure; do \
 	      "$$root/$$consumer$(EXEEXT)" --host-operations-test "$$mode" "$$roms"; \

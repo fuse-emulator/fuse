@@ -26,12 +26,17 @@
 
 #include "libspectrum.h"
 
+#include "display.h"
 #include "fuse.h"
+#include "fuse-engine.h"
 #include "keyboard.h"
 #include "machine.h"
 #include "memory_pages.h"
 #include "machines/specplus3.h"
 #include "module.h"
+#include "peripherals/joystick.h"
+#include "pokefinder/pokemem.h"
+#include "rzx.h"
 #include "settings.h"
 #include "snapshot.h"
 #include "sound.h"
@@ -82,8 +87,8 @@ snapshot_read_buffer( const unsigned char *buffer, size_t length,
   return 0;
 }
 
-int
-snapshot_copy_from( libspectrum_snap *snap )
+static int
+snapshot_restore( libspectrum_snap *snap, const joystick_type_t *outputs )
 {
   int error;
   libspectrum_machine machine;
@@ -92,7 +97,9 @@ snapshot_copy_from( libspectrum_snap *snap )
   sound_suspend_subframe();
   specplus3_bus_invalidate();
   periph_disable_optional();
+  joystick_snapshot_set_outputs( outputs );
   module_snapshot_enabled( snap );
+  joystick_snapshot_set_outputs( NULL );
 
   machine = libspectrum_snap_machine( snap );
 
@@ -127,6 +134,127 @@ snapshot_copy_from( libspectrum_snap *snap )
   specplus3_bus_rebase();
 
   return 0;
+}
+
+int
+snapshot_copy_from( libspectrum_snap *snap )
+{
+  return snapshot_restore( snap, NULL );
+}
+
+/* Keep decisions outside the restore pass: no machine or input state is
+   changed while the host is answering. Walk in snapshot order, using the
+   proposed outputs to decide which subsequent questions are still needed. */
+static struct {
+  libspectrum_snap *snap;
+  char *filename;
+  size_t index;
+  fuse_media_decision_id id;
+  joystick_type_t outputs[3];
+} pending_snapshot;
+
+void
+snapshot_cancel_pending( void )
+{
+  if( pending_snapshot.snap ) libspectrum_snap_free( pending_snapshot.snap );
+  libspectrum_free( pending_snapshot.filename );
+  pending_snapshot.snap = NULL;
+  pending_snapshot.filename = NULL;
+  pending_snapshot.id = 0;
+  fuse_engine_retire_decision( FUSE_DECISION_SNAPSHOT );
+}
+
+static fuse_media_decision_id
+snapshot_next_joystick( void )
+{
+  size_t count = libspectrum_snap_joystick_active_count( pending_snapshot.snap );
+  while( !rzx_playback && pending_snapshot.index < count ) {
+    joystick_type_t type = joystick_snapshot_type( libspectrum_snap_joystick_list(
+      pending_snapshot.snap, pending_snapshot.index ) );
+    if( type != JOYSTICK_TYPE_NONE && type != pending_snapshot.outputs[0] &&
+        type != pending_snapshot.outputs[1] && type != pending_snapshot.outputs[2] )
+      return fuse_engine_request_decision( FUSE_DECISION_SNAPSHOT );
+    pending_snapshot.index++;
+  }
+  return 0;
+}
+
+int
+snapshot_request_open( const libspectrum_file *file, fuse_media_decision_id *request )
+{
+  int error;
+  pending_snapshot.snap = libspectrum_snap_alloc();
+  error = libspectrum_snap_read( pending_snapshot.snap, file->buffer, file->length,
+                                file->type, NULL );
+  if( !error ) {
+    pending_snapshot.index = 0;
+    pending_snapshot.outputs[0] = settings_current.joystick_1_output;
+    pending_snapshot.outputs[1] = settings_current.joystick_2_output;
+    pending_snapshot.outputs[2] = settings_current.joystick_keyboard_output;
+    *request = pending_snapshot.id = snapshot_next_joystick();
+    if( *request ) {
+      pending_snapshot.filename = utils_safe_strdup( file->filename );
+      return 0;
+    }
+    error = snapshot_restore( pending_snapshot.snap, pending_snapshot.outputs );
+  }
+  snapshot_cancel_pending();
+  return error;
+}
+
+static int
+snapshot_decision_matches( fuse_media_decision_id id )
+{
+  return id && id == pending_snapshot.id &&
+         fuse_engine_pending_decision() == FUSE_DECISION_SNAPSHOT;
+}
+
+fuse_host_operation_result
+fuse_host_snapshot_joystick_request( fuse_media_decision_id id,
+                                    fuse_snapshot_joystick_request *request )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !request ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( !snapshot_decision_matches( id ) ) return FUSE_HOST_OPERATION_STALE;
+  request->type = libspectrum_snap_joystick_list( pending_snapshot.snap, pending_snapshot.index );
+  request->inputs = libspectrum_snap_joystick_inputs( pending_snapshot.snap, pending_snapshot.index );
+  return FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_answer_snapshot_joystick( fuse_media_decision_id id,
+                                   const fuse_host_joystick *slot,
+                                   fuse_media_decision_id *next )
+{
+  int error;
+  fuse_host_operation_result result;
+
+  if( !next ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *next = 0;
+  result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !snapshot_decision_matches( id ) ) return FUSE_HOST_OPERATION_STALE;
+  if( slot && ( *slot < FUSE_HOST_JOYSTICK_1 || *slot > FUSE_HOST_JOYSTICK_KEYBOARD ) )
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+
+  fuse_engine_begin_operation();
+  if( slot ) pending_snapshot.outputs[*slot] = joystick_snapshot_type(
+    libspectrum_snap_joystick_list( pending_snapshot.snap, pending_snapshot.index ) );
+  pending_snapshot.index++;
+  fuse_engine_retire_decision( FUSE_DECISION_SNAPSHOT );
+  *next = pending_snapshot.id = snapshot_next_joystick();
+  if( !*next ) {
+    error = snapshot_restore( pending_snapshot.snap, pending_snapshot.outputs );
+    pokemem_find_pokfile( pending_snapshot.filename );
+    display_refresh_all();
+    snapshot_cancel_pending();
+    if( error ) result = FUSE_HOST_OPERATION_MEDIA_ERROR;
+  } else {
+    result = FUSE_HOST_OPERATION_NEEDS_DECISION;
+  }
+  fuse_engine_end_operation();
+  return result;
 }
 
 int snapshot_write( const char *filename )

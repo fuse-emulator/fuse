@@ -272,43 +272,50 @@ joystick_fuller_read( libspectrum_word port GCC_UNUSED, libspectrum_byte *attach
   return fuller_value;
 }
 
+joystick_type_t
+joystick_snapshot_type( libspectrum_joystick type )
+{
+  switch( type ) {
+  case LIBSPECTRUM_JOYSTICK_CURSOR: return JOYSTICK_TYPE_CURSOR;
+  case LIBSPECTRUM_JOYSTICK_KEMPSTON: return JOYSTICK_TYPE_KEMPSTON;
+  case LIBSPECTRUM_JOYSTICK_SINCLAIR_1: return JOYSTICK_TYPE_SINCLAIR_1;
+  case LIBSPECTRUM_JOYSTICK_SINCLAIR_2: return JOYSTICK_TYPE_SINCLAIR_2;
+  case LIBSPECTRUM_JOYSTICK_TIMEX_1: return JOYSTICK_TYPE_TIMEX_1;
+  case LIBSPECTRUM_JOYSTICK_TIMEX_2: return JOYSTICK_TYPE_TIMEX_2;
+  case LIBSPECTRUM_JOYSTICK_FULLER: return JOYSTICK_TYPE_FULLER;
+  default: return JOYSTICK_TYPE_NONE;
+  }
+}
+
+static const joystick_type_t *snapshot_outputs;
+
+void
+joystick_snapshot_set_outputs( const joystick_type_t *outputs )
+{
+  snapshot_outputs = outputs;
+}
+
 static void
 joystick_enabled_snapshot( libspectrum_snap *snap )
 {
   size_t i;
   size_t num_joysticks = libspectrum_snap_joystick_active_count( snap );
-  joystick_type_t fuse_type;
+
+  if( snapshot_outputs ) {
+    settings_current.joystick_1_output = snapshot_outputs[0];
+    settings_current.joystick_2_output = snapshot_outputs[1];
+    settings_current.joystick_keyboard_output = snapshot_outputs[2];
+  }
 
   for( i = 0; i < num_joysticks; i++ ) {
-    switch( libspectrum_snap_joystick_list( snap, i ) ) {
-    case LIBSPECTRUM_JOYSTICK_CURSOR:
-      fuse_type = JOYSTICK_TYPE_CURSOR;
-      break;
-    case LIBSPECTRUM_JOYSTICK_KEMPSTON:            
-      fuse_type = JOYSTICK_TYPE_KEMPSTON;
-      break;
-    case LIBSPECTRUM_JOYSTICK_SINCLAIR_1:
-      fuse_type = JOYSTICK_TYPE_SINCLAIR_1;
-      break;
-    case LIBSPECTRUM_JOYSTICK_SINCLAIR_2:           
-      fuse_type = JOYSTICK_TYPE_SINCLAIR_2;
-      break;
-    case LIBSPECTRUM_JOYSTICK_TIMEX_1:
-      fuse_type = JOYSTICK_TYPE_TIMEX_1;
-      break;
-    case LIBSPECTRUM_JOYSTICK_TIMEX_2:
-      fuse_type = JOYSTICK_TYPE_TIMEX_2;
-      break;
-    case LIBSPECTRUM_JOYSTICK_FULLER:
-      fuse_type = JOYSTICK_TYPE_FULLER;
-      break;
-    default:
+    joystick_type_t fuse_type = joystick_snapshot_type( libspectrum_snap_joystick_list( snap, i ) );
+    if( fuse_type == JOYSTICK_TYPE_NONE ) {
       ui_error( UI_ERROR_INFO, "Ignoring unsupported joystick in snapshot %s", 
         libspectrum_joystick_name( libspectrum_snap_joystick_list( snap, i ) ));
       continue;
     }
 
-    if( settings_current.joystick_keyboard_output != fuse_type &&
+    if( !snapshot_outputs && settings_current.joystick_keyboard_output != fuse_type &&
         settings_current.joystick_1_output != fuse_type &&
         settings_current.joystick_2_output != fuse_type &&
         !rzx_playback ) {

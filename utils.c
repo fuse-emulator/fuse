@@ -163,7 +163,9 @@ open_loaded_file( utils_file *file, int autoload, libspectrum_id_t *type_ptr,
     break;
 
   case LIBSPECTRUM_CLASS_SNAPSHOT:
-    error = snapshot_read_buffer( file->buffer, file->length, file->type );
+    error = request ? snapshot_request_open( file, request ) :
+      snapshot_read_buffer( file->buffer, file->length, file->type );
+    if( request && *request ) return error;
     pokemem_find_pokfile( file->filename );
     break;
 

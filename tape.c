@@ -258,7 +258,8 @@ tape_prepare_eject( fuse_media_decision_id *request )
   *request = 0;
   if( pending_replacement.filename ||
       ( ( tape_modified || tape_recording ) &&
-        fuse_engine_pending_decision() == FUSE_DECISION_FLOPPY ) ) return 1;
+        fuse_engine_pending_decision() != FUSE_DECISION_NONE &&
+        fuse_engine_pending_decision() != FUSE_DECISION_TAPE ) ) return 1;
   if( tape_recording ) {
     error = tape_record_stop(); if( error ) return error;
   }
@@ -355,7 +356,8 @@ fuse_host_request_tape_eject( fuse_media_decision_id *request )
 
   fuse_engine_begin_operation();
   if( pending_replacement.filename ||
-      fuse_engine_pending_decision() == FUSE_DECISION_FLOPPY ) {
+      ( fuse_engine_pending_decision() != FUSE_DECISION_NONE &&
+        fuse_engine_pending_decision() != FUSE_DECISION_TAPE ) ) {
     result = FUSE_HOST_OPERATION_BUSY;
   } else if( tape_prepare_eject( request ) ) {
     result = FUSE_HOST_OPERATION_MEDIA_ERROR;

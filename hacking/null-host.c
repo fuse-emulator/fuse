@@ -684,8 +684,29 @@ main( int argc, char **argv )
     goto cleanup;
   }
   if( argc == 4 ) {
-    if( operation( "File Open", fuse_host_open_file( argv[3], &(fuse_media_decision_id){ 0 } ) ) ) goto cleanup;
-    puts( "host: File Open returned legacy success" );
+    const fuse_host_joystick keyboard = FUSE_HOST_JOYSTICK_KEYBOARD;
+    fuse_media_decision_id request;
+    fuse_host_operation_result result = fuse_host_open_file( argv[3], &request );
+    unsigned int answers = 0;
+    while( result == FUSE_HOST_OPERATION_NEEDS_DECISION ) {
+      fuse_snapshot_joystick_request joystick;
+      if( operation( "snapshot joystick request",
+                     fuse_host_snapshot_joystick_request( request, &joystick ) ) ) goto cleanup;
+      if( fuse_run_frame() != FUSE_RUN_NEEDS_DECISION ) {
+        fputs( "host: snapshot decision did not park execution\n", stderr );
+        goto cleanup;
+      }
+      /* Scripted host policy: map the first request, decline the rest. */
+      printf( "host: snapshot joystick %s; %s\n",
+              libspectrum_joystick_name( joystick.type ),
+              answers ? "decline mapping" : "map to keyboard" );
+      result = fuse_host_answer_snapshot_joystick( request,
+                                                   answers ? NULL : &keyboard, &request );
+      answers++;
+    }
+    if( operation( "File Open", result ) ) goto cleanup;
+    puts( answers ? "host: snapshot restored after joystick decision" :
+                    "host: File Open returned legacy success" );
     if( frames( 5, &frame_turns ) ) goto cleanup;
     status = EXIT_SUCCESS;
     goto cleanup; /* Neither dispatch success nor five turns prove loading complete. */

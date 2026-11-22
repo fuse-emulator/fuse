@@ -159,6 +159,21 @@ typedef enum fuse_host_key {
 typedef enum fuse_host_joystick {
   FUSE_HOST_JOYSTICK_1, FUSE_HOST_JOYSTICK_2, FUSE_HOST_JOYSTICK_KEYBOARD
 } fuse_host_joystick;
+
+typedef struct fuse_snapshot_joystick_request {
+  libspectrum_joystick type;
+  int inputs;
+} fuse_snapshot_joystick_request;
+
+/* Inspect a pending snapshot joystick decision; other decision IDs are stale. */
+fuse_host_operation_result fuse_host_snapshot_joystick_request(
+  fuse_media_decision_id id, fuse_snapshot_joystick_request *request );
+/* NULL declines the mapping, not the snapshot. A valid reply consumes the
+   ID; NEEDS_DECISION returns the next ID, all other results clear it. */
+fuse_host_operation_result fuse_host_answer_snapshot_joystick(
+  fuse_media_decision_id id, const fuse_host_joystick *slot,
+  fuse_media_decision_id *next );
+
 /* Engine interface selection, deliberately separate from input delivery. */
 int fuse_host_config_set_joystick( fuse_host_config *config,
   fuse_host_joystick slot, joystick_type_t output );
@@ -180,9 +195,8 @@ fuse_host_operation_result fuse_host_nmi( void );
    cancelled/no-op insertion; MEDIA_ERROR means legacy nonzero. No rollback,
    unchanged-state or safe-continuation promise on error; legacy fatal paths
    remain. This is not strict ID selection or the tape-only insertion intent. */
-/* A dirty tape or floppy returns NEEDS_DECISION; reply with the matching
-   tape or disk eject answer. Other results clear the request. Other media
-   retain legacy behavior. */
+/* Dirty tape/floppy or missing snapshot joystick mappings can return
+   NEEDS_DECISION. Other results clear the request. */
 fuse_host_operation_result fuse_host_open_file( const char *filename,
                                                 fuse_media_decision_id *request );
 

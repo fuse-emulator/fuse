@@ -1389,6 +1389,7 @@ static int fuse_end(void)
      shutdown entry deliberately cannot. Disarm before invoking callbacks. */
   legacy_ownership.phase = LEGACY_STOPPING;
   fuse_host_clear_quit();
+  snapshot_cancel_pending();
 
   movie_stop();
   /* Active trainer restoration needs live machine memory/maps. */
