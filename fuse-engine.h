@@ -37,7 +37,8 @@ typedef enum fuse_decision_owner {
   FUSE_DECISION_FLOPPY,
   FUSE_DECISION_SNAPSHOT,
   FUSE_DECISION_MICRODRIVE,
-  FUSE_DECISION_MASS_STORAGE
+  FUSE_DECISION_MASS_STORAGE,
+  FUSE_DECISION_RZX_EXTERNAL
 } fuse_decision_owner;
 fuse_decision_owner fuse_engine_pending_decision( void );
 fuse_media_decision_id fuse_engine_request_decision( fuse_decision_owner owner );
@@ -59,6 +60,15 @@ fuse_host_operation_result fuse_microdrive_quit_next(
 int snapshot_request_open( const libspectrum_file *file,
                            fuse_open_request *request );
 void snapshot_cancel_pending( void );
+int snapshot_request_rzx_restore( libspectrum_snap *snap,
+                                  fuse_open_request *request );
+int snapshot_request_rzx_external( const char *filename,
+                                   fuse_open_request *request );
+int rzx_request_open( const libspectrum_file *file,
+                      fuse_open_request *request );
+int rzx_finish_requested_playback( libspectrum_snap *snap, int error );
+int rzx_continue_requested_playback( fuse_open_request *request, int error );
+void rzx_cancel_pending( void );
 
 /* General File Open with host decisions. */
 int utils_open_file_with_decision( const char *filename, int autoload,

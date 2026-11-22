@@ -361,6 +361,7 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	  printf '\002\000\377\377' > sample.tap; printf x > malformed.tap; printf x > malformed.udi; \
 	  printf 'not a TZX header\n' > malformed.tzx; \
 	  "$$root/legacyenginelinktest$(EXEEXT)" --host-operations-test disk-fixture "$$roms"; \
+	  "$$root/legacyenginelinktest$(EXEEXT)" --host-operations-test rzx-joystick-fixture "$$roms"; \
 	  "$$root/legacyenginelinktest$(EXEEXT)" --host-operations-test snapshot-joystick-fixture "$$roms"; \
 	  cp "$$roms/48.rom" 48.rom; cp "$$roms/48.rom" only48/48.rom; \
 	  mkdir interface1; cp 48.rom interface1/48.rom; \
@@ -451,6 +452,8 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    cmp expected-open "$$consumer-open.out"; \
 	    "$$program" only48 --open joystick.szx > "$$consumer-open-joystick.out" 2> "$$consumer-open-joystick.err"; \
 	    cmp expected-open-joystick "$$consumer-open-joystick.out"; \
+	    "$$program" only48 --open joystick.rzx > "$$consumer-open-rzx.out" 2> "$$consumer-open-rzx.err"; \
+	    grep -Fx 'host: snapshot joystick Sinclair 1; map to keyboard' "$$consumer-open-rzx.out" > /dev/null; \
 	    "$$program" interface1 --microdrive "$$consumer.mdr" > "$$consumer-microdrive.out" 2> "$$consumer-microdrive.err"; \
 	    grep -Fx 'host: Microdrive 2 kept on Cancel and saved on Quit' "$$consumer-microdrive.out" > /dev/null; \
 	    test -s "$$consumer.mdr"; rm "$$consumer.mdr"; \
@@ -579,7 +582,7 @@ check-host-operations: unittests/legacyenginelinktest unittests/legacyenginesour
 	  cd "$$tmp"; export HOME=. XDG_CONFIG_HOME=. USERPROFILE=. WINDIR=. APPDATA=.; \
 	  for consumer in legacyenginelinktest legacyenginesourcetest; do \
 	    for mode in success filesystem-oracle filesystem tape-contract tape-info trapped-recording snapshot-roundtrip autoload-success autoload-failure \
-	      open-auto open-noauto open-custom open-reset-failure open-snapshot open-snapshot-joystick open-fallback open-rzx-stop open-floppy \
+	      open-auto open-noauto open-custom open-reset-failure open-snapshot open-snapshot-joystick open-fallback open-rzx-stop open-rzx-embedded open-rzx-external open-floppy \
 	      disk-save disk-save-beta microdrive host-quit host-quit-shutdown \
 	      reset-failure select-failure peripheral-reset-failure peripheral-select-failure; do \
 	      "$$root/$$consumer$(EXEEXT)" --host-operations-test "$$mode" "$$roms"; \

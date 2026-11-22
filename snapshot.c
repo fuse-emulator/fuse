@@ -149,6 +149,7 @@ static struct {
   libspectrum_snap *snap;
   char *filename;
   size_t index;
+  enum { SNAPSHOT_FILE, SNAPSHOT_RZX_EMBEDDED, SNAPSHOT_RZX_EXTERNAL } source;
   fuse_media_decision_id id;
   joystick_type_t outputs[3];
 } pending_snapshot;
@@ -156,11 +157,14 @@ static struct {
 void
 snapshot_cancel_pending( void )
 {
-  if( pending_snapshot.snap ) libspectrum_snap_free( pending_snapshot.snap );
+  if( pending_snapshot.snap &&
+      pending_snapshot.source != SNAPSHOT_RZX_EMBEDDED )
+    libspectrum_snap_free( pending_snapshot.snap );
   libspectrum_free( pending_snapshot.filename );
   pending_snapshot.snap = NULL;
   pending_snapshot.filename = NULL;
   pending_snapshot.id = 0;
+  pending_snapshot.source = SNAPSHOT_FILE;
   fuse_engine_retire_decision( FUSE_DECISION_SNAPSHOT );
 }
 
@@ -187,6 +191,49 @@ snapshot_next_joystick( fuse_open_request *request )
   }
 }
 
+static int
+snapshot_stage_restore( fuse_open_request *request )
+{
+  pending_snapshot.index = 0;
+  pending_snapshot.outputs[0] = settings_current.joystick_1_output;
+  pending_snapshot.outputs[1] = settings_current.joystick_2_output;
+  pending_snapshot.outputs[2] = settings_current.joystick_keyboard_output;
+  snapshot_next_joystick( request );
+  return request->id ? 0 :
+         snapshot_restore( pending_snapshot.snap, pending_snapshot.outputs );
+}
+
+int
+snapshot_request_rzx_restore( libspectrum_snap *snap,
+                              fuse_open_request *request )
+{
+  int error;
+  pending_snapshot.snap = snap;
+  pending_snapshot.source = SNAPSHOT_RZX_EMBEDDED;
+  error = snapshot_stage_restore( request );
+  if( !request->id ) snapshot_cancel_pending();
+  return error;
+}
+
+int
+snapshot_request_rzx_external( const char *filename,
+                               fuse_open_request *request )
+{
+  utils_file file;
+  int error = utils_read_file( filename, &file );
+  if( !error ) {
+    pending_snapshot.source = SNAPSHOT_RZX_EXTERNAL;
+    pending_snapshot.snap = libspectrum_snap_alloc();
+    error = libspectrum_snap_read( pending_snapshot.snap, file.buffer,
+                                   file.length, LIBSPECTRUM_ID_UNKNOWN,
+                                   filename );
+    if( !error ) error = snapshot_stage_restore( request );
+  }
+  utils_close_file( &file );
+  if( !request->id ) snapshot_cancel_pending();
+  return error;
+}
+
 int
 snapshot_request_open( const libspectrum_file *file,
                        fuse_open_request *request )
@@ -196,16 +243,11 @@ snapshot_request_open( const libspectrum_file *file,
   error = libspectrum_snap_read( pending_snapshot.snap, file->buffer, file->length,
                                 file->type, NULL );
   if( !error ) {
-    pending_snapshot.index = 0;
-    pending_snapshot.outputs[0] = settings_current.joystick_1_output;
-    pending_snapshot.outputs[1] = settings_current.joystick_2_output;
-    pending_snapshot.outputs[2] = settings_current.joystick_keyboard_output;
-    snapshot_next_joystick( request );
+    error = snapshot_stage_restore( request );
     if( request->id ) {
       pending_snapshot.filename = utils_safe_strdup( file->filename );
       return 0;
     }
-    error = snapshot_restore( pending_snapshot.snap, pending_snapshot.outputs );
   }
   snapshot_cancel_pending();
   return error;
@@ -242,10 +284,19 @@ fuse_host_answer_snapshot_joystick( fuse_media_decision_id id,
   snapshot_next_joystick( next );
   if( !next->id ) {
     error = snapshot_restore( pending_snapshot.snap, pending_snapshot.outputs );
-    pokemem_find_pokfile( pending_snapshot.filename );
-    display_refresh_all();
-    snapshot_cancel_pending();
+    if( pending_snapshot.source == SNAPSHOT_RZX_EXTERNAL ) {
+      snapshot_cancel_pending();
+      error = rzx_continue_requested_playback( next, error );
+    } else {
+      if( pending_snapshot.source == SNAPSHOT_RZX_EMBEDDED )
+        error = rzx_finish_requested_playback( pending_snapshot.snap, error );
+      else
+        pokemem_find_pokfile( pending_snapshot.filename );
+      snapshot_cancel_pending();
+    }
+    if( !next->id ) display_refresh_all();
     if( error ) result = FUSE_HOST_OPERATION_MEDIA_ERROR;
+    else if( next->id ) result = FUSE_HOST_OPERATION_NEEDS_DECISION;
   } else {
     result = FUSE_HOST_OPERATION_NEEDS_DECISION;
   }

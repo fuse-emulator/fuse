@@ -204,7 +204,8 @@ typedef enum fuse_open_question {
   FUSE_OPEN_SAVE_TAPE,
   FUSE_OPEN_SAVE_FLOPPY,
   FUSE_OPEN_MAP_JOYSTICK,
-  FUSE_OPEN_SAVE_MASS_STORAGE
+  FUSE_OPEN_SAVE_MASS_STORAGE,
+  FUSE_OPEN_RZX_EXTERNAL_SNAPSHOT
 } fuse_open_question;
 
 /* Copied by value. Use the matching answer for the question. Tape Save needs
@@ -234,6 +235,10 @@ typedef struct fuse_open_request {
 fuse_host_operation_result fuse_host_answer_snapshot_joystick(
   fuse_media_decision_id id, const fuse_host_joystick *slot,
   fuse_open_request *next );
+
+/* NULL cancels replay. A chosen snapshot can return a joystick question. */
+fuse_host_operation_result fuse_host_answer_rzx_external_snapshot(
+  fuse_media_decision_id id, const char *filename, fuse_open_request *next );
 
 /* Engine interface selection, deliberately separate from input delivery. */
 int fuse_host_config_set_joystick( fuse_host_config *config,

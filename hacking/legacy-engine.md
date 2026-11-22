@@ -329,8 +329,16 @@ load) via `fuse_host_answer_snapshot_joystick()`. Each reply can return the
 next question with a fresh ID. The decoded snapshot and proposed mappings
 stay staged until the last reply, when Fuse restores the snapshot and performs
 companion POK lookup and display refresh. Automatic Kempston enablement is
-independent of the mapping choice. Legacy snapshot loading and RZX snapshot
-paths are unchanged; other File Open branches may still prompt synchronously.
+independent of the mapping choice.
+
+Host Open of an RZX also returns joystick questions for its initial snapshot.
+If the recording needs an external snapshot, Open returns
+`FUSE_OPEN_RZX_EXTERNAL_SNAPSHOT`; reply with a chosen filename or NULL to
+cancel via `fuse_host_answer_rzx_external_snapshot()`. The reply can return a
+joystick question for that snapshot. Replay starts only after the required
+replies and restore. Later restores during playback retain existing behavior.
+Legacy snapshot and RZX dialogs are unchanged; other File Open branches can
+still call linked UI services.
 
 OK means the dispatcher completed, which in the legacy branches can include cancelled/no-op
 insertion; it does not prove replacement or program-loading completion. MEDIA_ERROR

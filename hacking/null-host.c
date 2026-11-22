@@ -537,6 +537,11 @@ open_demo( const char *filename, unsigned int *completed )
       result = fuse_host_answer_mass_storage_eject( request.id,
                                                     FUSE_MEDIA_DECISION_DISCARD );
       break;
+    case FUSE_OPEN_RZX_EXTERNAL_SNAPSHOT:
+      puts( "host: RZX needs an external snapshot; cancel replay" );
+      result = fuse_host_answer_rzx_external_snapshot( request.id, NULL,
+                                                       &request );
+      return result != FUSE_HOST_OPERATION_CANCELLED;
     case FUSE_OPEN_MAP_JOYSTICK:
       printf( "host: snapshot joystick %s; %s\n",
               libspectrum_joystick_name( request.detail.joystick.type ),

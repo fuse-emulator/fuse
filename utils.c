@@ -159,7 +159,8 @@ open_loaded_file( utils_file *file, int autoload, libspectrum_id_t *type_ptr,
     return 1;
 
   case LIBSPECTRUM_CLASS_RECORDING:
-    error = rzx_start_playback_from_buffer( file->buffer, file->length );
+    error = request ? rzx_request_open( file, request ) :
+      rzx_start_playback_from_buffer( file->buffer, file->length );
     break;
 
   case LIBSPECTRUM_CLASS_SNAPSHOT:

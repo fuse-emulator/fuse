@@ -50,6 +50,7 @@
 #include "rzx_internal.h"
 #include "settings.h"
 #include "tape.h"
+#include "fuse-engine.h"
 #include "snapshot.h"
 #include "sound.h"
 #include "timer/timer.h"
@@ -98,6 +99,12 @@ static const char * const end_event_detail_string = "end";
 int end_event;
 
 static int start_playback( libspectrum_rzx *from_rzx );
+static int prepare_playback( libspectrum_rzx *from_rzx,
+                             libspectrum_snap **snap );
+static void finish_playback( libspectrum_rzx *from_rzx,
+                             libspectrum_snap *snap );
+static libspectrum_rzx *pending_playback;
+static fuse_media_decision_id pending_external_id;
 static int creator_is_spin_05( const libspectrum_creator *creator );
 static int creator_has_broken_r7_restore( const libspectrum_creator *creator );
 static int creator_is_spectaculator( const libspectrum_creator *creator );
@@ -144,11 +151,11 @@ rzx_init( void *context )
 }
 
 static libspectrum_snap*
-rzx_get_initial_snapshot( void )
+rzx_get_initial_snapshot( libspectrum_rzx *recording )
 {
   libspectrum_rzx_iterator it;
 
-  for( it = libspectrum_rzx_iterator_begin( rzx );
+  for( it = libspectrum_rzx_iterator_begin( recording );
        it;
        it = libspectrum_rzx_iterator_next( it ) ) {
 
@@ -199,7 +206,7 @@ int rzx_start_playback( const char *filename, int check_snapshot )
 
   utils_close_file( &file );
 
-  snap = rzx_get_initial_snapshot();
+  snap = rzx_get_initial_snapshot( rzx );
   if( !snap && check_snapshot ) {
     /* We need to load an external snapshot. Could be skipped if the snapshot
        is preloaded from command line */
@@ -250,7 +257,7 @@ rzx_start_playback_from_buffer_with_snapshot_check(
     return error;
   }
 
-  snap = rzx_get_initial_snapshot();
+  snap = rzx_get_initial_snapshot( rzx );
   if( !snap && check_snapshot ) {
     error = utils_open_snap();
     if( error ) {
@@ -338,20 +345,21 @@ spin_tape_save_pc( void )
 }
 
 static int
+prepare_playback( libspectrum_rzx *from_rzx, libspectrum_snap **snap )
+{
+  int error = libspectrum_rzx_start_playback( from_rzx, 0, snap );
+#ifdef ENABLE_AUTOMATION
+  if( error ) automation_rzx_parse_error();
+#endif
+  return error;
+}
+
+static int
 start_playback( libspectrum_rzx *from_rzx )
 {
-  const libspectrum_creator *creator;
-  int error, is_spectaculator;
   libspectrum_snap *snap;
-
-  error = libspectrum_rzx_start_playback( from_rzx, 0, &snap );
-  if( error ) {
-#ifdef ENABLE_AUTOMATION
-    automation_rzx_parse_error();
-#endif
-    return error;
-  }
-
+  int error = prepare_playback( from_rzx, &snap );
+  if( error ) return error;
   if( snap ) {
     error = snapshot_copy_from( snap );
     if( error ) {
@@ -360,14 +368,18 @@ start_playback( libspectrum_rzx *from_rzx )
 #endif
       return error;
     }
-
-    if( creator_has_broken_r7_restore(
-          libspectrum_rzx_creator( from_rzx )
-        ) )
-      R7 = 0;
   }
+  finish_playback( from_rzx, snap );
+  return 0;
+}
 
-  creator = libspectrum_rzx_creator( from_rzx );
+static void
+finish_playback( libspectrum_rzx *from_rzx, libspectrum_snap *snap )
+{
+  const libspectrum_creator *creator = libspectrum_rzx_creator( from_rzx );
+  int is_spectaculator;
+
+  if( snap && creator_has_broken_r7_restore( creator ) ) R7 = 0;
   rzx_spectaculator_plusd_compat =
     creator_is_spectaculator( creator ) && snap &&
     libspectrum_snap_pc( snap ) == 0x0038 &&
@@ -410,8 +422,105 @@ start_playback( libspectrum_rzx *from_rzx )
 
   ui_menu_activate( UI_MENU_ITEM_RECORDING, 1 );
   ui_menu_activate( UI_MENU_ITEM_RECORDING_ROLLBACK, 0 );
+}
 
+void
+rzx_cancel_pending( void )
+{
+  if( pending_playback ) libspectrum_rzx_free( pending_playback );
+  pending_playback = NULL;
+  pending_external_id = 0;
+  fuse_engine_retire_decision( FUSE_DECISION_RZX_EXTERNAL );
+}
+
+int
+rzx_finish_requested_playback( libspectrum_snap *snap, int error )
+{
+  if( error ) {
+#ifdef ENABLE_AUTOMATION
+    automation_rzx_snapshot_error();
+#endif
+    rzx_cancel_pending();
+    return error;
+  }
+  rzx = pending_playback;
+  pending_playback = NULL;
+  finish_playback( rzx, snap );
   return 0;
+}
+
+int
+rzx_continue_requested_playback( fuse_open_request *request, int error )
+{
+  libspectrum_snap *snap;
+  if( error ) return rzx_finish_requested_playback( NULL, error );
+  error = prepare_playback( pending_playback, &snap );
+  if( error ) {
+    rzx_cancel_pending();
+    return error;
+  }
+  if( snap ) {
+    error = snapshot_request_rzx_restore( snap, request );
+    if( request->id ) return 0;
+  }
+  return rzx_finish_requested_playback( snap, error );
+}
+
+int
+rzx_request_open( const libspectrum_file *file, fuse_open_request *request )
+{
+  int error;
+
+  if( tape_recording ) return 1;
+  pending_playback = libspectrum_rzx_alloc();
+  error = libspectrum_rzx_read( pending_playback, file->buffer, file->length );
+  if( error ) {
+#ifdef ENABLE_AUTOMATION
+    automation_rzx_parse_error();
+#endif
+    rzx_cancel_pending();
+    return error;
+  }
+  if( !rzx_get_initial_snapshot( pending_playback ) ) {
+    request->id = pending_external_id =
+      fuse_engine_request_decision( FUSE_DECISION_RZX_EXTERNAL );
+    request->question = FUSE_OPEN_RZX_EXTERNAL_SNAPSHOT;
+    return 0;
+  }
+  return rzx_continue_requested_playback( request, 0 );
+}
+
+fuse_host_operation_result
+fuse_host_answer_rzx_external_snapshot( fuse_media_decision_id id,
+                                        const char *filename,
+                                        fuse_open_request *next )
+{
+  int error;
+  fuse_host_operation_result result;
+  if( !next ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *next = (fuse_open_request){ 0 };
+  result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !id || id != pending_external_id ||
+      fuse_engine_pending_decision() != FUSE_DECISION_RZX_EXTERNAL )
+    return FUSE_HOST_OPERATION_STALE;
+  if( filename && !*filename ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+
+  fuse_engine_begin_operation();
+  if( !filename ) {
+    rzx_cancel_pending();
+    result = FUSE_HOST_OPERATION_CANCELLED;
+  } else {
+    pending_external_id = 0;
+    fuse_engine_retire_decision( FUSE_DECISION_RZX_EXTERNAL );
+    error = snapshot_request_rzx_external( filename, next );
+    if( !next->id ) error = rzx_continue_requested_playback( next, error );
+    if( error ) result = FUSE_HOST_OPERATION_MEDIA_ERROR;
+    else if( next->id ) result = FUSE_HOST_OPERATION_NEEDS_DECISION;
+  }
+  if( !next->id ) display_refresh_all();
+  fuse_engine_end_operation();
+  return result;
 }
 
 void

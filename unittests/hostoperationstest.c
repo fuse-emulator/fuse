@@ -965,6 +965,82 @@ check_snapshot_joystick_decisions( void )
 }
 
 static void
+write_joystick_rzx( const char *filename, int embedded )
+{
+  libspectrum_rzx *recording = libspectrum_rzx_alloc();
+  libspectrum_byte *buffer = NULL;
+  size_t length = 0;
+  int i;
+  write_snapshot_joystick_fixture();
+  writebyte_internal( 0x8123, 0x76 ); /* HALT: no port input during replay. */
+  z80.iff1 = z80.iff2 = 0;
+  assert( !snapshot_write( "joystick.szx" ) );
+  if( embedded ) {
+    libspectrum_snap *snap = libspectrum_snap_alloc();
+    assert( !snapshot_copy_to( snap ) );
+    assert( !libspectrum_rzx_add_snap( recording, snap, 0 ) );
+  }
+  libspectrum_rzx_start_input( recording, 0 );
+  for( i = 0; i < 7; i++ )
+    assert( !libspectrum_rzx_store_frame( recording, 16, 0, NULL ) );
+  assert( !libspectrum_rzx_write( &buffer, &length, recording,
+                                  LIBSPECTRUM_ID_SNAPSHOT_SZX, NULL, 0,
+                                  NULL ) );
+  assert( !utils_write_file( filename, buffer, length ) );
+  libspectrum_free( buffer );
+  assert( !libspectrum_rzx_free( recording ) );
+}
+
+static void
+check_rzx_open( int embedded )
+{
+  fuse_open_request request;
+  fuse_host_operation_result result;
+  int i;
+
+  write_joystick_rzx( "joystick.rzx", embedded );
+  settings_current.joystick_1_output = JOYSTICK_TYPE_KEMPSTON;
+  settings_current.joystick_2_output = JOYSTICK_TYPE_NONE;
+  settings_current.joystick_keyboard_output = JOYSTICK_TYPE_NONE;
+  z80.pc.w = 0x9000;
+  assert( fuse_host_open_file( "joystick.rzx",
+                               &request ) ==
+          FUSE_HOST_OPERATION_NEEDS_DECISION );
+  if( !embedded ) {
+    fuse_media_decision_id id = request.id;
+    assert( request.question == FUSE_OPEN_RZX_EXTERNAL_SNAPSHOT );
+    assert( fuse_run_frame() == FUSE_RUN_NEEDS_DECISION && !rzx_playback );
+    assert( fuse_host_answer_rzx_external_snapshot( id, NULL,
+                                                    &request ) ==
+            FUSE_HOST_OPERATION_CANCELLED );
+    assert( !request.id && !rzx_playback );
+    assert( fuse_host_answer_rzx_external_snapshot( id, "joystick.szx",
+                                                    &request ) ==
+            FUSE_HOST_OPERATION_STALE );
+    assert( fuse_host_open_file( "joystick.rzx",
+                                 &request ) ==
+            FUSE_HOST_OPERATION_NEEDS_DECISION );
+    assert( request.id != id && !remove( "joystick.rzx" ) );
+    assert( fuse_host_answer_rzx_external_snapshot( request.id, "joystick.szx",
+                                                    &request ) ==
+            FUSE_HOST_OPERATION_NEEDS_DECISION );
+  } else {
+    assert( !remove( "joystick.rzx" ) );
+  }
+  assert( !remove( "joystick.szx" ) );
+  assert( request.question == FUSE_OPEN_MAP_JOYSTICK );
+  assert( request.detail.joystick.type == LIBSPECTRUM_JOYSTICK_SINCLAIR_1 );
+  assert( fuse_run_frame() == FUSE_RUN_NEEDS_DECISION && !rzx_playback &&
+          z80.pc.w == 0x9000 );
+  assert( fuse_run_tstates( 100 ) == FUSE_RUN_NEEDS_DECISION );
+  result = fuse_host_answer_snapshot_joystick( request.id, NULL, &request );
+  assert( result == OK && !request.id && rzx_playback && z80.pc.w == 0x8123 );
+  for( i = 0; i < 16 && rzx_playback; i++ )
+    assert( fuse_run_frame() == FUSE_RUN_COMPLETED );
+  assert( !rzx_playback && !null_ui_confirm_joystick_calls );
+}
+
+static void
 check_file_open( const char *mode )
 {
   const unsigned char bytes[] = { 2, 0, 0xff, 0xff };
@@ -1642,6 +1718,12 @@ host_operations_test( int argc, char **argv )
     check_host_quit( !strcmp( argv[1], "host-quit-shutdown" ) );
   } else if( !strcmp( argv[1], "open-floppy" ) ) {
     check_open_floppy();
+  } else if( !strcmp( argv[1], "rzx-joystick-fixture" ) ) {
+    write_joystick_rzx( "joystick.rzx", 1 );
+  } else if( !strcmp( argv[1], "open-rzx-embedded" ) || !strcmp( argv[1],
+                                                                 "open-rzx-external" ) )
+  {
+    check_rzx_open( !strcmp( argv[1], "open-rzx-embedded" ) );
   } else if( !strcmp( argv[1], "snapshot-joystick-fixture" ) ) {
     write_snapshot_joystick_fixture();
   } else if( !strcmp( argv[1], "open-snapshot-joystick" ) ) {
