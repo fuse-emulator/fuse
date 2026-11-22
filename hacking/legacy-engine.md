@@ -545,12 +545,14 @@ There is no duplicate host/engine disk delegate API. Drive descriptors remain pr
 
 `fuse_host_new_disk(controller,slot,&id)` uses configured geometry and controller
 insertion hooks, including +3 preformatting. Insert and New complete immediately
-if the drive is empty or clean, or return NEEDS_DECISION for a dirty disk. A new
-Insert or New returns BUSY while another media decision is pending. Use
-`fuse_host_answer_disk_eject()` to answer either request: only after Discard or
-successful Save does Fuse eject and install the replacement. An image decode
-failure after eject does not restore the old disk. Legacy Insert, New, and
-File → Open menus keep their synchronous behavior.
+if the drive is empty or clean, or return NEEDS_DECISION for a dirty disk. Insert
+and File → Open can also return a side-merge question when the existing disk
+options and filename call for confirmation. A dirty disk is resolved first;
+a successful Save or Discard can return the merge question with a fresh ID.
+`fuse_host_answer_disk_merge()` accepts or declines merging. Declining loads
+only the selected side; accepting falls back to that side if its companion
+cannot be opened. An image decode failure after eject does not restore the old
+disk. Legacy Insert, New, and File → Open keep their synchronous behavior.
 `fuse_host_eject_disk(controller,slot,&id)` ejects clean media, succeeds on an
 empty available drive, or returns NEEDS_DECISION for dirty media without a
 prompt. The request applies only to the current attachment in that drive.
@@ -558,7 +560,7 @@ Repeated requests for that drive return the same ID; another drive's eject or a
 host tape decision cannot start while it is pending. Execution turns return
 NEEDS_DECISION until the request is resolved or invalidated.
 
-`fuse_host_answer_disk_eject(id,choice,path)` consumes a valid reply. Cancel or
+`fuse_host_answer_disk_eject(id, choice, path, &next)` consumes a valid reply. Cancel or
 failed Save leaves the disk loaded; Discard or successful Save ejects it. Save
 accepts NULL for the existing target or a host-authorized path with no additional
 overwrite prompt. A separate successful save, replacement, or shutdown invalidates

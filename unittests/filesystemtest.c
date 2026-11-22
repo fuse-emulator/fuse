@@ -503,7 +503,12 @@ filesystem_tests( void )
   assert( filesystem.closes == closed + 1 );
   filesystem.fail_write_at = 0;
   assert( fuse_host_eject_disk( FUSE_DISK_CONTROLLER_PLUS3, 0, &disk_request ) == OK && !disk_request );
-  assert( fuse_host_insert_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, "media/disk.udi", &disk_request ) == OK && !disk_request );
+  {
+    fuse_open_request question;
+    assert( fuse_host_insert_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0,
+                                        "media/disk.udi",
+                                        &question ) == OK && !question.id );
+  }
   { fuse_disk_drive_info *info;
     assert( fuse_host_copy_disk_drive_info( FUSE_DISK_CONTROLLER_PLUS3, 0, &info ) == OK );
     assert( info->loaded && !info->write_protected ); fuse_disk_drive_info_free( info ); }

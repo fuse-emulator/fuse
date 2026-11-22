@@ -2616,7 +2616,8 @@ disk_merge_sides( disk_t *d, disk_t *d1, disk_t *d2, int autofill )
 }
 
 static int disk_open_internal( disk_t *d, const char *filename, int preindex,
-                               int merge_disks, const utils_file *file );
+                               int merge_disks, int ask_merge,
+                               const utils_file *file );
 
 static int
 disk_open_initial( disk_t *d, const char *filename, int preindex,
@@ -2631,32 +2632,36 @@ disk_open_loaded( disk_t *d, const utils_file *file, int preindex,
                   int merge_disks )
 {
   if( !file || !file->filename || !file->buffer ) return d->status = DISK_OPEN;
-  return disk_open_internal( d, file->filename, preindex, merge_disks, file );
+  return disk_open_internal( d, file->filename, preindex, merge_disks,
+                             settings_current.disk_ask_merge, file );
 }
 
 int
 disk_open( disk_t *d, const char *filename, int preindex, int merge_disks )
 {
-  return disk_open_internal( d, filename, preindex, merge_disks, NULL );
+  return disk_open_internal( d, filename, preindex, merge_disks,
+                             settings_current.disk_ask_merge, NULL );
 }
 
-static int
-disk_open_internal( disk_t *d, const char *filename, int preindex,
-                    int merge_disks, const utils_file *file )
+int
+disk_open_loaded_authorized( disk_t *d, const utils_file *file, int preindex,
+                             int merge_disks )
+{
+  if( !file || !file->filename || !file->buffer ) return d->status = DISK_OPEN;
+  return disk_open_internal( d, file->filename, preindex, merge_disks, 0,
+                             file );
+}
+
+static char *
+disk_merge_side_name( const char *filename )
 {
   char *filename2;
   char c = ' ';
-  int l, g = 0, pos = 0;
-  disk_t d1, d2;
-
-  d->filename = NULL;
-  if( filename == NULL || *filename == '\0' )
-    return d->status = DISK_OPEN;
+  size_t l, pos = 0;
+  int g = 0;
 
   l = strlen( filename );
-
-  if( !merge_disks || l < 7 )	/* if we do not want to open two separated disk image as one double sided disk */
-    return disk_open_initial( d, filename, preindex, file );
+  if( l < 7 ) return NULL;
 
   filename2 = (char *)filename + ( l - 1 );
   while( l ) {				/* [Ss]ide[ _][abAB12][ _.]*[ _.] */
@@ -2688,28 +2693,53 @@ disk_open_internal( disk_t *d, const char *filename, int preindex,
     } else {
       g = 0;
     }
-    l--;
-    filename2--;
+    if( --l ) filename2--;
   }
-  if( g != 4 )
-    return d->status = disk_open_initial( d, filename, preindex, file );
+  if( g != 4 ) return NULL;
+  filename2 = utils_safe_strdup( filename );
+  filename2[pos] = c;
+  return filename2;
+}
+
+int
+disk_has_merge_side_name( const char *filename )
+{
+  char *side_name = disk_merge_side_name( filename );
+  int eligible = side_name != NULL;
+  libspectrum_free( side_name );
+  return eligible;
+}
+
+static int
+disk_open_internal( disk_t *d, const char *filename, int preindex,
+                    int merge_disks, int ask_merge, const utils_file *file )
+{
+  char *filename2;
+  disk_t d1, d2;
+
+  d->filename = NULL;
+  if( !filename || !*filename ) return d->status = DISK_OPEN;
+  filename2 = merge_disks ? disk_merge_side_name( filename ) : NULL;
+  if( !filename2 ) return disk_open_initial( d, filename, preindex, file );
   d1.data = NULL; d1.flag = d->flag;
   d2.data = NULL; d2.flag = d->flag;
-  filename2 = utils_safe_strdup( filename );
-  *(filename2 + pos) = c;
 
-  if( settings_current.disk_ask_merge &&
+  if( ask_merge &&
       !ui_query( "Try to merge 'B' side of this disk?" ) ) {
     libspectrum_free( filename2 );
     return d->status = disk_open_initial( d, filename, preindex, file );
   }
 
   if( disk_open2( &d2, filename2, preindex ) ) {
+    libspectrum_free( filename2 );
     return d->status = disk_open_initial( d, filename, preindex, file );
   }
 
-  if( disk_open_initial( &d1, filename, preindex, file ) )
+  if( disk_open_initial( &d1, filename, preindex, file ) ) {
+    disk_close( &d2 );
+    libspectrum_free( filename2 );
     return d->status = d1.status;
+  }
 
   if( disk_merge_sides( d, &d1, &d2, 0x00 ) ) {
     disk_close( &d2 );

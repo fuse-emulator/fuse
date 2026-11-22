@@ -664,7 +664,12 @@ open_demo( const char *filename, const char *movie_target,
               request.detail.floppy.has_save_target ? "existing save target" :
               "Save needs a path" );
       result = fuse_host_answer_disk_eject( request.id,
-                                            FUSE_MEDIA_DECISION_DISCARD, NULL );
+                                            FUSE_MEDIA_DECISION_DISCARD, NULL,
+                                            &request );
+      break;
+    case FUSE_OPEN_MERGE_FLOPPY:
+      puts( "host: floppy side merge; accept" );
+      result = fuse_host_answer_disk_merge( request.id, 1 );
       break;
     case FUSE_OPEN_SAVE_MASS_STORAGE:
       printf( "host: modified IDE/MMC controller=%d unit=%d; discard\n",
@@ -985,7 +990,13 @@ main( int argc, char **argv )
     goto cleanup;
   }
   if( disk_save ) {
-    if( operation( "disk insertion", fuse_host_insert_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, argv[3], &disk_request ) ) ||
+    fuse_open_request question;
+    fuse_host_operation_result result = fuse_host_insert_disk_file(
+      FUSE_DISK_CONTROLLER_PLUS3, 0, argv[3], &question );
+    if( result == FUSE_HOST_OPERATION_NEEDS_DECISION &&
+        question.question == FUSE_OPEN_MERGE_FLOPPY )
+      result = fuse_host_answer_disk_merge( question.id, 1 );
+    if( operation( "disk insertion", result ) ||
         operation( "disk save", fuse_host_save_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, argv[4] ) ) ) goto cleanup;
     puts( "host: saved disk through plus3 drive 0" );
     status = EXIT_SUCCESS;

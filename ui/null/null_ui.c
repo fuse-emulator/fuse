@@ -212,9 +212,12 @@ ui_pokemem_selector( const char *filename )
   null_ui_pokemem_selector_calls++;
 }
 
+int null_ui_query_calls;
+
 int
 ui_query_message( const char *message )
 {
+  null_ui_query_calls++;
   /* Query confirmed */
   return 1;
 }

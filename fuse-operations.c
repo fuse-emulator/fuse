@@ -179,7 +179,8 @@ fuse_host_answer_quit( fuse_media_decision_id id, fuse_media_decision_choice cho
     result = fuse_host_answer_microdrive_eject( id, choice, path );
     break;
   case FUSE_QUIT_FLOPPY:
-    result = fuse_host_answer_disk_eject( id, choice, path );
+    result = fuse_host_answer_disk_eject( id, choice, path,
+                                          &(fuse_open_request){ 0 } );
     break;
   default:
     result = fuse_host_answer_tape_eject( id, choice, path );

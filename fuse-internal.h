@@ -220,6 +220,7 @@ typedef enum fuse_open_question {
   FUSE_OPEN_NO_QUESTION,
   FUSE_OPEN_SAVE_TAPE,
   FUSE_OPEN_SAVE_FLOPPY,
+  FUSE_OPEN_MERGE_FLOPPY,
   FUSE_OPEN_MAP_JOYSTICK,
   FUSE_OPEN_SAVE_MASS_STORAGE,
   FUSE_OPEN_RZX_EXTERNAL_SNAPSHOT
@@ -459,13 +460,12 @@ fuse_host_operation_result fuse_host_stop_tape_recording( void );
    Archive-info panels/raw block metadata are not represented by these rows. */
 fuse_host_operation_result fuse_host_copy_tape_info( fuse_tape_info **info );
 /* Zero-based slots. Insert reads the image before handling the outgoing disk;
-   it does not autoload. Insert and New return NEEDS_DECISION with a nonzero ID
-   for dirty media; other results clear it. Reply with answer_disk_eject.
+   it does not autoload. Insert returns a save or side-merge question with a
+   nonzero ID on NEEDS_DECISION; other results clear the request.
    Unavailable/disabled drives return MEDIA_ERROR; unknown slots are invalid. */
 fuse_host_operation_result fuse_host_insert_disk_file(
-  fuse_disk_controller controller,
-  int slot,
-  const char *filename, fuse_media_decision_id *request );
+  fuse_disk_controller controller, int slot,
+  const char *filename, fuse_open_request *request );
 /* Save uses a borrowed host-authorized target, or NULL for the retained target.
    No chooser or overwrite prompt. An existing target can be replaced;
    there is no atomic-write guarantee. */
@@ -474,7 +474,7 @@ fuse_host_operation_result fuse_host_save_disk_file(
   int slot,
   const char *filename );
 /* New uses configured geometry and controller insertion hooks (including +3
-   preformat). */
+   preformat). A dirty outgoing disk returns a nonzero ID for answer_disk_eject. */
 fuse_host_operation_result fuse_host_new_disk( fuse_disk_controller controller,
                                                int slot,
                                                fuse_media_decision_id *request );
@@ -485,10 +485,14 @@ fuse_host_operation_result fuse_host_eject_disk(
   fuse_media_decision_id *request );
 /* SAVE uses the existing target if path is NULL, or a host-authorized path.
    Other choices require NULL. A valid reply consumes the ID. After successful
-   eject, a pending Insert or New installs the requested media. */
+   eject, a pending Insert may return a side-merge question with a fresh ID.
+   Results other than NEEDS_DECISION clear next. */
 fuse_host_operation_result fuse_host_answer_disk_eject(
   fuse_media_decision_id request, fuse_media_decision_choice choice,
-  const char *path );
+  const char *path, fuse_open_request *next );
+/* Declining the merge loads only the selected side; it does not cancel Open. */
+fuse_host_operation_result fuse_host_answer_disk_merge(
+  fuse_media_decision_id request, int merge );
 fuse_host_operation_result fuse_host_set_disk_flipped(
   fuse_disk_controller controller,
   int slot, int flipped );

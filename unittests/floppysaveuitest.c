@@ -142,7 +142,7 @@ new_disk( void )
     fuse_media_decision_choice reply = eject_choice == UI_CONFIRM_SAVE_SAVE ? FUSE_MEDIA_DECISION_SAVE :
       eject_choice == UI_CONFIRM_SAVE_CANCEL ? FUSE_MEDIA_DECISION_CANCEL : FUSE_MEDIA_DECISION_DISCARD;
     assert( request && !eject_questions );
-    result = fuse_host_answer_disk_eject( request, reply, NULL );
+    result = fuse_host_answer_disk_eject( request, reply, NULL, &(fuse_open_request){ 0 } );
     assert( result == ( reply == FUSE_MEDIA_DECISION_CANCEL ? FUSE_HOST_OPERATION_CANCELLED :
               reply == FUSE_MEDIA_DECISION_SAVE && fail_write ? FUSE_HOST_OPERATION_MEDIA_ERROR :
                                                                 FUSE_HOST_OPERATION_OK ) );
@@ -165,7 +165,8 @@ eject_disk( void )
     fuse_media_decision_choice reply = eject_choice == UI_CONFIRM_SAVE_SAVE ? FUSE_MEDIA_DECISION_SAVE :
       eject_choice == UI_CONFIRM_SAVE_CANCEL ? FUSE_MEDIA_DECISION_CANCEL : FUSE_MEDIA_DECISION_DISCARD;
     assert( request && !eject_questions );
-    result = fuse_host_answer_disk_eject( request, reply, NULL );
+    result = fuse_host_answer_disk_eject( request, reply, NULL,
+                                          &(fuse_open_request){ 0 } );
     if( result == FUSE_HOST_OPERATION_CANCELLED ) return 1;
   } else assert( !request );
   return legacy_result( result );

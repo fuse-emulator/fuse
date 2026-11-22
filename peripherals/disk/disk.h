@@ -152,6 +152,9 @@ int disk_new( disk_t *d, int sides, int cylinders, disk_dens_t dens, disk_type_t
    supported
 */
 int disk_open( disk_t *d, const char *filename, int preindex, int disk_merge );
+int disk_has_merge_side_name( const char *filename );
+int disk_open_loaded_authorized( disk_t *d, const utils_file *file,
+                                 int preindex, int merge_disks );
 int disk_open_loaded( disk_t *d, const utils_file *file, int preindex,
                       int disk_merge );
 /* merge two one sided disk (d1, d2) to a two sided one (d),

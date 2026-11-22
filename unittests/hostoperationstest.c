@@ -92,9 +92,36 @@ static fuse_host_operation_result
 insert_disk_file_without_decision( fuse_disk_controller controller, int slot,
                                    const char *filename )
 {
-  fuse_media_decision_id request = 1;
+  fuse_open_request request;
   fuse_host_operation_result result = fuse_host_insert_disk_file( controller, slot, filename, &request );
-  assert( !request );
+  assert( !request.id );
+  return result;
+}
+
+static fuse_host_operation_result
+answer_disk_eject_without_followup( fuse_media_decision_id id,
+                                    fuse_media_decision_choice choice,
+                                    const char *path )
+{
+  fuse_open_request next;
+  fuse_host_operation_result result = fuse_host_answer_disk_eject( id, choice,
+                                                                   path,
+                                                                   &next );
+  assert( !next.id );
+  return result;
+}
+
+static fuse_host_operation_result
+insert_disk_awaiting_eject( fuse_disk_controller controller, const char *path,
+                            fuse_media_decision_id *id )
+{
+  fuse_open_request request;
+  fuse_host_operation_result result = fuse_host_insert_disk_file( controller, 0,
+                                                                  path,
+                                                                  &request );
+  if( result == FUSE_HOST_OPERATION_NEEDS_DECISION )
+    assert( request.question == FUSE_OPEN_SAVE_FLOPPY );
+  *id = request.id;
   return result;
 }
 
@@ -679,7 +706,7 @@ check_trap_recording( void )
     assert( tstates == before && spectrum_get_frame_count() == frame &&
             z80.pc.w == pc && fuse_emulation_paused == 2 );
   }
-  assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL ) == FUSE_HOST_OPERATION_STALE );
+  assert( answer_disk_eject_without_followup( request, FUSE_MEDIA_DECISION_DISCARD, NULL ) == FUSE_HOST_OPERATION_STALE );
   assert( fuse_host_answer_tape_eject( request, FUSE_MEDIA_DECISION_SAVE, NULL ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
   assert( fuse_run_frame() == FUSE_RUN_NEEDS_DECISION );
   assert( !tape_save_trap() && tape_modified );
@@ -1449,6 +1476,62 @@ count_open_disk_autoload( void )
   return 0;
 }
 
+extern int null_ui_query_calls;
+
+static void
+check_floppy_merge( void )
+{
+  const fuse_disk_controller controller = FUSE_DISK_CONTROLLER_PLUS3;
+  const ui_media_drive_info_t *drive = ui_media_drive_find( controller, 0 );
+  const char *side_a = "merge Side A.udi", *side_b = "merge Side B.udi";
+  fuse_open_request request;
+  fuse_media_decision_id old;
+
+  settings_set_string( &settings_current.disk_try_merge, "Always" );
+  settings_current.disk_ask_merge = 1;
+  assert( fuse_host_select_machine( "plus3" ) == OK );
+  write_disk_fixture( side_a );
+  write_disk_fixture( side_b );
+  assert( fuse_host_insert_disk_file( controller, 0, side_a, &request ) ==
+          FUSE_HOST_OPERATION_NEEDS_DECISION );
+  assert( request.question == FUSE_OPEN_MERGE_FLOPPY &&
+          request.detail.floppy.slot == 0 );
+  assert( !drive->fdd->loaded && fuse_run_frame() == FUSE_RUN_NEEDS_DECISION );
+  assert( fuse_host_answer_disk_merge( request.id,
+                                       2 ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( !remove( side_a ) );
+  assert( fuse_host_answer_disk_merge( request.id, 1 ) == OK );
+  assert( drive->fdd->loaded && drive->fdd->disk.sides == 2 );
+  write_disk_fixture( side_a );
+  drive->fdd->disk.dirty = 1;
+  assert( fuse_host_open_file( side_a,
+                               &request ) ==
+          FUSE_HOST_OPERATION_NEEDS_DECISION );
+  assert( request.question == FUSE_OPEN_SAVE_FLOPPY );
+  old = request.id;
+  assert( fuse_host_answer_disk_merge( old, 1 ) == FUSE_HOST_OPERATION_STALE );
+  assert( fuse_host_answer_disk_eject( old, FUSE_MEDIA_DECISION_DISCARD, NULL,
+                                       &request ) ==
+          FUSE_HOST_OPERATION_NEEDS_DECISION );
+  assert( request.id != old && request.question == FUSE_OPEN_MERGE_FLOPPY );
+  assert( !drive->fdd->loaded &&
+          fuse_run_tstates( 100 ) == FUSE_RUN_NEEDS_DECISION );
+  assert( fuse_host_answer_disk_merge( old, 1 ) == FUSE_HOST_OPERATION_STALE );
+  assert( fuse_host_answer_disk_merge( request.id, 0 ) == OK );
+  assert( drive->fdd->loaded && drive->fdd->disk.sides == 1 );
+  assert( !remove( side_b ) );
+  assert( fuse_host_open_file( side_a,
+                               &request ) ==
+          FUSE_HOST_OPERATION_NEEDS_DECISION );
+  assert( request.question == FUSE_OPEN_MERGE_FLOPPY );
+  assert( fuse_host_answer_disk_merge( request.id, 1 ) == OK );
+  assert( drive->fdd->loaded && drive->fdd->disk.sides == 1 );
+  assert( !null_ui_query_calls );
+  assert( !ui_media_drive_insert( drive, side_a, 0 ) );
+  assert( null_ui_query_calls == 1 && !remove( side_a ) );
+}
+
 static void
 check_open_floppy( void )
 {
@@ -1482,18 +1565,18 @@ check_open_floppy( void )
   assert( machine_current->machine == LIBSPECTRUM_MACHINE_PLUS3 );
   assert( fuse_run_frame() == FUSE_RUN_NEEDS_DECISION && !open_disk_autoloads );
   rom_requests = provider.acquired;
-  assert( fuse_host_answer_disk_eject( request.id, FUSE_MEDIA_DECISION_CANCEL,
+  assert( answer_disk_eject_without_followup( request.id, FUSE_MEDIA_DECISION_CANCEL,
                                        NULL ) ==
           FUSE_HOST_OPERATION_CANCELLED );
   assert( machine_current->machine == LIBSPECTRUM_MACHINE_PLUS3 && provider.acquired == rom_requests );
   assert( drive->fdd->loaded && drive->fdd->disk.dirty && !drive->fdd->disk.filename );
   assert( fuse_host_open_file( "incoming.dsk", &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
-  assert( fuse_host_answer_disk_eject( request.id, FUSE_MEDIA_DECISION_SAVE,
+  assert( answer_disk_eject_without_followup( request.id, FUSE_MEDIA_DECISION_SAVE,
                                        "missing-directory/out.udi" ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
   assert( drive->fdd->loaded && drive->fdd->disk.dirty && !open_disk_autoloads );
   assert( fuse_host_open_file( "incoming.dsk", &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
   assert( !remove( "incoming.dsk" ) );
-  assert( fuse_host_answer_disk_eject( request.id, FUSE_MEDIA_DECISION_DISCARD, NULL ) == OK );
+  assert( answer_disk_eject_without_followup( request.id, FUSE_MEDIA_DECISION_DISCARD, NULL ) == OK );
   assert( provider.acquired == rom_requests && open_disk_autoloads == autoload );
   assert( drive->fdd->loaded && !strcmp( drive->fdd->disk.filename, "incoming.dsk" ) );
   assert( other->fdd->loaded && other->fdd->disk.dirty && !other->fdd->disk.filename );
@@ -1504,7 +1587,7 @@ check_open_floppy( void )
           FUSE_HOST_OPERATION_NEEDS_DECISION );
   assert( request.question == FUSE_OPEN_SAVE_FLOPPY &&
           request.detail.floppy.has_save_target );
-  assert( fuse_host_answer_disk_eject( request.id, FUSE_MEDIA_DECISION_CANCEL,
+  assert( answer_disk_eject_without_followup( request.id, FUSE_MEDIA_DECISION_CANCEL,
                                        NULL ) ==
           FUSE_HOST_OPERATION_CANCELLED );
   assert( !remove( "named-open.udi" ) );
@@ -1830,23 +1913,26 @@ check_disk_save( fuse_disk_controller controller )
             fuse_run_tstates( 100 ) == FUSE_RUN_NEEDS_DECISION );
     assert( fuse_host_request_tape_eject( &tape_request ) == FUSE_HOST_OPERATION_BUSY && !tape_request );
     assert( fuse_host_answer_tape_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL ) == FUSE_HOST_OPERATION_STALE );
-    assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_DISCARD, "unused.udi" ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+    assert( answer_disk_eject_without_followup( request, FUSE_MEDIA_DECISION_DISCARD, "unused.udi" ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
     assert( fuse_run_frame() == FUSE_RUN_NEEDS_DECISION );
     if( has_second )
       assert( fuse_host_eject_disk( controller, 1, &other ) == FUSE_HOST_OPERATION_BUSY && !other );
-    assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_CANCEL, NULL ) == FUSE_HOST_OPERATION_CANCELLED );
+    assert( answer_disk_eject_without_followup( request, FUSE_MEDIA_DECISION_CANCEL, NULL ) == FUSE_HOST_OPERATION_CANCELLED );
     assert( drive->fdd->loaded && drive->fdd->disk.dirty );
     assert( fuse_host_eject_disk( controller, 0, &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
-    assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_SAVE,
+    assert( answer_disk_eject_without_followup( request, FUSE_MEDIA_DECISION_SAVE,
                                          "missing-directory/out.udi" ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
     assert( drive->fdd->loaded && drive->fdd->disk.dirty );
     assert( fuse_host_eject_disk( controller, 0, &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
     assert( fuse_host_save_disk_file( controller, 0, "api-eject.udi" ) == OK );
     assert( new_disk_without_decision( controller, 0 ) == OK );
-    assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL ) == FUSE_HOST_OPERATION_STALE );
+    assert( answer_disk_eject_without_followup( request,
+                                                FUSE_MEDIA_DECISION_DISCARD,
+                                                NULL ) ==
+            FUSE_HOST_OPERATION_STALE );
     assert( drive->fdd->loaded && drive->fdd->disk.dirty );
     assert( fuse_host_eject_disk( controller, 0, &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
-    assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_SAVE, "api-eject.udi" ) == OK );
+    assert( answer_disk_eject_without_followup( request, FUSE_MEDIA_DECISION_SAVE, "api-eject.udi" ) == OK );
     assert( !drive->fdd->loaded && !remove( "api-eject.udi" ) );
     {
       char path[] = "api-staged.udi";
@@ -1857,33 +1943,35 @@ check_disk_save( fuse_disk_controller controller )
               FUSE_HOST_OPERATION_MEDIA_ERROR );
       assert( drive->fdd->loaded && drive->fdd->disk.data == outgoing );
       write_disk_fixture( path );
-      assert( fuse_host_insert_disk_file( controller, 0, path, &request ) ==
+      assert( insert_disk_awaiting_eject( controller, path, &request ) ==
               FUSE_HOST_OPERATION_NEEDS_DECISION );
       assert( fuse_run_frame() == FUSE_RUN_NEEDS_DECISION );
       assert( new_disk_without_decision( controller, 0 ) == FUSE_HOST_OPERATION_BUSY );
-      assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_CANCEL, NULL ) ==
+      assert( answer_disk_eject_without_followup( request, FUSE_MEDIA_DECISION_CANCEL, NULL ) ==
               FUSE_HOST_OPERATION_CANCELLED );
       assert( drive->fdd->loaded && drive->fdd->disk.data == outgoing );
-      assert( fuse_host_insert_disk_file( controller, 0, path, &request ) ==
+      assert( insert_disk_awaiting_eject( controller, path, &request ) ==
               FUSE_HOST_OPERATION_NEEDS_DECISION );
-      assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_SAVE,
+      assert( answer_disk_eject_without_followup( request, FUSE_MEDIA_DECISION_SAVE,
                                            "missing-directory/out.udi" ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
       assert( drive->fdd->loaded && drive->fdd->disk.dirty && drive->fdd->disk.data == outgoing );
-      assert( fuse_host_insert_disk_file( controller, 0, path, &request ) ==
+      assert( insert_disk_awaiting_eject( controller, path, &request ) ==
               FUSE_HOST_OPERATION_NEEDS_DECISION );
       assert( !remove( path ) ); path[0] = 'X';
-      assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL ) == OK );
+      assert( answer_disk_eject_without_followup( request, FUSE_MEDIA_DECISION_DISCARD, NULL ) == OK );
       assert( drive->fdd->loaded && !strcmp( drive->fdd->disk.filename, "api-staged.udi" ) );
       assert( new_disk_without_decision( controller, 0 ) == OK );
       assert( fuse_host_new_disk( controller, 0, &request ) == FUSE_HOST_OPERATION_NEEDS_DECISION );
-      assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_SAVE,
+      assert( answer_disk_eject_without_followup( request, FUSE_MEDIA_DECISION_SAVE,
                                            "api-outgoing.udi" ) == OK );
       assert( !remove( "api-outgoing.udi" ) );
       assert( drive->fdd->loaded && drive->fdd->disk.dirty && !drive->fdd->disk.filename );
       assert( !utils_write_file( "api-bad.udi", (const unsigned char *)"UDI!", 4 ) );
-      assert( fuse_host_insert_disk_file( controller, 0, "api-bad.udi", &request ) ==
+      assert( insert_disk_awaiting_eject( controller, "api-bad.udi", &request ) ==
               FUSE_HOST_OPERATION_NEEDS_DECISION );
-      assert( fuse_host_answer_disk_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL ) ==
+      assert( answer_disk_eject_without_followup( request,
+                                                  FUSE_MEDIA_DECISION_DISCARD,
+                                                  NULL ) ==
               FUSE_HOST_OPERATION_MEDIA_ERROR );
       assert( !drive->fdd->loaded && !remove( "api-bad.udi" ) );
     }
@@ -1999,6 +2087,8 @@ host_operations_test( int argc, char **argv )
     check_microdrive();
   } else if( !strcmp( argv[1], "host-quit" ) || !strcmp( argv[1], "host-quit-shutdown" ) ) {
     check_host_quit( !strcmp( argv[1], "host-quit-shutdown" ) );
+  } else if( !strcmp( argv[1], "floppy-merge" ) ) {
+    check_floppy_merge();
   } else if( !strcmp( argv[1], "open-floppy" ) ) {
     check_open_floppy();
   } else if( !strcmp( argv[1], "host-poke-finder" ) ) {
