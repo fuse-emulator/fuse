@@ -340,6 +340,22 @@ replies and restore. Later restores during playback retain existing behavior.
 Legacy snapshot and RZX dialogs are unchanged; other File Open branches can
 still call linked UI services.
 
+`fuse_host_play_rzx()` starts replay from a chosen RZX path and returns the
+same questions as Open, but refuses to replace an active replay or recording.
+`fuse_host_start_rzx_recording()` records from the current machine state, with
+an optional embedded snapshot. `fuse_host_insert_rzx_snapshot()` inserts a
+snapshot into the active recording. `fuse_host_stop_rzx()` stops replay or
+writes the active recording, and `fuse_host_finalise_rzx()` rewrites a chosen
+RZX file using the existing finalisation rules. `--record-rzx OUTPUT` in the
+null host exercises that sequence, continues the saved recording, and reopens
+the finalised result.
+
+`fuse_host_record_rzx_from_snapshot()` starts from a chosen snapshot;
+`fuse_host_continue_rzx_recording()` restores the final snapshot of a chosen
+recording and writes back to that path on Stop. Both can return joystick
+questions through the same reply API as File Open. Fuse stages the decoded
+input until the choices are resolved; recording starts only after restore.
+
 OK means the dispatcher completed, which in the legacy branches can include cancelled/no-op
 insertion; it does not prove replacement or program-loading completion. MEDIA_ERROR
 maps nonzero, not a uniform unchanged-state or safe-to-continue outcome. File Open

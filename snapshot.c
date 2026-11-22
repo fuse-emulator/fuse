@@ -149,7 +149,9 @@ static struct {
   libspectrum_snap *snap;
   char *filename;
   size_t index;
-  enum { SNAPSHOT_FILE, SNAPSHOT_RZX_EMBEDDED, SNAPSHOT_RZX_EXTERNAL } source;
+  enum { SNAPSHOT_FILE, SNAPSHOT_RZX_EMBEDDED, SNAPSHOT_RZX_EXTERNAL,
+         SNAPSHOT_RZX_RECORDING } source;
+  int borrowed;
   fuse_media_decision_id id;
   joystick_type_t outputs[3];
 } pending_snapshot;
@@ -157,14 +159,14 @@ static struct {
 void
 snapshot_cancel_pending( void )
 {
-  if( pending_snapshot.snap &&
-      pending_snapshot.source != SNAPSHOT_RZX_EMBEDDED )
+  if( pending_snapshot.snap && !pending_snapshot.borrowed )
     libspectrum_snap_free( pending_snapshot.snap );
   libspectrum_free( pending_snapshot.filename );
   pending_snapshot.snap = NULL;
   pending_snapshot.filename = NULL;
   pending_snapshot.id = 0;
   pending_snapshot.source = SNAPSHOT_FILE;
+  pending_snapshot.borrowed = 0;
   fuse_engine_retire_decision( FUSE_DECISION_SNAPSHOT );
 }
 
@@ -210,8 +212,24 @@ snapshot_request_rzx_restore( libspectrum_snap *snap,
   int error;
   pending_snapshot.snap = snap;
   pending_snapshot.source = SNAPSHOT_RZX_EMBEDDED;
+  pending_snapshot.borrowed = 1;
   error = snapshot_stage_restore( request );
   if( !request->id ) snapshot_cancel_pending();
+  return error;
+}
+
+static int
+snapshot_read_pending_path( const char *filename )
+{
+  utils_file file;
+  int error = utils_read_file( filename, &file );
+  if( !error ) {
+    pending_snapshot.snap = libspectrum_snap_alloc();
+    error = libspectrum_snap_read( pending_snapshot.snap, file.buffer,
+                                   file.length, LIBSPECTRUM_ID_UNKNOWN,
+                                   filename );
+  }
+  utils_close_file( &file );
   return error;
 }
 
@@ -219,17 +237,26 @@ int
 snapshot_request_rzx_external( const char *filename,
                                fuse_open_request *request )
 {
-  utils_file file;
-  int error = utils_read_file( filename, &file );
-  if( !error ) {
-    pending_snapshot.source = SNAPSHOT_RZX_EXTERNAL;
-    pending_snapshot.snap = libspectrum_snap_alloc();
-    error = libspectrum_snap_read( pending_snapshot.snap, file.buffer,
-                                   file.length, LIBSPECTRUM_ID_UNKNOWN,
-                                   filename );
-    if( !error ) error = snapshot_stage_restore( request );
+  int error = snapshot_read_pending_path( filename );
+  pending_snapshot.source = SNAPSHOT_RZX_EXTERNAL;
+  if( !error ) error = snapshot_stage_restore( request );
+  if( !request->id ) snapshot_cancel_pending();
+  return error;
+}
+
+int
+snapshot_request_rzx_recording( libspectrum_snap *snap, const char *filename,
+                                fuse_open_request *request )
+{
+  int error = 0;
+  pending_snapshot.source = SNAPSHOT_RZX_RECORDING;
+  if( snap ) {
+    pending_snapshot.snap = snap;
+    pending_snapshot.borrowed = 1;
+  } else {
+    error = snapshot_read_pending_path( filename );
   }
-  utils_close_file( &file );
+  if( !error ) error = snapshot_stage_restore( request );
   if( !request->id ) snapshot_cancel_pending();
   return error;
 }
@@ -290,6 +317,8 @@ fuse_host_answer_snapshot_joystick( fuse_media_decision_id id,
     } else {
       if( pending_snapshot.source == SNAPSHOT_RZX_EMBEDDED )
         error = rzx_finish_requested_playback( pending_snapshot.snap, error );
+      else if( pending_snapshot.source == SNAPSHOT_RZX_RECORDING )
+        error = rzx_finish_requested_recording( error );
       else
         pokemem_find_pokfile( pending_snapshot.filename );
       snapshot_cancel_pending();

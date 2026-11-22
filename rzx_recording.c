@@ -28,6 +28,8 @@
 #include <math.h>
 
 #include "fuse.h"
+#include "fuse-engine.h"
+#include "display.h"
 #include "machine.h"
 #include "movie.h"
 #include "rzx.h"
@@ -101,6 +103,25 @@ rzx_add_snap( libspectrum_rzx *to_rzx, int automatic )
   }
 
   return 0;
+}
+
+int
+rzx_insert_snapshot( void )
+{
+  libspectrum_snap *snap;
+  int error;
+  if( !rzx_recording ) return 1;
+  libspectrum_rzx_stop_input( rzx );
+  snap = libspectrum_snap_alloc();
+  error = snapshot_copy_to( snap );
+  if( error ) {
+    libspectrum_snap_free( snap );
+    return error;
+  }
+  error = libspectrum_rzx_add_snap( rzx, snap, 0 );
+  if( error ) libspectrum_snap_free( snap );
+  libspectrum_rzx_start_input( rzx, tstates );
+  return error;
 }
 
 int rzx_start_recording( const char *filename, int embed_snapshot )
@@ -259,6 +280,116 @@ rzx_continue_recording( const char *filename )
   start_recording( rzx, 0 );
 
   return 0;
+}
+
+static struct {
+  libspectrum_rzx *recording;
+  char *filename;
+  int embed_snapshot;
+} pending_recording;
+
+void
+rzx_cancel_pending_recording( void )
+{
+  if( pending_recording.recording )
+    libspectrum_rzx_free( pending_recording.recording );
+  libspectrum_free( pending_recording.filename );
+  pending_recording.recording = NULL;
+  pending_recording.filename = NULL;
+}
+
+int
+rzx_finish_requested_recording( int error )
+{
+  if( !error ) {
+    if( pending_recording.recording ) {
+      rzx = pending_recording.recording;
+      rzx_filename = pending_recording.filename;
+      pending_recording.recording = NULL;
+      pending_recording.filename = NULL;
+      start_recording( rzx, 0 );
+    } else {
+      error = rzx_start_recording( pending_recording.filename,
+                                   pending_recording.embed_snapshot );
+    }
+  }
+  rzx_cancel_pending_recording();
+  return error;
+}
+
+static int
+read_recording_to_continue( const char *filename, libspectrum_snap **snap )
+{
+  utils_file file;
+  libspectrum_rzx_iterator last;
+  int error = utils_read_file( filename, &file );
+  if( !error ) {
+    pending_recording.recording = libspectrum_rzx_alloc();
+    error = libspectrum_rzx_read( pending_recording.recording, file.buffer,
+                                  file.length );
+  }
+  utils_close_file( &file );
+  if( error ) return error;
+  last = libspectrum_rzx_iterator_last( pending_recording.recording );
+  *snap = last ? libspectrum_rzx_iterator_get_snap( last ) : NULL;
+  return *snap ? 0 : 1;
+}
+
+static fuse_host_operation_result
+request_recording_restore( const char *snapshot, const char *filename,
+                           int embed_snapshot, fuse_open_request *request )
+{
+  fuse_host_operation_result result;
+  libspectrum_snap *snap = NULL;
+  int error = 0;
+
+  if( !request ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *request = (fuse_open_request){ 0 };
+  result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !filename || !*filename || ( snapshot && !*snapshot ) ||
+      ( embed_snapshot != 0 && embed_snapshot != 1 ) )
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( fuse_engine_pending_decision() != FUSE_DECISION_NONE ||
+      rzx_recording || rzx_playback || tape_recording )
+    return FUSE_HOST_OPERATION_BUSY;
+
+  fuse_engine_begin_operation();
+  fuse_emulation_pause();
+  pending_recording.filename = utils_safe_strdup( filename );
+  pending_recording.embed_snapshot = embed_snapshot;
+  if( !snapshot ) error = read_recording_to_continue( filename, &snap );
+  if( !error ) error = snapshot_request_rzx_recording( snap, snapshot,
+                                                       request );
+  if( !request->id ) {
+    error = rzx_finish_requested_recording( error );
+    if( !error ) display_refresh_all();
+  }
+  fuse_emulation_unpause();
+  fuse_engine_end_operation();
+  if( error ) return FUSE_HOST_OPERATION_MEDIA_ERROR;
+  return request->id ? FUSE_HOST_OPERATION_NEEDS_DECISION :
+         FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_record_rzx_from_snapshot( const char *snapshot, const char *filename,
+                                    int embed_snapshot,
+                                    fuse_open_request *request )
+{
+  if( !snapshot ) {
+    if( request ) *request = (fuse_open_request){ 0 };
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  }
+  return request_recording_restore( snapshot, filename, embed_snapshot,
+                                    request );
+}
+
+fuse_host_operation_result
+fuse_host_continue_rzx_recording( const char *filename,
+                                  fuse_open_request *request )
+{
+  return request_recording_restore( NULL, filename, 0, request );
 }
 
 int

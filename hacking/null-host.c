@@ -589,23 +589,26 @@ main( int argc, char **argv )
   int disk_save = argc == 5 && !strcmp( argv[2], "--save-disk" );
   int tape_lifecycle = argc == 5 && !strcmp( argv[2], "--tape-lifecycle" );
   int tape_replacement = argc == 5 && !strcmp( argv[2], "--replace-tape" );
+  int rzx_record = argc >= 3 && !strcmp( argv[2], "--record-rzx" );
   int microdrive = argc >= 3 && !strcmp( argv[2], "--microdrive" );
   int open_over_tape = argc >= 3 && !strcmp( argv[2], "--open-over-tape" );
   int open_over_floppy = argc >= 3 && !strcmp( argv[2], "--open-over-floppy" );
   int plus3 = disk_save || disk_lifecycle || open_over_floppy;
 
   if( ( argc != 2 && argc != 3 && argc != 4 && argc != 5 ) ||
-      ( ( microdrive || open_over_tape || open_over_floppy ) && argc != 4 ) ||
+      ( ( microdrive || rzx_record || open_over_tape || open_over_floppy ) &&
+        argc != 4 ) ||
       ( argc == 4 && strcmp( argv[2],
                              "--open" ) && !open_over_tape &&
         !open_over_floppy && !microdrive && !disk_lifecycle && !tape_record &&
+        !rzx_record &&
         !parked_eject &&
         !snapshot_save && !filesystem && !divmmc ) ||
       ( argc == 5 && !disk_save && !tape_lifecycle && !tape_replacement ) ||
       ( argc == 3 && ( !strcmp( argv[2], "--open" ) || !strcmp( argv[2], "--save-disk" ) ||
                       !strcmp( argv[2], "--disk-lifecycle" ) || !strcmp( argv[2], "--tape-lifecycle" ) || !strcmp( argv[2], "--replace-tape" ) ||
                       !strcmp( argv[2], "--record-tape" ) || !strcmp( argv[2], "--parked-tape-eject" ) || !strcmp( argv[2], "--save-snapshot" ) || !strcmp( argv[2], "--filesystem" ) || !strcmp( argv[2], "--divmmc" ) ) ) ) {
-    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
+    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --record-rzx OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
     return EXIT_FAILURE;
   }
   if( filesystem || divmmc ) {
@@ -642,6 +645,25 @@ main( int argc, char **argv )
   }
   prepared = 1;
   puts( plus3 ? "host: prepared plus3" : "host: prepared 48" );
+  if( rzx_record ) {
+    fuse_open_request request;
+    if( operation( "record RZX",
+                   fuse_host_start_rzx_recording( argv[3], 1 ) ) ||
+        frames( 1, &frame_turns ) ||
+        operation( "insert RZX snapshot", fuse_host_insert_rzx_snapshot() ) ||
+        frames( 1, &frame_turns ) ||
+        operation( "stop recording", fuse_host_stop_rzx() ) ||
+        operation( "continue RZX",
+                   fuse_host_continue_rzx_recording( argv[3], &request ) ) ||
+        frames( 1, &frame_turns ) ||
+        operation( "stop continued recording", fuse_host_stop_rzx() ) ||
+        operation( "finalise RZX", fuse_host_finalise_rzx( argv[3] ) ) ||
+        operation( "replay RZX", fuse_host_play_rzx( argv[3], &request ) ) ||
+        operation( "stop replay", fuse_host_stop_rzx() ) ) goto cleanup;
+    puts( "host: recorded, finalised and reopened RZX" );
+    status = EXIT_SUCCESS;
+    goto cleanup;
+  }
   if( microdrive ) {
     if( !microdrive_demo( argv[3] ) ) status = EXIT_SUCCESS;
     else fputs( "host: Microdrive scenario failed\n", stderr );

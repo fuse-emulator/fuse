@@ -454,6 +454,9 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    cmp expected-open-joystick "$$consumer-open-joystick.out"; \
 	    "$$program" only48 --open joystick.rzx > "$$consumer-open-rzx.out" 2> "$$consumer-open-rzx.err"; \
 	    grep -Fx 'host: snapshot joystick Sinclair 1; map to keyboard' "$$consumer-open-rzx.out" > /dev/null; \
+	    "$$program" only48 --record-rzx "$$consumer.rzx" > "$$consumer-record-rzx.out" 2> "$$consumer-record-rzx.err"; \
+	    grep -Fx 'host: recorded, finalised and reopened RZX' "$$consumer-record-rzx.out" > /dev/null; \
+	    test -s "$$consumer.rzx"; rm "$$consumer.rzx"; \
 	    "$$program" interface1 --microdrive "$$consumer.mdr" > "$$consumer-microdrive.out" 2> "$$consumer-microdrive.err"; \
 	    grep -Fx 'host: Microdrive 2 kept on Cancel and saved on Quit' "$$consumer-microdrive.out" > /dev/null; \
 	    test -s "$$consumer.mdr"; rm "$$consumer.mdr"; \
@@ -582,7 +585,7 @@ check-host-operations: unittests/legacyenginelinktest unittests/legacyenginesour
 	  cd "$$tmp"; export HOME=. XDG_CONFIG_HOME=. USERPROFILE=. WINDIR=. APPDATA=.; \
 	  for consumer in legacyenginelinktest legacyenginesourcetest; do \
 	    for mode in success filesystem-oracle filesystem tape-contract tape-info trapped-recording snapshot-roundtrip autoload-success autoload-failure \
-	      open-auto open-noauto open-custom open-reset-failure open-snapshot open-snapshot-joystick open-fallback open-rzx-stop open-rzx-embedded open-rzx-external open-floppy \
+	      open-auto open-noauto open-custom open-reset-failure open-snapshot open-snapshot-joystick open-fallback open-rzx-stop open-rzx-embedded open-rzx-external record-rzx record-rzx-restore open-floppy \
 	      disk-save disk-save-beta microdrive host-quit host-quit-shutdown \
 	      reset-failure select-failure peripheral-reset-failure peripheral-select-failure; do \
 	      "$$root/$$consumer$(EXEEXT)" --host-operations-test "$$mode" "$$roms"; \

@@ -69,6 +69,11 @@ int rzx_request_open( const libspectrum_file *file,
 int rzx_finish_requested_playback( libspectrum_snap *snap, int error );
 int rzx_continue_requested_playback( fuse_open_request *request, int error );
 void rzx_cancel_pending( void );
+int snapshot_request_rzx_recording( libspectrum_snap *snap,
+                                    const char *filename,
+                                    fuse_open_request *request );
+int rzx_finish_requested_recording( int error );
+void rzx_cancel_pending_recording( void );
 
 /* General File Open with host decisions. */
 int utils_open_file_with_decision( const char *filename, int autoload,

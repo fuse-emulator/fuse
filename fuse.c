@@ -1392,6 +1392,7 @@ static int fuse_end(void)
   fuse_mass_storage_cancel_pending();
   snapshot_cancel_pending();
   rzx_cancel_pending();
+  rzx_cancel_pending_recording();
 
   movie_stop();
   /* Active trainer restoration needs live machine memory/maps. */

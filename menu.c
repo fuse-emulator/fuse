@@ -88,23 +88,10 @@ MENU_CALLBACK( menu_file_open )
 
 MENU_CALLBACK( menu_file_recording_insertsnapshot )
 {
-  libspectrum_snap *snap;
-  libspectrum_error error;
-
   if( !rzx_recording ) return;
 
   ui_widget_finish();
-
-  libspectrum_rzx_stop_input( rzx );
-
-  snap = libspectrum_snap_alloc();
-
-  error = snapshot_copy_to( snap );
-  if( error ) { libspectrum_snap_free( snap ); return; }
-
-  libspectrum_rzx_add_snap( rzx, snap, 0 );
-
-  libspectrum_rzx_start_input( rzx, tstates );
+  rzx_insert_snapshot();
 }
 
 MENU_CALLBACK( menu_file_recording_rollback )

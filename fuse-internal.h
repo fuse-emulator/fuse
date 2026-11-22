@@ -240,6 +240,23 @@ fuse_host_operation_result fuse_host_answer_snapshot_joystick(
 fuse_host_operation_result fuse_host_answer_rzx_external_snapshot(
   fuse_media_decision_id id, const char *filename, fuse_open_request *next );
 
+/* Named RZX operations use the existing codecs and settings. Finalise
+   rewrites the supplied file. Stop ends either recording or replay. */
+fuse_host_operation_result fuse_host_play_rzx( const char *filename,
+                                               fuse_open_request *request );
+fuse_host_operation_result fuse_host_start_rzx_recording( const char *filename,
+                                                          int embed_snapshot );
+/* Snapshot-based starts may return a joystick question. Recording begins
+   only after the snapshot is restored. Continue writes back to filename. */
+fuse_host_operation_result fuse_host_record_rzx_from_snapshot(
+  const char *snapshot, const char *filename, int embed_snapshot,
+  fuse_open_request *request );
+fuse_host_operation_result fuse_host_continue_rzx_recording(
+  const char *filename, fuse_open_request *request );
+fuse_host_operation_result fuse_host_insert_rzx_snapshot( void );
+fuse_host_operation_result fuse_host_stop_rzx( void );
+fuse_host_operation_result fuse_host_finalise_rzx( const char *filename );
+
 /* Engine interface selection, deliberately separate from input delivery. */
 int fuse_host_config_set_joystick( fuse_host_config *config,
                                    fuse_host_joystick slot,

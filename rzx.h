@@ -60,6 +60,7 @@ void rzx_register_startup( void );
 
 int rzx_start_recording( const char *filename, int embed_snapshot );
 int rzx_stop_recording( void );
+int rzx_insert_snapshot( void );
 int rzx_continue_recording( const char *filename );
 int rzx_finalise_recording( const char *filename );
 

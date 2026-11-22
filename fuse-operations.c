@@ -36,6 +36,7 @@
 #include "peripherals/ide/zxcf.h"
 #include "peripherals/joystick.h"
 #include "peripherals/kempmouse.h"
+#include "rzx.h"
 #include "settings.h"
 #include "snapshot.h"
 #include "tape.h"
@@ -522,6 +523,103 @@ fuse_host_commit_mass_storage( periph_type controller,
   fuse_engine_begin_operation();
   fuse_emulation_pause();
   error = mass_storage_commit( controller, unit );
+  fuse_emulation_unpause();
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}
+
+static fuse_host_operation_result
+check_rzx_operation( void )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result == FUSE_HOST_OPERATION_OK &&
+      fuse_engine_pending_decision() != FUSE_DECISION_NONE )
+    return FUSE_HOST_OPERATION_BUSY;
+  return result;
+}
+
+fuse_host_operation_result
+fuse_host_play_rzx( const char *filename, fuse_open_request *request )
+{
+  utils_file file;
+  int error;
+  fuse_host_operation_result result;
+  if( !request ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *request = (fuse_open_request){ 0 };
+  result = check_rzx_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !filename || !*filename ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( rzx_recording || rzx_playback || tape_recording )
+    return FUSE_HOST_OPERATION_BUSY;
+
+  fuse_engine_begin_operation();
+  fuse_emulation_pause();
+  error = utils_read_file( filename, &file );
+  if( !error ) error = rzx_request_open( &file, request );
+  utils_close_file( &file );
+  if( !request->id ) display_refresh_all();
+  fuse_emulation_unpause();
+  fuse_engine_end_operation();
+  if( error ) return FUSE_HOST_OPERATION_MEDIA_ERROR;
+  return request->id ? FUSE_HOST_OPERATION_NEEDS_DECISION :
+         FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_start_rzx_recording( const char *filename, int embed_snapshot )
+{
+  int error;
+  fuse_host_operation_result result = check_rzx_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !filename || !*filename ||
+      ( embed_snapshot != 0 && embed_snapshot != 1 ) )
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( rzx_playback || rzx_recording || tape_recording )
+    return FUSE_HOST_OPERATION_BUSY;
+  fuse_engine_begin_operation();
+  fuse_emulation_pause();
+  error = rzx_start_recording( filename, embed_snapshot );
+  fuse_emulation_unpause();
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_insert_rzx_snapshot( void )
+{
+  int error;
+  fuse_host_operation_result result = check_rzx_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  fuse_engine_begin_operation();
+  error = rzx_insert_snapshot();
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_stop_rzx( void )
+{
+  int error = 0;
+  fuse_host_operation_result result = check_rzx_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  fuse_engine_begin_operation();
+  if( rzx_recording ) error = rzx_stop_recording();
+  else if( rzx_playback ) error = rzx_stop_playback( 1 );
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_finalise_rzx( const char *filename )
+{
+  int error;
+  fuse_host_operation_result result = check_rzx_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !filename || !*filename ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( rzx_recording || rzx_playback ) return FUSE_HOST_OPERATION_BUSY;
+  fuse_engine_begin_operation();
+  fuse_emulation_pause();
+  error = rzx_finalise_recording( filename );
   fuse_emulation_unpause();
   fuse_engine_end_operation();
   return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
