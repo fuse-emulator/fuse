@@ -56,6 +56,7 @@ int pokemem_set_pokfile( const char *filename );
 int pokemem_find_pokfile( const char *filename );
 int pokemem_autoload_pokfile( void );
 int pokemem_read_from_file( const char *filename );
+void pokemem_read_loaded( const libspectrum_file *file );
 
 trainer_t *pokemem_trainer_list_add( libspectrum_byte bank,
                                      libspectrum_word address,

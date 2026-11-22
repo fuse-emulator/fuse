@@ -548,6 +548,19 @@ empty. The value and strings survive replacement, eject and shutdown; release
 with `fuse_disk_drive_info_free`, which needs no live engine. Copies are observations,
 not command tokens: operations still resolve current controller/slot state.
 
+## POK trainers
+
+Host File → Open of a `.pok` file loads the trainer list without opening the
+legacy selector or automatically applying new pokes. Copy the list with
+`fuse_host_copy_pok_trainers()` and free it with `fuse_pok_trainers_free()`.
+Use the copy's generation and zero-based ordinal to enable or disable a trainer
+with `fuse_host_set_pok_trainer()`. Pass a byte value when enabling a trainer
+that asks for one, otherwise pass `-1`. Reload or reset invalidates old selections,
+but existing copies remain readable. Disabling a trainer uses the existing POK
+restore rules. Companion POK discovery and the legacy selector are unchanged.
+The null host's `--open-pok FILE` mode enables and then disables the first
+usable inactive trainer, supplying 42 if the trainer asks for a value.
+
 ## IDE and MMC operations
 
 The owner-thread host calls insert, commit, eject and copy drive information

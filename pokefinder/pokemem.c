@@ -27,6 +27,7 @@
 #include <string.h>
 
 #include "compat.h"
+#include "fuse-engine.h"
 #include "machine.h"
 #include "memory_pages.h"
 #include "pokemem.h"
@@ -50,6 +51,8 @@ typedef enum do_t {
 char *pokfile = NULL;              /* Path of a .pok file to load */
 GSList *trainer_list = NULL;       /* Trainers loaded from a file */
 trainer_t *current_trainer = NULL; /* Last trainer parsed */
+
+static uint64_t trainer_generation;
 
 static void pokemem_read_from_buffer( const libspectrum_byte *buffer,
                                       size_t length );
@@ -97,6 +100,7 @@ pokemem_trainer_free( gpointer data, gpointer user_data GCC_UNUSED )
 void
 pokemem_clear( void )
 {
+  trainer_generation++;
   if( trainer_list ) {
     g_slist_foreach( trainer_list, pokemem_trainer_free, NULL );
     g_slist_free( trainer_list );
@@ -125,13 +129,20 @@ pokemem_read_from_file( const char *filename )
   pokemem_clear();
 
   error = utils_read_file( filename, &file );
-  if( error ) return error;
-
-  pokfile = utils_safe_strdup( filename );
-  pokemem_read_from_buffer( file.buffer, file.length );
-
+  if( !error ) {
+    pokfile = utils_safe_strdup( filename );
+    pokemem_read_from_buffer( file.buffer, file.length );
+  }
   utils_close_file( &file );
-  return 0;
+  return error;
+}
+
+void
+pokemem_read_loaded( const libspectrum_file *file )
+{
+  pokemem_clear();
+  pokfile = utils_safe_strdup( file->filename );
+  pokemem_read_from_buffer( file->buffer, file->length );
 }
 
 static void
@@ -441,6 +452,74 @@ pokemem_poke_deactivate( gpointer data, gpointer user_data GCC_UNUSED )
     RAM[ bank ][ address & 0x3fff ] = value;
   }
 
+}
+
+void
+fuse_pok_trainers_free( fuse_pok_trainers *info )
+{
+  size_t i;
+  if( !info ) return;
+  for( i = 0; i < info->count; i++ ) libspectrum_free( info->trainers[i].name );
+  libspectrum_free( info->trainers );
+  libspectrum_free( info );
+}
+
+fuse_host_operation_result
+fuse_host_copy_pok_trainers( fuse_pok_trainers **info )
+{
+  fuse_pok_trainers *copy;
+  GSList *item;
+  size_t i = 0;
+  fuse_host_operation_result result;
+  if( !info ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *info = NULL;
+  result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  copy = libspectrum_new0( fuse_pok_trainers, 1 );
+  copy->generation = trainer_generation;
+  copy->count = g_slist_length( trainer_list );
+  if( copy->count ) copy->trainers = libspectrum_new( fuse_pok_trainer,
+                                                      copy->count );
+  for( item = trainer_list; item; item = item->next ) {
+    const trainer_t *trainer = item->data;
+    fuse_pok_trainer *entry = &copy->trainers[i++];
+    entry->name = utils_safe_strdup( trainer->name );
+    entry->active = trainer->active;
+    entry->disabled = trainer->disabled || !trainer->poke_list;
+    entry->asks_value = trainer->ask_value;
+  }
+  *info = copy;
+  return FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_set_pok_trainer( uint64_t generation, size_t ordinal,
+                           int enabled, int value )
+{
+  GSList *item;
+  trainer_t *trainer;
+  int error, needs_value;
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( fuse_engine_pending_decision() != FUSE_DECISION_NONE )
+    return FUSE_HOST_OPERATION_BUSY;
+  if( generation != trainer_generation ) return FUSE_HOST_OPERATION_STALE;
+  if( enabled != 0 &&
+      enabled != 1 ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  for( item = trainer_list; item && ordinal; item = item->next ) ordinal--;
+  if( !item ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  trainer = item->data;
+  if( trainer->disabled ||
+      !trainer->poke_list ) return FUSE_HOST_OPERATION_MEDIA_ERROR;
+  needs_value = enabled && trainer->ask_value;
+  if( needs_value ? value < 0 || value > 255 : value != -1 )
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  fuse_engine_begin_operation();
+  if( needs_value && !trainer->active ) trainer->value = value;
+  error = enabled ? pokemem_trainer_activate( trainer ) :
+          pokemem_trainer_deactivate( trainer );
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
 }
 
 /* Open or Drag'n'Drop a .pok file */

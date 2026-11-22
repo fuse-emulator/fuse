@@ -201,10 +201,12 @@ ui_mouse_release( int suspend )
   return 0;
 }
 
+int null_ui_pokemem_selector_calls;
+
 void
 ui_pokemem_selector( const char *filename )
 {
-  /* Do nothing */
+  null_ui_pokemem_selector_calls++;
 }
 
 int

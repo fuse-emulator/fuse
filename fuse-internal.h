@@ -301,6 +301,27 @@ fuse_host_operation_result fuse_host_nmi( void );
 fuse_host_operation_result fuse_host_open_file( const char *filename,
                                                 fuse_open_request *request );
 
+typedef struct fuse_pok_trainer {
+  char *name;
+  int active, disabled, asks_value;
+} fuse_pok_trainer;
+
+typedef struct fuse_pok_trainers {
+  uint64_t generation;
+  size_t count;
+  fuse_pok_trainer *trainers;
+} fuse_pok_trainers;
+
+/* Owned copy of the loaded trainer list. A replacement or reset makes its
+   generation stale. Ordinals are zero-based. Pass -1 when no value is needed,
+   or 0–255 when enabling a trainer that asks for a value. */
+fuse_host_operation_result fuse_host_copy_pok_trainers(
+  fuse_pok_trainers **info );
+void fuse_pok_trainers_free( fuse_pok_trainers *info );
+fuse_host_operation_result fuse_host_set_pok_trainer( uint64_t generation,
+                                                      size_t ordinal,
+                                                      int enabled, int value );
+
 /* Single-drive controllers use MASTER. The backing name is an owned copy,
    NULL when no backing is attached. */
 typedef struct fuse_mass_storage_info {

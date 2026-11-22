@@ -298,7 +298,8 @@ open_loaded_file( utils_file *file, int autoload, libspectrum_id_t *type_ptr,
 
   case LIBSPECTRUM_CLASS_AUXILIARY:
     if( type == LIBSPECTRUM_ID_AUX_POK ) {
-      ui_pokemem_selector( filename );
+      if( request ) pokemem_read_loaded( file );
+      else ui_pokemem_selector( filename );
     }
     break;
 

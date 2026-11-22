@@ -1208,6 +1208,48 @@ check_rzx_recording_restore( void )
   assert( !remove( "restore.rzx" ) && !null_ui_confirm_joystick_calls );
 }
 
+extern int null_ui_pokemem_selector_calls;
+
+static void
+check_pok_open( void )
+{
+  static const unsigned char payload[] =
+    "NFixed\nZ 8 32768 99 17\nNCustom\nZ 8 32769 256 23\nY\n";
+  fuse_pok_trainers *before, *after;
+  fuse_open_request request;
+
+  writebyte_internal( 0x8000, 17 );
+  writebyte_internal( 0x8001, 23 );
+  assert( !utils_write_file( "trainers.pok", payload, sizeof( payload ) ) );
+  assert( fuse_host_open_file( "trainers.pok",
+                               &request ) == OK && !request.id );
+  assert( !null_ui_pokemem_selector_calls );
+  assert( fuse_host_copy_pok_trainers( &before ) == OK );
+  assert( before->count == 2 && !strcmp( before->trainers[0].name, "Fixed" ) );
+  assert( !before->trainers[0].active && !before->trainers[0].asks_value );
+  assert( before->trainers[1].asks_value && !before->trainers[1].disabled );
+  assert( fuse_host_set_pok_trainer( before->generation, 1, 1, -1 ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( readbyte_internal( 0x8001 ) == 23 );
+  assert( fuse_host_set_pok_trainer( before->generation, 0, 1, -1 ) == OK );
+  assert( fuse_host_set_pok_trainer( before->generation, 1, 1, 42 ) == OK );
+  assert( readbyte_internal( 0x8000 ) == 99 &&
+          readbyte_internal( 0x8001 ) == 42 );
+  assert( fuse_host_copy_pok_trainers( &after ) == OK );
+  assert( after->trainers[0].active && after->trainers[1].active );
+  assert( !before->trainers[0].active );
+  fuse_pok_trainers_free( after );
+  assert( fuse_host_set_pok_trainer( before->generation, 1, 0, -1 ) == OK );
+  assert( readbyte_internal( 0x8001 ) == 23 );
+  assert( fuse_host_open_file( "trainers.pok", &request ) == OK );
+  assert( readbyte_internal( 0x8000 ) == 17 );
+  assert( fuse_host_set_pok_trainer( before->generation, 0, 1, -1 ) ==
+          FUSE_HOST_OPERATION_STALE );
+  assert( !strcmp( before->trainers[0].name, "Fixed" ) );
+  fuse_pok_trainers_free( before );
+  assert( !remove( "trainers.pok" ) );
+}
+
 static void
 check_file_open( const char *mode )
 {
@@ -1886,6 +1928,8 @@ host_operations_test( int argc, char **argv )
     check_host_quit( !strcmp( argv[1], "host-quit-shutdown" ) );
   } else if( !strcmp( argv[1], "open-floppy" ) ) {
     check_open_floppy();
+  } else if( !strcmp( argv[1], "open-pok" ) ) {
+    check_pok_open();
   } else if( !strcmp( argv[1], "record-rzx-movie" ) ) {
     check_rzx_movie();
   } else if( !strcmp( argv[1], "record-rzx-rollback" ) ) {
