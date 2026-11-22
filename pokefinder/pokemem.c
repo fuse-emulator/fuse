@@ -522,6 +522,21 @@ fuse_host_set_pok_trainer( uint64_t generation, size_t ordinal,
   return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
 }
 
+fuse_host_operation_result
+fuse_host_add_custom_pok_trainer( size_t bank, size_t address, int value )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( bank > 8 || address > 0xffff || ( bank == 8 && address < 0x4000 ) ||
+      value < 0 || value > 256 ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( fuse_engine_pending_decision() != FUSE_DECISION_NONE )
+    return FUSE_HOST_OPERATION_BUSY;
+  fuse_engine_begin_operation();
+  pokemem_trainer_list_add( bank, address, value );
+  fuse_engine_end_operation();
+  return FUSE_HOST_OPERATION_OK;
+}
+
 /* Open or Drag'n'Drop a .pok file */
 int
 pokemem_set_pokfile( const char *filename )

@@ -30,6 +30,8 @@ extern libspectrum_byte (*pokefinder_possible)[ MEMORY_PAGE_SIZE ];
 extern libspectrum_byte (*pokefinder_impossible)[ MEMORY_PAGE_SIZE / 8 ];
 extern size_t pokefinder_count;
 
+void pokefinder_invalidate_host_search( void );
+void pokefinder_end( void );
 int pokefinder_is_allocated( void );
 void pokefinder_clear( void );
 int pokefinder_search( libspectrum_byte value );

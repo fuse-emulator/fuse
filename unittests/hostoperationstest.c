@@ -1209,6 +1209,34 @@ check_rzx_recording_restore( void )
 }
 
 static void
+check_host_poke_finder( void )
+{
+  fuse_poke_match *matches;
+  size_t count;
+
+  assert( fuse_host_copy_poke_matches( &matches,
+                                       &count ) == FUSE_HOST_OPERATION_STALE );
+  assert( !matches && !count );
+  assert( fuse_host_add_custom_pok_trainer( 9, 0,
+                                            1 ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_host_add_custom_pok_trainer( 8, 0x3fff,
+                                            1 ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_host_reset_poke_finder() == OK );
+  assert( fuse_host_copy_poke_matches( &matches, &count ) == OK && count );
+  assert( fuse_host_reset( FUSE_HOST_RESET_SOFT ) == OK );
+  assert( fuse_host_filter_poke_finder( FUSE_POKE_EXACT,
+                                        0 ) == FUSE_HOST_OPERATION_STALE );
+  assert( matches[0].offset < 0x4000 );
+  libspectrum_free( matches );
+  assert( fuse_host_reset_poke_finder() == OK );
+  assert( fuse_host_filter_poke_finder( FUSE_POKE_INCREMENTED, 0 ) == OK );
+  assert( fuse_host_copy_poke_matches( &matches,
+                                       &count ) == OK && !matches && !count );
+}
+
+static void
 check_host_binary( void )
 {
   static const libspectrum_byte input[] = { 0x12, 0x34, 0, 0xff, 0x56 };
@@ -1973,6 +2001,8 @@ host_operations_test( int argc, char **argv )
     check_host_quit( !strcmp( argv[1], "host-quit-shutdown" ) );
   } else if( !strcmp( argv[1], "open-floppy" ) ) {
     check_open_floppy();
+  } else if( !strcmp( argv[1], "host-poke-finder" ) ) {
+    check_host_poke_finder();
   } else if( !strcmp( argv[1], "host-binary" ) ) {
     check_host_binary();
   } else if( !strcmp( argv[1], "open-pok" ) ) {

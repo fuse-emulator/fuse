@@ -86,6 +86,7 @@
 #include "peripherals/ula.h"
 #include "peripherals/usource.h"
 #include "phantom_typist.h"
+#include "pokefinder/pokefinder.h"
 #include "pokefinder/pokemem.h"
 #include "profile.h"
 #include "psg.h"
@@ -1393,6 +1394,7 @@ static int fuse_end(void)
   snapshot_cancel_pending();
   rzx_cancel_pending();
   rzx_cancel_pending_recording();
+  pokefinder_end();
 
   movie_stop();
   /* Active trainer restoration needs live machine memory/maps. */

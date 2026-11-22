@@ -312,6 +312,29 @@ fuse_host_operation_result fuse_host_load_binary( const char *filename,
 fuse_host_operation_result fuse_host_save_binary( const char *filename,
                                                   size_t start, size_t length );
 
+typedef enum fuse_poke_filter {
+  FUSE_POKE_EXACT, FUSE_POKE_INCREMENTED, FUSE_POKE_DECREMENTED
+} fuse_poke_filter;
+
+typedef struct fuse_poke_match {
+  size_t bank, offset; /* Physical RAM bank and byte offset. */
+} fuse_poke_match;
+
+/* Reset takes a new RAM baseline; machine reset/selection invalidates it.
+   Copy returns an independent array (free with libspectrum_free()). */
+fuse_host_operation_result fuse_host_reset_poke_finder( void );
+fuse_host_operation_result fuse_host_filter_poke_finder(
+  fuse_poke_filter filter,
+  libspectrum_byte value );
+fuse_host_operation_result fuse_host_copy_poke_matches(
+  fuse_poke_match **matches,
+  size_t *count );
+
+/* Legacy custom POK addressing: banks 0–7, or 8 for mapped RAM. Value 256
+   asks for a byte at activation. Creating a trainer does not write memory. */
+fuse_host_operation_result fuse_host_add_custom_pok_trainer(
+  size_t bank, size_t address, int value );
+
 typedef struct fuse_pok_trainer {
   char *name;
   int active, disabled, asks_value;

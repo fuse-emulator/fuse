@@ -572,6 +572,18 @@ restore rules. Companion POK discovery and the legacy selector are unchanged.
 The null host's `--open-pok FILE` mode enables and then disables the first
 usable inactive trainer, supplying 42 if the trainer asks for a value.
 
+`fuse_host_reset_poke_finder()` samples writable RAM. The host can narrow the
+search by exact byte value or by increases or decreases from the finder’s
+baseline. `fuse_host_copy_poke_matches()` returns an owned array of physical
+RAM locations, even where the legacy chooser would show only a count. Machine
+reset invalidates the search, not copies already returned to the host.
+
+`fuse_host_add_custom_pok_trainer()` appends a trainer without applying it.
+It uses legacy POK addressing: physical banks 0–7 or selector 8 for mapped
+RAM. Finder matches in physical banks 8 and above cannot be passed directly
+as trainer banks. The null host’s `--poke-finder INPUT` mode seeds one byte,
+finds its location, and verifies that disabling the new trainer restores it.
+
 ## IDE and MMC operations
 
 The owner-thread host calls insert, commit, eject and copy drive information

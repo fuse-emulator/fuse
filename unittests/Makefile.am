@@ -457,6 +457,11 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    "$$program" only48 --binary-roundtrip sample.bin "$$consumer.bin" > "$$consumer-binary.out" 2> "$$consumer-binary.err"; \
 	    grep -Fx 'host: RAM at 8000: 12 34 00 ff' "$$consumer-binary.out" > /dev/null; \
 	    cmp sample.bin "$$consumer.bin"; rm "$$consumer.bin"; \
+	    printf '\377' > descending.bin; \
+	    for input in sample.bin descending.bin; do \
+	      "$$program" only48 --poke-finder "$$input" > "$$consumer-poke-finder.out" 2> "$$consumer-poke-finder.err"; \
+	      grep -Fx 'host: Poke Finder matched bank 2 offset 0000; trainer restored RAM' "$$consumer-poke-finder.out" > /dev/null; \
+	    done; rm descending.bin; \
 	    "$$program" only48 --open joystick.szx > "$$consumer-open-joystick.out" 2> "$$consumer-open-joystick.err"; \
 	    cmp expected-open-joystick "$$consumer-open-joystick.out"; \
 	    "$$program" only48 --open joystick.rzx > "$$consumer-open-rzx.out" 2> "$$consumer-open-rzx.err"; \
@@ -595,7 +600,7 @@ check-host-operations: unittests/legacyenginelinktest unittests/legacyenginesour
 	  cd "$$tmp"; export HOME=. XDG_CONFIG_HOME=. USERPROFILE=. WINDIR=. APPDATA=.; \
 	  for consumer in legacyenginelinktest legacyenginesourcetest; do \
 	    for mode in success filesystem-oracle filesystem tape-contract tape-info trapped-recording snapshot-roundtrip autoload-success autoload-failure \
-	      open-auto open-noauto open-custom open-reset-failure open-snapshot open-snapshot-joystick open-fallback open-rzx-stop open-rzx-embedded open-rzx-external record-rzx record-rzx-restore record-rzx-rollback record-rzx-movie open-pok host-binary open-floppy \
+	      open-auto open-noauto open-custom open-reset-failure open-snapshot open-snapshot-joystick open-fallback open-rzx-stop open-rzx-embedded open-rzx-external record-rzx record-rzx-restore record-rzx-rollback record-rzx-movie open-pok host-binary host-poke-finder open-floppy \
 	      disk-save disk-save-beta microdrive host-quit host-quit-shutdown \
 	      reset-failure select-failure peripheral-reset-failure peripheral-select-failure; do \
 	      "$$root/$$consumer$(EXEEXT)" --host-operations-test "$$mode" "$$roms"; \

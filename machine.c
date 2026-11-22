@@ -44,6 +44,7 @@
 #include "movie.h"
 #include "peripherals/ula.h"
 #include "peripherals/dck.h"
+#include "pokefinder/pokefinder.h"
 #include "pokefinder/pokemem.h"
 #include "rzx.h"
 #include "settings.h"
@@ -532,6 +533,8 @@ machine_reset_from_snapshot( int hard_reset, libspectrum_snap *snap )
   if( tape_recording && tape_record_stop() ) return 1;
   specplus3_bus_invalidate();
   if( hard_reset ) machine_clear_snapshot_rom_banks();
+
+  pokefinder_invalidate_host_search();
 
   /* Clear poke list (undoes effects of active pokes on Spectrum memory) */
   pokemem_clear();

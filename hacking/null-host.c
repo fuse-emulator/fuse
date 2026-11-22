@@ -504,6 +504,65 @@ microdrive_demo( const char *filename )
 }
 
 static int
+poke_finder_demo( const char *filename )
+{
+  fuse_poke_match *matches = NULL;
+  fuse_pok_trainers *info = NULL;
+  size_t count, bank, offset;
+  libspectrum_byte original, changed, value;
+  int error = 1;
+
+  if( operation( "seed RAM", fuse_host_load_binary( filename, 0x8000, 1 ) ) ||
+      operation( "read RAM", fuse_host_copy_memory( 0x8000, 1, &original ) ) ||
+      operation( "reset search", fuse_host_reset_poke_finder() ) ||
+      operation( "exact search",
+                 fuse_host_filter_poke_finder( FUSE_POKE_EXACT, original ) ) )
+    goto done;
+  changed = original == 255 ? 254 : original + 1;
+  if( operation( "add mapped trainer",
+                 fuse_host_add_custom_pok_trainer( 8, 0x8000, changed ) ) ||
+      operation( "copy trainers", fuse_host_copy_pok_trainers( &info ) ) ||
+      info->count != 1 ||
+      operation( "change RAM",
+                 fuse_host_set_pok_trainer( info->generation, 0, 1, -1 ) ) ||
+      operation( "filter search", fuse_host_filter_poke_finder(
+                   original ==
+                   255 ? FUSE_POKE_DECREMENTED : FUSE_POKE_INCREMENTED, 0 ) ) ||
+      operation( "copy matches",
+                 fuse_host_copy_poke_matches( &matches, &count ) ) ||
+      count != 1 ||
+      operation( "restore mapped byte",
+                 fuse_host_set_pok_trainer( info->generation, 0, 0, -1 ) ) )
+    goto done;
+  bank = matches[0].bank;
+  offset = matches[0].offset;
+  if( bank >= 8 ||
+      operation( "add matched trainer",
+                 fuse_host_add_custom_pok_trainer( bank, offset, 256 ) ) ||
+      operation( "apply matched trainer",
+                 fuse_host_set_pok_trainer( info->generation, 1, 1,
+                                            changed ) ) ||
+      operation( "read matched byte",
+                 fuse_host_copy_memory( 0x8000, 1, &value ) ) ||
+      value != changed ||
+      operation( "disable matched trainer",
+                 fuse_host_set_pok_trainer( info->generation, 1, 0, -1 ) ) ||
+      operation( "read restored byte",
+                 fuse_host_copy_memory( 0x8000, 1, &value ) ) ||
+      value != original ) goto done;
+  printf(
+    "host: Poke Finder matched bank %lu offset %04lx; trainer restored RAM\n",
+    (unsigned long)bank, (unsigned long)offset );
+  error = 0;
+
+done:
+  if( error ) fputs( "host: Poke Finder scenario failed\n", stderr );
+  libspectrum_free( matches );
+  fuse_pok_trainers_free( info );
+  return error;
+}
+
+static int
 pok_demo( const char *filename )
 {
   fuse_open_request request;
@@ -625,6 +684,7 @@ main( int argc, char **argv )
   int tape_lifecycle = argc == 5 && !strcmp( argv[2], "--tape-lifecycle" );
   int tape_replacement = argc == 5 && !strcmp( argv[2], "--replace-tape" );
   int open_pok = argc >= 3 && !strcmp( argv[2], "--open-pok" );
+  int poke_finder = argc >= 3 && !strcmp( argv[2], "--poke-finder" );
   int binary = argc >= 3 && !strcmp( argv[2], "--binary-roundtrip" );
   int rzx_movie = argc >= 3 && !strcmp( argv[2], "--rzx-to-movie" );
   int rzx_record = argc >= 3 && !strcmp( argv[2], "--record-rzx" );
@@ -635,11 +695,12 @@ main( int argc, char **argv )
 
   if( ( argc != 2 && argc != 3 && argc != 4 && argc != 5 ) ||
       ( ( microdrive || rzx_record || open_over_tape || open_over_floppy ||
-          open_pok ) &&
+          open_pok || poke_finder ) &&
         argc != 4 ) ||
       ( argc == 4 && strcmp( argv[2],
                              "--open" ) && !open_over_tape &&
-        !open_over_floppy && !open_pok && !microdrive && !disk_lifecycle &&
+        !open_over_floppy && !open_pok && !poke_finder && !microdrive &&
+        !disk_lifecycle &&
         !tape_record &&
         !rzx_record &&
         !parked_eject &&
@@ -649,7 +710,7 @@ main( int argc, char **argv )
       ( argc == 3 && ( !strcmp( argv[2], "--open" ) || !strcmp( argv[2], "--save-disk" ) ||
                       !strcmp( argv[2], "--disk-lifecycle" ) || !strcmp( argv[2], "--tape-lifecycle" ) || !strcmp( argv[2], "--replace-tape" ) ||
                       !strcmp( argv[2], "--record-tape" ) || !strcmp( argv[2], "--parked-tape-eject" ) || !strcmp( argv[2], "--save-snapshot" ) || !strcmp( argv[2], "--filesystem" ) || !strcmp( argv[2], "--divmmc" ) ) ) ) {
-    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --open-pok FILE | --binary-roundtrip INPUT OUTPUT | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --record-rzx OUTPUT | --rzx-to-movie INPUT OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
+    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --open-pok FILE | --binary-roundtrip INPUT OUTPUT | --poke-finder INPUT | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --record-rzx OUTPUT | --rzx-to-movie INPUT OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
     return EXIT_FAILURE;
   }
   if( filesystem || divmmc ) {
@@ -686,6 +747,10 @@ main( int argc, char **argv )
   }
   prepared = 1;
   puts( plus3 ? "host: prepared plus3" : "host: prepared 48" );
+  if( poke_finder ) {
+    if( !poke_finder_demo( argv[3] ) ) status = EXIT_SUCCESS;
+    goto cleanup;
+  }
   if( binary ) {
     libspectrum_byte bytes[4];
     if( operation( "load binary",

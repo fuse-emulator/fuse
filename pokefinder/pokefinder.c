@@ -27,6 +27,7 @@
 
 #include "libspectrum.h"
 
+#include "fuse-engine.h"
 #include "machine.h"
 #include "memory_pages.h"
 #include "pokefinder.h"
@@ -44,6 +45,22 @@ libspectrum_byte (*pokefinder_impossible)[ MEMORY_PAGE_SIZE / 8 ];
 size_t pokefinder_count;
 
 static int pokefinder_allocated;
+static int host_search_valid;
+
+void
+pokefinder_invalidate_host_search( void )
+{
+  host_search_valid = 0;
+}
+
+void
+pokefinder_end( void )
+{
+  host_search_valid = pokefinder_allocated = 0;
+  pokefinder_count = 0;
+  pokefinder_possible = NULL;
+  pokefinder_impossible = NULL;
+}
 
 static void
 pokefinder_allocate( void )
@@ -154,6 +171,71 @@ pokefinder_decremented( void )
   }
 
   return 0;
+}
+
+static fuse_host_operation_result
+check_host_search( void )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result == FUSE_HOST_OPERATION_OK &&
+      fuse_engine_pending_decision() != FUSE_DECISION_NONE )
+    return FUSE_HOST_OPERATION_BUSY;
+  return result;
+}
+
+fuse_host_operation_result
+fuse_host_reset_poke_finder( void )
+{
+  fuse_host_operation_result result = check_host_search();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  fuse_engine_begin_operation();
+  pokefinder_clear();
+  host_search_valid = 1;
+  fuse_engine_end_operation();
+  return result;
+}
+
+fuse_host_operation_result
+fuse_host_filter_poke_finder( fuse_poke_filter filter, libspectrum_byte value )
+{
+  fuse_host_operation_result result = check_host_search();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( filter < FUSE_POKE_EXACT || filter > FUSE_POKE_DECREMENTED )
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( !host_search_valid ) return FUSE_HOST_OPERATION_STALE;
+  fuse_engine_begin_operation();
+  switch( filter ) {
+  case FUSE_POKE_EXACT: pokefinder_search( value ); break;
+  case FUSE_POKE_INCREMENTED: pokefinder_incremented(); break;
+  case FUSE_POKE_DECREMENTED: pokefinder_decremented(); break;
+  }
+  fuse_engine_end_operation();
+  return result;
+}
+
+fuse_host_operation_result
+fuse_host_copy_poke_matches( fuse_poke_match **matches, size_t *count )
+{
+  size_t page, offset, i = 0;
+  fuse_host_operation_result result;
+  if( !matches || !count ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *matches = NULL;
+  *count = 0;
+  result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !host_search_valid ) return FUSE_HOST_OPERATION_STALE;
+  if( !pokefinder_count ) return FUSE_HOST_OPERATION_OK;
+  *matches = libspectrum_new( fuse_poke_match, pokefinder_count );
+  for( page = 0; page < POKEFINDER_PAGE_COUNT; page++ ) {
+    const memory_page *mapping = &memory_map_ram[page];
+    for( offset = 0; offset < MEMORY_PAGE_SIZE; offset++ ) {
+      if( pokefinder_impossible[page][offset / 8] & 1 << ( offset & 7 ) )continue;
+      (*matches )[i].bank = mapping->page_num;
+      (*matches )[i++].offset = mapping->offset + offset;
+    }
+  }
+  *count = i;
+  return FUSE_HOST_OPERATION_OK;
 }
 
 int
