@@ -54,14 +54,18 @@ typedef enum fuse_init_result {
    Owner-thread only, no recursion; selected UI, device waits, RNG and process-
    global library/error policy remain. Not toolkit-free or a public SDK. */
 typedef struct fuse_host_config fuse_host_config;
+
 fuse_host_config *fuse_host_config_alloc( void );
 void fuse_host_config_free( fuse_host_config *config );
+
 int fuse_host_config_set_machine( fuse_host_config *config, const char *id );
 int fuse_host_config_set_sound( fuse_host_config *config, int enabled );
 int fuse_host_config_set_auto_load( fuse_host_config *config, int enabled );
+
 /* Existing ROM tape-trap setting (default retained). Disable for explicit
    pulse recording; enabled SAVE traps append decoded blocks automatically. */
 int fuse_host_config_set_tape_traps( fuse_host_config *config, int enabled );
+
 /* Set DivMMC enablement at preparation; not a runtime toggle. */
 int fuse_host_config_set_divmmc( fuse_host_config *config, int enabled );
 
@@ -80,11 +84,13 @@ typedef struct fuse_host_rom {
   void *context;
   void (*release)( void *context );
 } fuse_host_rom;
+
 typedef struct fuse_host_resources {
   void *context;
   int (*acquire_rom)( void *context, const char *logical_name,
                       fuse_host_rom *rom );
 } fuse_host_resources;
+
 fuse_init_result fuse_host_prepare( const fuse_host_config *config,
                                     const fuse_host_resources *resources );
 
@@ -129,11 +135,12 @@ typedef struct fuse_quit_request {
 /* Resolve tape then floppies. Refuses dirty Microdrive/IDE/MMC before any
    eject. READY_TO_SHUT_DOWN prevents more execution; call fuse_shutdown(). */
 fuse_host_operation_result fuse_host_request_quit( fuse_quit_request *request );
+
 /* A reply may return the next decision. Other host operations are BUSY while
    Quit awaits a reply; shutdown remains unconditional teardown. */
 fuse_host_operation_result fuse_host_answer_quit(
-  fuse_media_decision_id id, fuse_media_decision_choice choice, const char *path,
-  fuse_quit_request *next );
+  fuse_media_decision_id id, fuse_media_decision_choice choice,
+  const char *path, fuse_quit_request *next );
 
 typedef enum fuse_host_reset_kind {
   FUSE_HOST_RESET_SOFT, FUSE_HOST_RESET_HARD
@@ -176,12 +183,17 @@ fuse_host_operation_result fuse_host_answer_snapshot_joystick(
 
 /* Engine interface selection, deliberately separate from input delivery. */
 int fuse_host_config_set_joystick( fuse_host_config *config,
-  fuse_host_joystick slot, joystick_type_t output );
-int fuse_host_config_set_mouse_swap_buttons( fuse_host_config *config, int swap );
+                                   fuse_host_joystick slot,
+                                   joystick_type_t output );
+
+int fuse_host_config_set_mouse_swap_buttons( fuse_host_config *config,
+                                             int swap );
+
 typedef enum fuse_host_joystick_button {
   FUSE_HOST_JOYSTICK_LEFT, FUSE_HOST_JOYSTICK_RIGHT, FUSE_HOST_JOYSTICK_UP,
   FUSE_HOST_JOYSTICK_DOWN, FUSE_HOST_JOYSTICK_FIRE
 } fuse_host_joystick_button;
+
 typedef enum fuse_host_mouse_button {
   FUSE_HOST_MOUSE_LEFT, FUSE_HOST_MOUSE_RIGHT
 } fuse_host_mouse_button;
@@ -189,6 +201,7 @@ typedef enum fuse_host_mouse_button {
 fuse_host_operation_result fuse_host_select_machine( const char *id );
 fuse_host_operation_result fuse_host_reset( fuse_host_reset_kind kind );
 fuse_host_operation_result fuse_host_nmi( void );
+
 /* File > Open: existing identification/dispatch, current auto_load/ROM
    eligibility, machine fallback and selected-UI services, followed by refresh.
    Path borrowed through return. OK means legacy zero, which can include a
@@ -210,11 +223,16 @@ typedef struct fuse_mass_storage_info {
 } fuse_mass_storage_info;
 
 fuse_host_operation_result fuse_host_copy_mass_storage_info(
-  periph_type controller, libspectrum_ide_unit unit, fuse_mass_storage_info **info );
+  periph_type controller, libspectrum_ide_unit unit,
+  fuse_mass_storage_info **info );
 void fuse_mass_storage_info_free( fuse_mass_storage_info *info );
-fuse_host_operation_result fuse_host_eject_mass_storage( periph_type controller, libspectrum_ide_unit unit );
+fuse_host_operation_result fuse_host_eject_mass_storage( periph_type controller,
+                                                         libspectrum_ide_unit
+                                                         unit );
+
 /* Commit uses the controller's existing reporting; success is not durability. */
-fuse_host_operation_result fuse_host_commit_mass_storage( periph_type controller, libspectrum_ide_unit unit );
+fuse_host_operation_result fuse_host_commit_mass_storage(
+  periph_type controller, libspectrum_ide_unit unit );
 fuse_host_operation_result fuse_host_insert_mass_storage(
   periph_type controller, libspectrum_ide_unit unit, const char *filename );
 
@@ -226,6 +244,7 @@ fuse_host_operation_result fuse_host_insert_mass_storage(
    RZX finalization on first pause). Nonzero writer result maps MEDIA_ERROR;
    no rollback, durability or complete-state preservation guarantee. */
 fuse_host_operation_result fuse_host_save_snapshot_file( const char *filename );
+
 /* Explicit insertion without autoload or a linked UI prompt. Read input before
    handling the old tape. NEEDS_DECISION returns a nonzero ID and owns a copy
    of the input and path until the reply; all other results clear the ID.
@@ -278,29 +297,40 @@ fuse_host_operation_result fuse_host_copy_tape_info( fuse_tape_info **info );
    it does not autoload. Insert and New return NEEDS_DECISION with a nonzero ID
    for dirty media; other results clear it. Reply with answer_disk_eject.
    Unavailable/disabled drives return MEDIA_ERROR; unknown slots are invalid. */
-fuse_host_operation_result fuse_host_insert_disk_file( fuse_disk_controller controller,
-  int slot, const char *filename, fuse_media_decision_id *request );
+fuse_host_operation_result fuse_host_insert_disk_file(
+  fuse_disk_controller controller,
+  int slot,
+  const char *filename, fuse_media_decision_id *request );
 /* Save uses a borrowed host-authorized target, or NULL for the retained target.
    No chooser or overwrite prompt. An existing target can be replaced;
    there is no atomic-write guarantee. */
-fuse_host_operation_result fuse_host_save_disk_file( fuse_disk_controller controller,
-                                                    int slot, const char *filename );
+fuse_host_operation_result fuse_host_save_disk_file(
+  fuse_disk_controller controller,
+  int slot,
+  const char *filename );
 /* New uses configured geometry and controller insertion hooks (including +3
    preformat). */
 fuse_host_operation_result fuse_host_new_disk( fuse_disk_controller controller,
-  int slot, fuse_media_decision_id *request );
+                                               int slot,
+                                               fuse_media_decision_id *request );
 /* Prompt-free eject: NEEDS_DECISION sets a nonzero ID; otherwise clears it. */
-fuse_host_operation_result fuse_host_eject_disk( fuse_disk_controller controller,
-                                                  int slot, fuse_media_decision_id *request );
+fuse_host_operation_result fuse_host_eject_disk(
+  fuse_disk_controller controller,
+  int slot,
+  fuse_media_decision_id *request );
 /* SAVE uses the existing target if path is NULL, or a host-authorized path.
    Other choices require NULL. A valid reply consumes the ID. After successful
    eject, a pending Insert or New installs the requested media. */
 fuse_host_operation_result fuse_host_answer_disk_eject(
-  fuse_media_decision_id request, fuse_media_decision_choice choice, const char *path );
-fuse_host_operation_result fuse_host_set_disk_flipped( fuse_disk_controller controller,
-                                                      int slot, int flipped );
-fuse_host_operation_result fuse_host_set_disk_write_protected( fuse_disk_controller controller,
-                                                              int slot, int write_protected );
+  fuse_media_decision_id request, fuse_media_decision_choice choice,
+  const char *path );
+fuse_host_operation_result fuse_host_set_disk_flipped(
+  fuse_disk_controller controller,
+  int slot, int flipped );
+fuse_host_operation_result fuse_host_set_disk_write_protected(
+  fuse_disk_controller controller,
+  int slot,
+  int write_protected );
 /* Copy on the owner thread between execution turns, including registered but
    inactive/disabled drives. Unknown controller/slot is INVALID_ARGUMENT. *info
    is set to NULL on failure; pass a fresh result pointer (free any prior copy
@@ -312,17 +342,20 @@ fuse_host_operation_result fuse_host_copy_disk_drive_info(
 /* Normalized keyboard values use shared Fuse translation and keyboard-joystick
    mapping, but never trigger menus/widgets/grab actions (even for F-keys/Escape).
    These are not toolkit keycodes. Direct matrix injection is a separate option. */
-fuse_host_operation_result fuse_host_keyboard_event( input_key key, int pressed );
+fuse_host_operation_result fuse_host_keyboard_event( input_key key,
+                                                     int pressed );
 fuse_host_operation_result fuse_host_spectrum_key_event( fuse_host_key key,
-                                                        int pressed );
-fuse_host_operation_result fuse_host_joystick_event( fuse_host_joystick joystick,
-  fuse_host_joystick_button button, int pressed );
+                                                         int pressed );
+fuse_host_operation_result fuse_host_joystick_event(
+  fuse_host_joystick joystick,
+  fuse_host_joystick_button
+  button, int pressed );
 /* Relative motion in host-style coordinates (positive y down), wrapping the
    hardware's 8-bit counters. Logical buttons respect Fuse's swap configuration;
    pointer capture and other native UI actions remain host policy. */
 fuse_host_operation_result fuse_host_mouse_motion( int dx, int dy );
 fuse_host_operation_result fuse_host_mouse_event( fuse_host_mouse_button button,
-                                                 int pressed );
+                                                  int pressed );
 /* Clears physical keyboard/joystick/mouse buttons, retaining mouse position and
    synthetic typing. Select/reset do not add an implicit release: the host sends
    release-all explicitly for focus loss, retaining existing reset semantics. */
@@ -366,7 +399,8 @@ fuse_run_result fuse_run_frame( void );
 fuse_run_result fuse_run_tstates( unsigned long budget );
 
 /* Available at a host breakpoint or single-step stop. Copy by value. */
-fuse_host_operation_result fuse_host_debugger_copy_registers( processor *registers );
+fuse_host_operation_result fuse_host_debugger_copy_registers(
+  processor *registers );
 
 typedef enum fuse_debugger_access {
   FUSE_DEBUGGER_ACCESS_READ,
