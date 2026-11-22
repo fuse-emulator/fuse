@@ -625,6 +625,7 @@ main( int argc, char **argv )
   int tape_lifecycle = argc == 5 && !strcmp( argv[2], "--tape-lifecycle" );
   int tape_replacement = argc == 5 && !strcmp( argv[2], "--replace-tape" );
   int open_pok = argc >= 3 && !strcmp( argv[2], "--open-pok" );
+  int binary = argc >= 3 && !strcmp( argv[2], "--binary-roundtrip" );
   int rzx_movie = argc >= 3 && !strcmp( argv[2], "--rzx-to-movie" );
   int rzx_record = argc >= 3 && !strcmp( argv[2], "--record-rzx" );
   int microdrive = argc >= 3 && !strcmp( argv[2], "--microdrive" );
@@ -643,12 +644,12 @@ main( int argc, char **argv )
         !rzx_record &&
         !parked_eject &&
         !snapshot_save && !filesystem && !divmmc ) ||
-      ( rzx_movie && argc != 5 ) ||
-      ( argc == 5 && !disk_save && !tape_lifecycle && !tape_replacement && !rzx_movie ) ||
+      ( ( rzx_movie || binary ) && argc != 5 ) ||
+      ( argc == 5 && !disk_save && !tape_lifecycle && !tape_replacement && !rzx_movie && !binary ) ||
       ( argc == 3 && ( !strcmp( argv[2], "--open" ) || !strcmp( argv[2], "--save-disk" ) ||
                       !strcmp( argv[2], "--disk-lifecycle" ) || !strcmp( argv[2], "--tape-lifecycle" ) || !strcmp( argv[2], "--replace-tape" ) ||
                       !strcmp( argv[2], "--record-tape" ) || !strcmp( argv[2], "--parked-tape-eject" ) || !strcmp( argv[2], "--save-snapshot" ) || !strcmp( argv[2], "--filesystem" ) || !strcmp( argv[2], "--divmmc" ) ) ) ) {
-    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --open-pok FILE | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --record-rzx OUTPUT | --rzx-to-movie INPUT OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
+    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --open-pok FILE | --binary-roundtrip INPUT OUTPUT | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --record-rzx OUTPUT | --rzx-to-movie INPUT OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
     return EXIT_FAILURE;
   }
   if( filesystem || divmmc ) {
@@ -685,6 +686,22 @@ main( int argc, char **argv )
   }
   prepared = 1;
   puts( plus3 ? "host: prepared plus3" : "host: prepared 48" );
+  if( binary ) {
+    libspectrum_byte bytes[4];
+    if( operation( "load binary",
+                   fuse_host_load_binary( argv[3], 0x8000,
+                                          sizeof( bytes ) ) ) ||
+        operation( "copy memory",
+                   fuse_host_copy_memory( 0x8000, sizeof( bytes ), bytes ) ) ||
+        operation( "save binary",
+                   fuse_host_save_binary( argv[4], 0x8000, sizeof( bytes ) ) ) )
+      goto cleanup;
+    printf( "host: RAM at 8000: %02x %02x %02x %02x\n",
+            (unsigned)bytes[0], (unsigned)bytes[1],
+            (unsigned)bytes[2], (unsigned)bytes[3] );
+    status = EXIT_SUCCESS;
+    goto cleanup;
+  }
   if( open_pok ) {
     if( !pok_demo( argv[3] ) ) status = EXIT_SUCCESS;
     goto cleanup;

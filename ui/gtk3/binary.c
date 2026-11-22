@@ -255,7 +255,7 @@ load_data( GtkEntry *entry GCC_UNUSED, gpointer user_data )
 {
   struct binary_info *info = user_data;
 
-  long start, length; size_t i;
+  long start, length;
   const gchar *nptr;
   char *endptr;
   int base;
@@ -292,8 +292,7 @@ load_data( GtkEntry *entry GCC_UNUSED, gpointer user_data )
     return;
   }
 
-  for( i = 0; i < length; i++ )
-    writebyte_internal( start + i, info->file.buffer[ i ] );
+  utils_load_binary( start, length, info->file.buffer );
 
   gtkui_destroy_widget_and_quit( info->dialog, NULL );
 }

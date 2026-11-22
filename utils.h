@@ -63,6 +63,10 @@ int utils_read_screen( const char *filename, utils_file *screen );
 
 char* utils_safe_strdup( const char *src );
 
+void utils_copy_memory( libspectrum_word start, size_t length,
+                        libspectrum_byte *buffer );
+void utils_load_binary( libspectrum_word start, size_t length,
+                        const libspectrum_byte *buffer );
 int
 utils_save_binary( libspectrum_word start, size_t length,
                    const char *filename );

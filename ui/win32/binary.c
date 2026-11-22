@@ -178,7 +178,7 @@ load_data( HWND hwndDlg, LONG_PTR user_data )
   struct binary_info *info = ( struct binary_info * )user_data;
   HWND hwnd_control;
 
-  long start, length; size_t i;
+  long start, length;
 
   TCHAR *temp_buffer, *endptr;
   size_t temp_buffer_len;
@@ -236,8 +236,7 @@ load_data( HWND hwndDlg, LONG_PTR user_data )
     return;
   }
 
-  for( i = 0; i < length; i++ )
-    writebyte_internal( start + i, info->file.buffer[ i ] );
+  utils_load_binary( start, length, info->file.buffer );
 
   EndDialog( hwndDlg, 0 );
 }

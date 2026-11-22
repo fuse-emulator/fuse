@@ -690,18 +690,31 @@ utils_read_screen( const char *filename, utils_file *screen )
   return 0;
 }
 
+void
+utils_copy_memory( libspectrum_word start, size_t length,
+                   libspectrum_byte *buffer )
+{
+  size_t i;
+  for( i = 0; i < length; i++ ) buffer[i] = readbyte_internal( start + i );
+}
+
+void
+utils_load_binary( libspectrum_word start, size_t length,
+                   const libspectrum_byte *buffer )
+{
+  size_t i;
+  for( i = 0; i < length; i++ ) writebyte_internal( start + i, buffer[i] );
+}
+
 int
 utils_save_binary( libspectrum_word start, size_t length,
                    const char *filename )
 {
   libspectrum_byte *buffer;
-  size_t i;
-  int error = 0;
+  int error;
 
   buffer = libspectrum_new( libspectrum_byte, length );
-
-  for( i = 0; i < length; i++ )
-    buffer[ i ] = readbyte_internal( start + i );
+  utils_copy_memory( start, length, buffer );
 
   error = utils_write_file( filename, buffer, length );
 

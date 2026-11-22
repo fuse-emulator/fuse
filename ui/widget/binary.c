@@ -244,11 +244,8 @@ ask_length( void )
 static void
 load_data( void )
 {
-  libspectrum_dword i;
-
-  for( i = 0; i < widget_binary.length; i++ )
-    writebyte_internal( widget_binary.start + i,
-                        widget_binary.file.buffer[ i ] );
+  utils_load_binary( widget_binary.start, widget_binary.length,
+                     widget_binary.file.buffer );
 }
 
 static void

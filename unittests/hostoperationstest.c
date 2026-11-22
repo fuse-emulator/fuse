@@ -1208,6 +1208,51 @@ check_rzx_recording_restore( void )
   assert( !remove( "restore.rzx" ) && !null_ui_confirm_joystick_calls );
 }
 
+static void
+check_host_binary( void )
+{
+  static const libspectrum_byte input[] = { 0x12, 0x34, 0, 0xff, 0x56 };
+  libspectrum_byte copy[4];
+  utils_file output;
+
+  assert( !utils_write_file( "input.bin", input, sizeof( input ) ) );
+  assert( fuse_host_copy_memory( 0xffff, 2,
+                                 copy ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_host_copy_memory( 0x10000, 1,
+                                 copy ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_host_copy_memory( 0, 0,
+                                 copy ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_host_load_binary( "input.bin", 0xfffd,
+                                 4 ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_host_save_binary( "output.bin", 0xffff,
+                                 2 ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( !compat_file_exists( "output.bin" ) );
+  assert( !fuse_emulation_pause() );
+  assert( fuse_host_load_binary( "input.bin", 0xfffc, sizeof( copy ) ) == OK );
+  assert( fuse_host_load_binary( "input.bin", 0xfffa,
+                                 sizeof( input ) + 1 ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( fuse_host_load_binary( "missing.bin", 0xfffc,
+                                 sizeof( copy ) ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( fuse_host_copy_memory( 0xfffc, sizeof( copy ), copy ) == OK );
+  assert( !memcmp( copy, input, sizeof( copy ) ) );
+  assert( !utils_write_file( "output.bin", input, sizeof( input ) ) );
+  assert( fuse_host_save_binary( "output.bin", 0xfffc, sizeof( copy ) ) == OK );
+  assert( fuse_host_save_binary( "missing-directory/output.bin", 0xfffc,
+                                 sizeof( copy ) ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( fuse_emulation_paused == 1 && !fuse_emulation_unpause() );
+  assert( !utils_read_file( "output.bin", &output ) );
+  assert( output.length == sizeof( copy ) && !memcmp( output.buffer, input,
+                                                      output.length ) );
+  utils_close_file( &output );
+  assert( !remove( "input.bin" ) && !remove( "output.bin" ) );
+}
+
 extern int null_ui_pokemem_selector_calls;
 
 static void
@@ -1928,6 +1973,8 @@ host_operations_test( int argc, char **argv )
     check_host_quit( !strcmp( argv[1], "host-quit-shutdown" ) );
   } else if( !strcmp( argv[1], "open-floppy" ) ) {
     check_open_floppy();
+  } else if( !strcmp( argv[1], "host-binary" ) ) {
+    check_host_binary();
   } else if( !strcmp( argv[1], "open-pok" ) ) {
     check_pok_open();
   } else if( !strcmp( argv[1], "record-rzx-movie" ) ) {

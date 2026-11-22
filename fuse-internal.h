@@ -301,6 +301,17 @@ fuse_host_operation_result fuse_host_nmi( void );
 fuse_host_operation_result fuse_host_open_file( const char *filename,
                                                 fuse_open_request *request );
 
+/* Operate on the current mapped 64 KiB address space without wrapping.
+   Length is nonzero. Copy writes to the caller's buffer. Load uses the
+   first length bytes of the file and rejects short input before writing.
+   Save uses an authorized target and may overwrite it without a prompt. */
+fuse_host_operation_result fuse_host_copy_memory( size_t start, size_t length,
+                                                  libspectrum_byte *buffer );
+fuse_host_operation_result fuse_host_load_binary( const char *filename,
+                                                  size_t start, size_t length );
+fuse_host_operation_result fuse_host_save_binary( const char *filename,
+                                                  size_t start, size_t length );
+
 typedef struct fuse_pok_trainer {
   char *name;
   int active, disabled, asks_value;

@@ -548,6 +548,17 @@ empty. The value and strings survive replacement, eject and shutdown; release
 with `fuse_disk_drive_info_free`, which needs no live engine. Copies are observations,
 not command tokens: operations still resolve current controller/slot state.
 
+## Memory and binary files
+
+`fuse_host_copy_memory()` reads the current mapped address space into a
+caller-owned buffer without advancing emulation. The named binary load/save
+operations use the same mapped reads and writes as the legacy tools (including
+normal ROM write protection). All three reject empty or wrapping ranges.
+Load uses the requested prefix and rejects short input before writing; Save
+can overwrite an authorized target without prompting. The file operations
+retain the legacy pause side effects. `--binary-roundtrip INPUT OUTPUT` in the
+null host copies four bytes through RAM at `0x8000` and saves them again.
+
 ## POK trainers
 
 Host File → Open of a `.pok` file loads the trainer list without opening the

@@ -647,6 +647,64 @@ fuse_host_finalise_rzx( const char *filename )
   return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
 }
 
+static int
+valid_memory_range( size_t start, size_t length )
+{
+  return start < 0x10000 && length && length <= 0x10000 - start;
+}
+
+fuse_host_operation_result
+fuse_host_copy_memory( size_t start, size_t length, libspectrum_byte *buffer )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !buffer || !valid_memory_range( start, length ) )
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  fuse_engine_begin_operation();
+  utils_copy_memory( start, length, buffer );
+  fuse_engine_end_operation();
+  return FUSE_HOST_OPERATION_OK;
+}
+
+static fuse_host_operation_result
+host_binary_file( const char *filename, size_t start, size_t length, int load )
+{
+  int error;
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !filename || !*filename || !valid_memory_range( start, length ) )
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( fuse_engine_pending_decision() != FUSE_DECISION_NONE )
+    return FUSE_HOST_OPERATION_BUSY;
+
+  fuse_engine_begin_operation();
+  fuse_emulation_pause();
+  if( load ) {
+    utils_file file;
+    error = utils_read_file( filename, &file );
+    if( !error && file.length < length ) error = 1;
+    if( !error ) utils_load_binary( start, length, file.buffer );
+    utils_close_file( &file );
+  } else {
+    error = utils_save_binary( start, length, filename );
+  }
+  fuse_emulation_unpause();
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_load_binary( const char *filename, size_t start, size_t length )
+{
+  return host_binary_file( filename, start, length, 1 );
+}
+
+fuse_host_operation_result
+fuse_host_save_binary( const char *filename, size_t start, size_t length )
+{
+  return host_binary_file( filename, start, length, 0 );
+}
+
 fuse_host_operation_result
 fuse_host_save_snapshot_file( const char *filename )
 {
