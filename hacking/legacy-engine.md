@@ -127,6 +127,18 @@ before preparation and through shutdown. The engine still initializes its
 renderer and notifies the linked display of machine geometry. The legacy runner
 owns application UI startup and shutdown.
 
+`fuse_host_config_set_diagnostics()` optionally supplies an owner-thread
+callback for errors, warnings and notices from Fuse's shared diagnostic path,
+including libspectrum reporting while Fuse owns its error handler. The callback
+runs during preparation, operations, execution and teardown as applicable.
+Copy the message before returning if the frontend needs it later; do not block,
+pump events or reenter Fuse. Host sessions bypass the linked UI diagnostic
+handler even without a callback. Existing console logging and automation
+reporting remain; legacy sessions keep their diagnostic UI. These notifications
+are not decisions and do not replace operation results. The null host's
+`--diagnostics MISSING_FILE` mode copies a failed Open diagnostic inside the
+callback and prints it only after Open returns.
+
 Host preparation retains internal defaults, RNG seeding and process-global
 library/error handling. It does
 not process application startup files/debugger commands, print the application

@@ -454,6 +454,8 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    cmp expected-tape "$$consumer-tape.out"; \
 	    "$$program" only48 --open sample.tap > "$$consumer-open.out" 2> "$$consumer-open.err"; \
 	    cmp expected-open "$$consumer-open.out"; \
+	    "$$program" only48 --diagnostics missing-diagnostic-input.tap > "$$consumer-diagnostics.out" 2> "$$consumer-diagnostics.err"; \
+	    grep -F 'host: retained Open diagnostic:' "$$consumer-diagnostics.out" | grep -F 'missing-diagnostic-input.tap' > /dev/null; \
 	    "$$program" only48 --open-pok sample.pok > "$$consumer-pok.out" 2> "$$consumer-pok.err"; \
 	    grep -Fx 'host: enabled and disabled POK trainer Custom' "$$consumer-pok.out" > /dev/null; \
 	    "$$program" only48 --binary-roundtrip sample.bin "$$consumer.bin" > "$$consumer-binary.out" 2> "$$consumer-binary.err"; \

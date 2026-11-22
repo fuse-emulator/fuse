@@ -93,6 +93,9 @@ int fuse_engine_pumps_frame_ui( void );
 
 /* Apply the opaque engine configuration at initialization. */
 void fuse_engine_apply_config( const fuse_host_config *config );
+void fuse_engine_set_host_diagnostics( const fuse_host_config *config );
+void fuse_engine_notify_diagnostic( fuse_diagnostic_level level,
+                                    const char *message );
 
 /* Borrowed host resource callback storage, active through teardown. */
 void fuse_host_begin_resources( const fuse_host_resources *resources );

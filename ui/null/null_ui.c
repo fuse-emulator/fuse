@@ -134,9 +134,12 @@ ui_end( void )
   return 0;
 }
 
+int null_ui_error_specific_calls;
+
 int
 ui_error_specific( ui_error_level severity, const char *message )
 {
+  null_ui_error_specific_calls++;
 #ifdef ENABLE_AUTOMATION
   automation_diagnostic( severity, message );
 #endif

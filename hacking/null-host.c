@@ -589,6 +589,21 @@ done:
   return error;
 }
 
+typedef struct diagnostic_capture {
+  unsigned int errors;
+  char message[256];
+} diagnostic_capture;
+
+static void
+capture_diagnostic( void *context, fuse_diagnostic_level level,
+                    const char *message )
+{
+  diagnostic_capture *capture = context;
+  if( level != FUSE_DIAGNOSTIC_ERROR ) return;
+  capture->errors++;
+  snprintf( capture->message, sizeof( capture->message ), "%s", message );
+}
+
 static int
 pok_demo( const char *filename )
 {
@@ -710,6 +725,8 @@ main( int argc, char **argv )
   int disk_save = argc == 5 && !strcmp( argv[2], "--save-disk" );
   int tape_lifecycle = argc == 5 && !strcmp( argv[2], "--tape-lifecycle" );
   int tape_replacement = argc == 5 && !strcmp( argv[2], "--replace-tape" );
+  int diagnostics = argc >= 3 && !strcmp( argv[2], "--diagnostics" );
+  diagnostic_capture capture = { 0 };
   int open_pok = argc >= 3 && !strcmp( argv[2], "--open-pok" );
   int poke_finder = argc >= 3 && !strcmp( argv[2], "--poke-finder" );
   int binary = argc >= 3 && !strcmp( argv[2], "--binary-roundtrip" );
@@ -722,11 +739,12 @@ main( int argc, char **argv )
 
   if( ( argc != 2 && argc != 3 && argc != 4 && argc != 5 ) ||
       ( ( microdrive || rzx_record || open_over_tape || open_over_floppy ||
-          open_pok || poke_finder ) &&
+          open_pok || poke_finder || diagnostics ) &&
         argc != 4 ) ||
       ( argc == 4 && strcmp( argv[2],
                              "--open" ) && !open_over_tape &&
-        !open_over_floppy && !open_pok && !poke_finder && !microdrive &&
+        !open_over_floppy && !open_pok && !poke_finder && !diagnostics &&
+        !microdrive &&
         !disk_lifecycle &&
         !tape_record &&
         !rzx_record &&
@@ -737,7 +755,7 @@ main( int argc, char **argv )
       ( argc == 3 && ( !strcmp( argv[2], "--open" ) || !strcmp( argv[2], "--save-disk" ) ||
                       !strcmp( argv[2], "--disk-lifecycle" ) || !strcmp( argv[2], "--tape-lifecycle" ) || !strcmp( argv[2], "--replace-tape" ) ||
                       !strcmp( argv[2], "--record-tape" ) || !strcmp( argv[2], "--parked-tape-eject" ) || !strcmp( argv[2], "--save-snapshot" ) || !strcmp( argv[2], "--filesystem" ) || !strcmp( argv[2], "--divmmc" ) ) ) ) {
-    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --open-pok FILE | --binary-roundtrip INPUT OUTPUT | --poke-finder INPUT | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --record-rzx OUTPUT | --rzx-to-movie INPUT OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
+    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --diagnostics MISSING_FILE | --open-pok FILE | --binary-roundtrip INPUT OUTPUT | --poke-finder INPUT | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --record-rzx OUTPUT | --rzx-to-movie INPUT OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
     return EXIT_FAILURE;
   }
   if( filesystem || divmmc ) {
@@ -755,6 +773,9 @@ main( int argc, char **argv )
   config = fuse_host_config_alloc();
   if( fuse_host_config_set_machine( config, plus3 ? "plus3" : "48" ) ||
       fuse_host_config_set_sound( config, 0 ) ||
+      ( diagnostics && fuse_host_config_set_diagnostics( config,
+                                                         capture_diagnostic,
+                                                         &capture ) ) ||
       ( ( tape_record || parked_eject || tape_replacement || open_over_tape ) &&
         fuse_host_config_set_tape_traps( config, 0 ) ) ||
       ( filesystem && fuse_host_config_set_auto_load( config, 0 ) ) ||
@@ -774,6 +795,19 @@ main( int argc, char **argv )
   }
   prepared = 1;
   puts( plus3 ? "host: prepared plus3" : "host: prepared 48" );
+  if( diagnostics ) {
+    fuse_open_request request;
+    capture.errors = 0;
+    if( fuse_host_open_file( argv[3],
+                             &request ) != FUSE_HOST_OPERATION_MEDIA_ERROR ||
+        request.id || !capture.errors ) {
+      fputs( "host: expected a diagnostic for the failed Open\n", stderr );
+      goto cleanup;
+    }
+    printf( "host: retained Open diagnostic: %s\n", capture.message );
+    status = EXIT_SUCCESS;
+    goto cleanup;
+  }
   if( poke_finder ) {
     if( !poke_finder_demo( argv[3] ) ) status = EXIT_SUCCESS;
     goto cleanup;

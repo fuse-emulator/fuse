@@ -32,7 +32,38 @@ struct fuse_host_config {
   int interface1;
   joystick_type_t joystick_output[3];
   int mouse_swap_buttons;
+  fuse_host_diagnostic_fn diagnostic;
+  void *diagnostic_context;
 };
+
+static fuse_host_diagnostic_fn host_diagnostic;
+static void *host_diagnostic_context;
+
+int
+fuse_host_config_set_diagnostics( fuse_host_config *config,
+                                  fuse_host_diagnostic_fn notify,
+                                  void *context )
+{
+  if( !config ) return 1;
+  config->diagnostic = notify;
+  config->diagnostic_context = context;
+  return 0;
+}
+
+void
+fuse_engine_set_host_diagnostics( const fuse_host_config *config )
+{
+  host_diagnostic = config ? config->diagnostic : NULL;
+  host_diagnostic_context = config ? config->diagnostic_context : NULL;
+}
+
+void
+fuse_engine_notify_diagnostic( fuse_diagnostic_level level,
+                               const char *message )
+{
+  if( host_diagnostic ) host_diagnostic( host_diagnostic_context, level,
+                                         message );
+}
 
 fuse_host_config *
 fuse_host_config_alloc( void )

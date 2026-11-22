@@ -35,6 +35,7 @@
 #include "automation/automation.h"
 #endif
 #include "fuse.h"
+#include "fuse-engine.h"
 #include "input.h"
 #include "peripherals/if1.h"
 #include "peripherals/kempmouse.h"
@@ -130,10 +131,16 @@ ui_verror_internal( ui_error_level severity, const char *format, va_list ap,
 
   print_error_to_stderr( severity, message );
 
-  if( console_only ) {
+  if( fuse_host_resources_active() || console_only ) {
 #ifdef ENABLE_AUTOMATION
     automation_diagnostic( severity, message );
 #endif
+    if( fuse_host_resources_active() ) {
+      fuse_diagnostic_level level = FUSE_DIAGNOSTIC_ERROR;
+      if( severity == UI_ERROR_INFO ) level = FUSE_DIAGNOSTIC_INFO;
+      if( severity == UI_ERROR_WARNING ) level = FUSE_DIAGNOSTIC_WARNING;
+      fuse_engine_notify_diagnostic( level, message );
+    }
   } else {
     /* Do any UI-specific bits as well */
     ui_error_specific( severity, message );

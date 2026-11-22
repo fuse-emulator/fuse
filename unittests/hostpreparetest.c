@@ -13,6 +13,36 @@
 #include "settings.h"
 #include "snapshot.h"
 #include "memory_pages.h"
+#include "event.h"
+#include "ui/ui.h"
+
+extern int null_ui_error_specific_calls;
+static int startup_notices, open_errors, run_notices, notifications;
+
+static void
+receive_diagnostic( void *context, fuse_diagnostic_level level,
+                    const char *message )
+{
+  assert( context == &startup_notices );
+  notifications++;
+  if( !strcmp( message, "host startup probe" ) ) {
+    assert( level == FUSE_DIAGNOSTIC_WARNING );
+    startup_notices++;
+  } else if( strstr( message, "missing-diagnostic-input.tap" ) ) {
+    assert( level == FUSE_DIAGNOSTIC_ERROR );
+    open_errors++;
+  } else if( !strcmp( message, "host run probe" ) ) {
+    assert( level == FUSE_DIAGNOSTIC_INFO );
+    run_notices++;
+  }
+}
+
+static void
+run_diagnostic( libspectrum_dword when GCC_UNUSED, int type GCC_UNUSED,
+                void *data GCC_UNUSED )
+{
+  ui_error_console( UI_ERROR_INFO, "host run probe" );
+}
 
 static struct {
   const char *path;
@@ -39,6 +69,9 @@ acquire_rom( void *context, const char *name, fuse_host_rom *rom )
   assert( !strcmp( name, "48.rom" ) );
   assert( provider.acquired == provider.released );
   provider.acquired++;
+  if( !strcmp( provider.mode, "success" ) || !strcmp( provider.mode,
+                                                      "missing" ) )
+    ui_error( UI_ERROR_WARNING, "host startup probe" );
   assert( fuse_host_prepare( NULL, NULL ) == FUSE_INIT_BUSY );
   fuse_shutdown(); /* Must not tear down STARTING. */
   rom->context = &provider;
@@ -98,6 +131,7 @@ host_prepare_test( int argc, char **argv )
   assert( !fuse_host_config_set_machine( config, machine ) );
   machine[0] = 'x'; /* Configuration must not borrow the caller's string. */
   assert( !fuse_host_config_set_sound( config, 0 ) );
+  assert( !fuse_host_config_set_diagnostics( config, receive_diagnostic, &startup_notices ) );
   assert( fuse_host_config_set_joystick( NULL, FUSE_HOST_JOYSTICK_1, JOYSTICK_TYPE_NONE ) );
   if( interface_index >= 0 ) {
     for( slot = FUSE_HOST_JOYSTICK_1; slot <= FUSE_HOST_JOYSTICK_KEYBOARD; slot++ ) {
@@ -142,15 +176,33 @@ host_prepare_test( int argc, char **argv )
       assert( provider.acquired == 1 && provider.released == 1 );
     }
     assert( fuse_legacy_prepare( 0, NULL ) == FUSE_INIT_BUSY );
+    if( !strcmp( provider.mode, "success" ) ) {
+      fuse_open_request request;
+      int diagnostic_event = event_register( run_diagnostic,
+                                             "host diagnostic" );
+      assert( startup_notices == 1 );
+      assert( fuse_host_open_file( "missing-diagnostic-input.tap", &request ) ==
+              FUSE_HOST_OPERATION_MEDIA_ERROR );
+      assert( open_errors == 1 && !request.id );
+      event_add( 0, diagnostic_event );
+    }
     assert( fuse_run_frame() == FUSE_RUN_COMPLETED );
+    if( !strcmp( provider.mode, "success" ) ) assert( run_notices == 1 );
     if( !strcmp( provider.mode, "host-state" ) )
       assert( !snapshot_write( "state.szx" ) );
   } else {
     assert( result == FUSE_INIT_FAILED );
+    if( !strcmp( provider.mode, "missing" ) ) assert( startup_notices == 1 );
   }
   fuse_shutdown();
   fuse_shutdown();
   assert( !fuse_host_resources_active() );
+  assert( !null_ui_error_specific_calls );
+  {
+    int before = notifications;
+    ui_error( UI_ERROR_INFO, "after host teardown" );
+    assert( null_ui_error_specific_calls == 1 && notifications == before );
+  }
   assert( fuse_host_prepare( NULL, NULL ) == FUSE_INIT_CLOSED );
   return 0;
 }

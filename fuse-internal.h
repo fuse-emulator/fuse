@@ -71,6 +71,22 @@ int fuse_host_config_set_tape_traps( fuse_host_config *config, int enabled );
 int fuse_host_config_set_divmmc( fuse_host_config *config, int enabled );
 int fuse_host_config_set_interface1( fuse_host_config *config, int enabled );
 
+typedef enum fuse_diagnostic_level {
+  FUSE_DIAGNOSTIC_INFO, FUSE_DIAGNOSTIC_WARNING, FUSE_DIAGNOSTIC_ERROR
+} fuse_diagnostic_level;
+
+typedef void (*fuse_host_diagnostic_fn)( void *context,
+                                         fuse_diagnostic_level level,
+                                         const char *message );
+
+/* Optional notification on the owner thread, from prepare through teardown.
+   Copy the message to retain it. Do not block, pump the UI or reenter Fuse.
+   Context is borrowed through teardown. NULL disables the callback; host
+   sessions still log to stderr without invoking the linked UI handler. */
+int fuse_host_config_set_diagnostics( fuse_host_config *config,
+                                      fuse_host_diagnostic_fn notify,
+                                      void *context );
+
 /* A synchronous ROM result, not a filesystem path. Provider context remains
    borrowed through shutdown, including failed-startup cleanup. On every acquire,
    even failure, release is called once when non-NULL. Bytes are borrowed only

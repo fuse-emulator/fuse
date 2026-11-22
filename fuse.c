@@ -238,6 +238,7 @@ fuse_host_prepare( const fuse_host_config *config,
   legacy_ownership.previous_error_function = libspectrum_error_function;
   legacy_ownership.callback_owned = 1;
   fuse_host_begin_resources( resources );
+  fuse_engine_set_host_diagnostics( config );
 
   if( fuse_init( 0, NULL, config ) || legacy_ownership.resource_failed ) {
     fuse_end();
@@ -1436,6 +1437,7 @@ static int fuse_end(void)
     libspectrum_error_function = legacy_ownership.previous_error_function;
     legacy_ownership.previous_error_function = NULL;
   }
+  fuse_engine_set_host_diagnostics( NULL );
   fuse_host_end_resources();
   legacy_ownership.phase = LEGACY_CLOSED;
 
