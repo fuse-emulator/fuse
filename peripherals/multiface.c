@@ -522,13 +522,12 @@ multiface_port_xffd_write( libspectrum_word port, libspectrum_byte val )
   mf[MF_3].xfdd_reg[ ( port & 0x6000 ) >> 13 ] = val & 0x0f;
 }
 
-void
-multiface_red_button( void )
+static int
+multiface_red_button_target( void )
 {
   int i;
-/*
-  One RED button for all ;-)
-*/
+
+  /* One RED button for all variants, in the existing priority order. */
   for( i = MF_3; i >= MF_1; i-- ) {
     if( !IS( multiface_available, i ) || mf[i].IC8b_Q == 0 ) continue;
 
@@ -540,11 +539,25 @@ multiface_red_button( void )
     */
     if( i == MF_1 && !mf[MF_1].J2 ) continue;
 
-    mf[i].IC8b_Q = 0;
-    SET( multiface_activated, i, 1 );
-    event_add( 0, z80_nmi_event );	/* pull /NMI */
-    break;
+    return i;
   }
+  return -1;
+}
+
+int
+multiface_red_button_available( void )
+{
+  return multiface_red_button_target() >= 0;
+}
+
+void
+multiface_red_button( void )
+{
+  int i = multiface_red_button_target();
+  if( i < 0 ) return;
+  mf[i].IC8b_Q = 0;
+  SET( multiface_activated, i, 1 );
+  event_add( 0, z80_nmi_event ); /* pull /NMI */
 }
 
 void

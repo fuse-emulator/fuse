@@ -209,6 +209,20 @@ fuse_host_operation_result fuse_host_answer_tape_eject(
    Archive-info panels/raw block metadata are not represented by these rows. */
 fuse_host_operation_result fuse_host_copy_tape_info( fuse_tape_info **info );
 
+typedef enum fuse_machine_button {
+  FUSE_MACHINE_BUTTON_MULTIFACE_RED,
+  FUSE_MACHINE_BUTTON_DISCIPLE_MAGIC,
+  FUSE_MACHINE_BUTTON_DIDAKTIK_SNAP
+} fuse_machine_button;
+
+/* Query whether the selected hardware can currently accept the press. */
+fuse_host_operation_result fuse_host_machine_button_available(
+  fuse_machine_button button, int *available );
+/* Queue the device-specific action for normal CPU dispatch; does not run.
+   An unavailable button returns FAILED without changing the machine. */
+fuse_host_operation_result fuse_host_press_machine_button(
+  fuse_machine_button button );
+
 typedef enum fuse_cartridge_slot {
   FUSE_CARTRIDGE_INTERFACE2, FUSE_CARTRIDGE_TIMEX_DOCK
 } fuse_cartridge_slot;

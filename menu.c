@@ -1273,6 +1273,5 @@ menu_disciple2_detail( void )
 MENU_CALLBACK( menu_machine_didaktiksnap )
 {
   ui_widget_finish();
-  didaktik80_snap = 1;
-  event_add( 0, z80_nmi_event );
+  didaktik80_snap_button();
 }

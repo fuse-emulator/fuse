@@ -254,6 +254,16 @@ NMI event; it is not delivered inline.
 Existing reset/module semantics apply. No input-sampling policy or owned state
 query is provided; do not read live globals concurrently from a UI thread.
 
+## Peripheral machine buttons
+
+`fuse_host_machine_button_available()` checks whether Multiface Red, DISCiPLE
+Magic, or Didaktik SNAP can accept a press. `fuse_host_press_machine_button()`
+uses the existing device action, including the Multiface model priority and
+lockout, DISCiPLE's paging rules, and Didaktik's SNAP latch. A press queues an
+NMI without running the CPU, even while paused. An unavailable button makes no
+changes. `hacking/null-host.c` demonstrates the API with
+`--machine-button NAME SNAPSHOT`, using a snapshot that enables the device.
+
 ## Host debugger stops
 
 `fuse_host_debugger_break()` requests a manual stop at the next opcode boundary

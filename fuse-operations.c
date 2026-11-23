@@ -30,6 +30,8 @@
 #include "machine.h"
 #include "movie.h"
 #include "peripherals/dck.h"
+#include "peripherals/disk/didaktik.h"
+#include "peripherals/disk/disciple.h"
 #include "peripherals/if2.h"
 #include "peripherals/ide/divmmc.h"
 #include "peripherals/ide/simpleide.h"
@@ -39,6 +41,7 @@
 #include "peripherals/ide/zxcf.h"
 #include "peripherals/joystick.h"
 #include "peripherals/kempmouse.h"
+#include "peripherals/multiface.h"
 #include "rzx.h"
 #include "settings.h"
 #include "snapshot.h"
@@ -923,6 +926,45 @@ fuse_host_stop_tape_recording( void )
   error = tape_record_stop();
   fuse_engine_end_operation();
   return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_machine_button_available( fuse_machine_button button, int *available )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( !available ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *available = 0;
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  switch( button ) {
+  case FUSE_MACHINE_BUTTON_MULTIFACE_RED:
+    *available = multiface_red_button_available();
+    break;
+  case FUSE_MACHINE_BUTTON_DISCIPLE_MAGIC:
+    *available = !!disciple_available;
+    break;
+  case FUSE_MACHINE_BUTTON_DIDAKTIK_SNAP:
+    *available = !!didaktik80_available;
+    break;
+  default:
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  }
+  return FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_press_machine_button( fuse_machine_button button )
+{
+  int available;
+  fuse_host_operation_result result =
+    fuse_host_machine_button_available( button, &available );
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !available ) return FUSE_HOST_OPERATION_FAILED;
+  switch( button ) {
+  case FUSE_MACHINE_BUTTON_MULTIFACE_RED: multiface_red_button(); break;
+  case FUSE_MACHINE_BUTTON_DISCIPLE_MAGIC: disciple_snapshot_nmi(); break;
+  case FUSE_MACHINE_BUTTON_DIDAKTIK_SNAP: didaktik80_snap_button(); break;
+  }
+  return FUSE_HOST_OPERATION_OK;
 }
 
 fuse_host_operation_result

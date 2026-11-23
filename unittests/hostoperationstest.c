@@ -18,6 +18,9 @@
 #include "periph.h"
 #include "phantom_typist.h"
 #include "peripherals/disk/fdd.h"
+#include "peripherals/disk/didaktik.h"
+#include "peripherals/disk/disciple.h"
+#include "peripherals/multiface.h"
 #include "peripherals/joystick.h"
 #include "peripherals/ula.h"
 #include "ui/uimedia.h"
@@ -37,7 +40,8 @@
 #define OK FUSE_HOST_OPERATION_OK
 static struct {
   const char *directory;
-  int fail, acquired, released, rejected, custom, synthetic_beta;
+  int fail, acquired, released, rejected, custom, synthetic_beta,
+      synthetic_buttons;
   const char *fail_name;
   unsigned char *bytes;
 } provider;
@@ -192,6 +196,16 @@ acquire_rom( void *context, const char *name, fuse_host_rom *rom )
   if( provider.fail || ( provider.fail_name && !strcmp( name, provider.fail_name ) ) ) {
     provider.rejected++;
     return 1;
+  }
+  if( provider.synthetic_buttons &&
+      ( !strcmp( name, "didaktik80.rom" ) || !strcmp( name, "mf1.rom" ) ) ) {
+    size_t size = !strcmp( name, "mf1.rom" ) ? 0x2000 : 0x3800;
+    provider.bytes = calloc( size, 1 );
+    assert( provider.bytes );
+    rom->data = provider.bytes;
+    rom->length = size;
+    rom->custom = 1;
+    return 0;
   }
   /* Controller/save tests do not boot Pentagon DOS or require unbundled ROMs. */
   if( provider.synthetic_beta ) {
@@ -2004,6 +2018,76 @@ active_callback( libspectrum_dword ts, int type, void *data )
 }
 
 static void
+check_machine_buttons( int keep_fixture )
+{
+  static const fuse_machine_button buttons[] = {
+    FUSE_MACHINE_BUTTON_MULTIFACE_RED,
+    FUSE_MACHINE_BUTTON_DISCIPLE_MAGIC,
+    FUSE_MACHINE_BUTTON_DIDAKTIK_SNAP
+  };
+  int *const enabled[] = { &settings_current.multiface1,
+                           &settings_current.disciple,
+                           &settings_current.didaktik80 };
+  size_t i;
+  int available;
+
+  assert( fuse_host_press_machine_button( 99 ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  for( i = 0; i < sizeof( buttons ) / sizeof( buttons[0] ); i++ ) {
+    libspectrum_dword before;
+    libspectrum_word pc;
+    assert( fuse_host_machine_button_available( buttons[i],
+                                                &available ) == OK &&
+            !available );
+    assert( fuse_host_press_machine_button( buttons[i] ) ==
+            FUSE_HOST_OPERATION_FAILED );
+    *enabled[i] = 1;
+    (void)periph_update();
+    assert( fuse_host_reset( FUSE_HOST_RESET_HARD ) == OK );
+    assert( fuse_host_machine_button_available( buttons[i],
+                                                &available ) == OK &&
+            available );
+    if( i == 1 ) {
+      /* Let the reset-time paging guard expire without running ROM code. */
+      writebyte_internal( 0x8000, 0x76 );
+      z80.pc.w = 0x8000;
+      assert( fuse_run_tstates( 64 ) == FUSE_RUN_COMPLETED );
+    }
+    if( keep_fixture && i == 0 )
+      assert( fuse_host_save_snapshot_file( "button-multiface.szx" ) == OK );
+    z80.sp.w = 0x9000;
+    before = tstates; pc = z80.pc.w;
+    assert( fuse_host_set_paused( 1 ) == OK );
+    assert( fuse_host_press_machine_button( buttons[i] ) == OK );
+    assert( tstates == before && z80.pc.w == pc );
+    if( i == 0 ) {
+      assert( multiface_activated && !multiface_active );
+      assert( fuse_host_machine_button_available( buttons[i],
+                                                  &available ) == OK &&
+              !available );
+      assert( fuse_host_press_machine_button( buttons[i] ) ==
+              FUSE_HOST_OPERATION_FAILED );
+    } else if( i == 1 ) {
+      assert( !disciple_active );
+    } else {
+      assert( didaktik80_snap );
+    }
+    assert( fuse_run_tstates( 1 ) == FUSE_RUN_PAUSED && tstates == before );
+    assert( fuse_host_set_paused( 0 ) == OK );
+    assert( fuse_run_tstates( 1 ) == FUSE_RUN_COMPLETED && z80.pc.w == 0x66 );
+    assert( fuse_run_tstates( 1 ) == FUSE_RUN_COMPLETED );
+    if( i == 0 ) assert( multiface_active );
+    if( i == 1 ) assert( disciple_active );
+    if( i == 2 ) {
+      assert( !didaktik80_snap && z80.pc.w == 0 ); /* Existing forced RST 00. */
+    }
+    *enabled[i] = 0;
+    (void)periph_update();
+    assert( fuse_host_reset( FUSE_HOST_RESET_HARD ) == OK );
+  }
+}
+
+static void
 check_rs232( void )
 {
   fuse_rs232_info info;
@@ -2132,6 +2216,8 @@ host_operations_test( int argc, char **argv )
   assert( argc == 3 ); provider.directory = argv[2];
   provider.custom = !strcmp( argv[1], "open-custom" );
   provider.synthetic_beta = !strcmp( argv[1], "disk-save-beta" );
+  provider.synthetic_buttons = !strcmp( argv[1], "machine-buttons" ) ||
+                               !strcmp( argv[1], "machine-button-fixture" );
   assert( fuse_host_release_all() == FUSE_HOST_OPERATION_NOT_READY );
   check_disk_info_blocked( FUSE_HOST_OPERATION_NOT_READY );
   check_tape_deck_blocked( FUSE_HOST_OPERATION_NOT_READY );
@@ -2203,6 +2289,8 @@ host_operations_test( int argc, char **argv )
     check_lifecycle_disk_file();
   } else if( !strcmp( argv[1], "disk-save" ) || !strcmp( argv[1], "disk-save-beta" ) ) {
     check_disk_save( !strcmp( argv[1], "disk-save" ) ? FUSE_DISK_CONTROLLER_PLUS3 : FUSE_DISK_CONTROLLER_BETA );
+  } else if( provider.synthetic_buttons ) {
+    check_machine_buttons( !strcmp( argv[1], "machine-button-fixture" ) );
   } else if( !strcmp( argv[1], "rs232" ) ) {
     check_rs232();
   } else if( !strcmp( argv[1], "cartridge-lifecycle" ) ) {

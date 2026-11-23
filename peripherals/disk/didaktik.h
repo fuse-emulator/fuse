@@ -40,6 +40,7 @@ extern int didaktik80_snap;       /* SNAPshot pressed */
 
 void didaktik80_register_startup( void );
 
+void didaktik80_snap_button( void );
 void didaktik80_page( void );
 void didaktik80_unpage( void );
 

@@ -704,6 +704,36 @@ open_demo( const char *filename, const char *movie_target,
 }
 
 static int
+machine_button_session( const char *name, const char *snapshot )
+{
+  fuse_machine_button button;
+  fuse_open_request request;
+  fuse_host_operation_result result;
+  int available;
+
+  if( !strcmp( name, "multiface" ) ) button = FUSE_MACHINE_BUTTON_MULTIFACE_RED;
+  else if( !strcmp( name,
+                    "disciple" ) ) button = FUSE_MACHINE_BUTTON_DISCIPLE_MAGIC;
+  else if( !strcmp( name,
+                    "didaktik" ) ) button = FUSE_MACHINE_BUTTON_DIDAKTIK_SNAP;
+  else return 1;
+
+  result = fuse_host_open_file( snapshot, &request );
+  while( result == FUSE_HOST_OPERATION_NEEDS_DECISION &&
+         request.question == FUSE_OPEN_MAP_JOYSTICK )
+    result = fuse_host_answer_snapshot_joystick( request.id, NULL, &request );
+  if( operation( "open button snapshot", result ) ||
+      operation( "inspect machine button",
+                 fuse_host_machine_button_available( button, &available ) ) ||
+      !available ||
+      operation( "press machine button",
+                 fuse_host_press_machine_button( button ) ) ||
+      fuse_run_tstates( 1 ) != FUSE_RUN_COMPLETED ) return 1;
+  printf( "host: queued and ran %s button\n", name );
+  return 0;
+}
+
+static int
 rs232_session( const char *rx, const char *tx )
 {
   fuse_rs232_info info;
@@ -777,6 +807,7 @@ main( int argc, char **argv )
   int rzx_record = argc >= 3 && !strcmp( argv[2], "--record-rzx" );
   int microdrive = argc >= 3 && !strcmp( argv[2], "--microdrive" );
   int rs232 = argc >= 3 && !strcmp( argv[2], "--rs232" );
+  int machine_button = argc >= 3 && !strcmp( argv[2], "--machine-button" );
   int open_over_tape = argc >= 3 && !strcmp( argv[2], "--open-over-tape" );
   int open_over_floppy = argc >= 3 && !strcmp( argv[2], "--open-over-floppy" );
   int plus3 = disk_save || disk_lifecycle || open_over_floppy;
@@ -794,12 +825,12 @@ main( int argc, char **argv )
         !rzx_record &&
         !parked_eject &&
         !snapshot_save && !filesystem && !divmmc ) ||
-      ( ( rzx_movie || binary || rs232 ) && argc != 5 ) ||
-      ( argc == 5 && !disk_save && !tape_lifecycle && !tape_replacement && !rzx_movie && !binary && !rs232 ) ||
+      ( ( rzx_movie || binary || rs232 || machine_button ) && argc != 5 ) ||
+      ( argc == 5 && !disk_save && !tape_lifecycle && !tape_replacement && !rzx_movie && !binary && !rs232 && !machine_button ) ||
       ( argc == 3 && ( !strcmp( argv[2], "--open" ) || !strcmp( argv[2], "--save-disk" ) ||
                       !strcmp( argv[2], "--disk-lifecycle" ) || !strcmp( argv[2], "--tape-lifecycle" ) || !strcmp( argv[2], "--replace-tape" ) ||
                       !strcmp( argv[2], "--record-tape" ) || !strcmp( argv[2], "--parked-tape-eject" ) || !strcmp( argv[2], "--save-snapshot" ) || !strcmp( argv[2], "--filesystem" ) || !strcmp( argv[2], "--divmmc" ) ) ) ) {
-    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --diagnostics MISSING_FILE | --open-pok FILE | --binary-roundtrip INPUT OUTPUT | --poke-finder INPUT | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --rs232 RX TX | --record-rzx OUTPUT | --rzx-to-movie INPUT OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
+    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --diagnostics MISSING_FILE | --open-pok FILE | --binary-roundtrip INPUT OUTPUT | --poke-finder INPUT | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --rs232 RX TX | --machine-button NAME SNAPSHOT | --record-rzx OUTPUT | --rzx-to-movie INPUT OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
     return EXIT_FAILURE;
   }
   if( filesystem || divmmc ) {
@@ -839,6 +870,10 @@ main( int argc, char **argv )
   }
   prepared = 1;
   puts( plus3 ? "host: prepared plus3" : "host: prepared 48" );
+  if( machine_button ) {
+    if( !machine_button_session( argv[3], argv[4] ) ) status = EXIT_SUCCESS;
+    goto cleanup;
+  }
   if( rs232 ) {
     if( !rs232_session( argv[3], argv[4] ) ) status = EXIT_SUCCESS;
     goto cleanup;

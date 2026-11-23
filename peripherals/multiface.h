@@ -33,6 +33,7 @@ void multiface_register_startup( void );
 
 void multiface_status_update( void );
 
+int multiface_red_button_available( void );
 void multiface_red_button( void );
 void multiface_setic8( void );
 int multiface_unittest( void );

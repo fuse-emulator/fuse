@@ -363,6 +363,9 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	  printf 'NCustom\nZ 8 32769 256 0\nY\n\000' > sample.pok; \
 	  printf '\022\064\000\377' > sample.bin; \
 	  "$$root/legacyenginelinktest$(EXEEXT)" --host-operations-test disk-fixture "$$roms"; \
+	  "$$root/legacyenginelinktest$(EXEEXT)" --host-operations-test machine-button-fixture "$$roms"; \
+	  mkdir button-roms; cp "$$roms/48.rom" button-roms/; \
+	  dd if=/dev/zero of=button-roms/mf1.rom bs=8192 count=1 2>/dev/null; \
 	  "$$root/legacyenginelinktest$(EXEEXT)" --host-operations-test rzx-joystick-fixture "$$roms"; \
 	  "$$root/legacyenginelinktest$(EXEEXT)" --host-operations-test snapshot-joystick-fixture "$$roms"; \
 	  cp "$$roms/48.rom" 48.rom; cp "$$roms/48.rom" only48/48.rom; \
@@ -482,6 +485,8 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    "$$program" interface1 --rs232 serial-rx.dat serial-tx.dat > "$$consumer-rs232.out"; \
 	    grep -Ex 'host: RS232 (RX and TX connected and disconnected independently|unavailable on Win32)' "$$consumer-rs232.out" > /dev/null; \
 	    rm serial-rx.dat serial-tx.dat; \
+	    "$$program" button-roms --machine-button multiface button-multiface.szx > "$$consumer-button.out"; \
+	    grep -Fx 'host: queued and ran multiface button' "$$consumer-button.out" > /dev/null; \
 	    test -s "$$consumer.mdr"; rm "$$consumer.mdr"; \
 	    "$$program" only48 --open-over-tape sample.tap > "$$consumer-open-tape.out" 2> "$$consumer-open-tape.err"; \
 	    grep -Fx 'host: modified tape; discard' "$$consumer-open-tape.out" > /dev/null; \
@@ -609,7 +614,7 @@ check-host-operations: unittests/legacyenginelinktest unittests/legacyenginesour
 	  for consumer in legacyenginelinktest legacyenginesourcetest; do \
 	    for mode in success filesystem-oracle filesystem tape-contract tape-info trapped-recording snapshot-roundtrip autoload-success autoload-failure \
 	      open-auto open-noauto open-custom open-reset-failure open-snapshot open-snapshot-joystick open-fallback open-rzx-stop open-rzx-embedded open-rzx-external record-rzx record-rzx-restore record-rzx-rollback record-rzx-movie open-pok host-binary host-poke-finder open-floppy floppy-merge cartridge-lifecycle \
-	      disk-save disk-save-beta microdrive rs232 host-quit host-quit-shutdown \
+	      disk-save disk-save-beta microdrive rs232 machine-buttons host-quit host-quit-shutdown \
 	      reset-failure select-failure peripheral-reset-failure peripheral-select-failure; do \
 	      "$$root/$$consumer$(EXEEXT)" --host-operations-test "$$mode" "$$roms"; \
 	    done; \

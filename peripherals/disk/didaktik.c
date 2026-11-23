@@ -136,6 +136,13 @@ static const char * const event_type_string = "didaktik80";
 static int page_event, unpage_event;
 
 void
+didaktik80_snap_button( void )
+{
+  didaktik80_snap = 1;
+  event_add( 0, z80_nmi_event );
+}
+
+void
 didaktik80_page( void )
 {
   didaktik80_active = 1;
