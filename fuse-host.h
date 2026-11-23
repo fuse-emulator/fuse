@@ -231,6 +231,29 @@ fuse_host_operation_result fuse_host_copy_cartridge_info(
   fuse_cartridge_slot slot, fuse_cartridge_info **info );
 void fuse_cartridge_info_free( fuse_cartridge_info *info );
 
+typedef enum fuse_rs232_endpoint {
+  FUSE_RS232_RX = 1, FUSE_RS232_TX
+} fuse_rs232_endpoint;
+
+typedef struct fuse_rs232_info {
+  int available; /* Interface 1 is active and this build supports serial I/O. */
+  int connected; /* A native descriptor is attached, even if IF1 is inactive. */
+} fuse_rs232_info;
+
+/* Use the existing native serial backend, not the regular-file backend.
+   The path is borrowed through return. An unavailable endpoint or failed
+   open/setup returns MEDIA_ERROR. A replacement closes the old descriptor
+   first; no rollback is promised. Query status after a failed replacement. */
+fuse_host_operation_result fuse_host_connect_rs232(
+  fuse_rs232_endpoint endpoint,
+  const char *path );
+fuse_host_operation_result fuse_host_disconnect_rs232(
+  fuse_rs232_endpoint endpoint );
+/* Copy status by value; does not open or close the endpoint. */
+fuse_host_operation_result fuse_host_copy_rs232_info(
+  fuse_rs232_endpoint endpoint,
+  fuse_rs232_info *info );
+
 /* Record into the engine's tape, including an empty deck; no file sink here.
    Start requires tape traps disabled; enabled traps, missing tape object or
    RZX refusal is MEDIA_ERROR (the existing RZX diagnostic remains). With traps

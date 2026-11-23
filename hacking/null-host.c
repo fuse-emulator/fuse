@@ -703,6 +703,44 @@ open_demo( const char *filename, const char *movie_target,
   return frames( 5, completed );
 }
 
+static int
+rs232_session( const char *rx, const char *tx )
+{
+  fuse_rs232_info info;
+#ifdef WIN32
+  (void)tx;
+  if( fuse_host_copy_rs232_info( FUSE_RS232_RX, &info ) !=
+      FUSE_HOST_OPERATION_OK || info.available || info.connected ||
+      fuse_host_connect_rs232( FUSE_RS232_RX, rx ) !=
+      FUSE_HOST_OPERATION_MEDIA_ERROR )
+    return 1;
+  puts( "host: RS232 unavailable on Win32" );
+#else
+  if( operation( "connect RS232 RX",
+                 fuse_host_connect_rs232( FUSE_RS232_RX, rx ) ) ||
+      operation( "connect RS232 TX",
+                 fuse_host_connect_rs232( FUSE_RS232_TX, tx ) ) ||
+      operation( "inspect RS232 RX",
+                 fuse_host_copy_rs232_info( FUSE_RS232_RX, &info ) ) ||
+      !info.available || !info.connected ||
+      operation( "disconnect RS232 RX",
+                 fuse_host_disconnect_rs232( FUSE_RS232_RX ) ) ||
+      operation( "inspect RS232 RX",
+                 fuse_host_copy_rs232_info( FUSE_RS232_RX, &info ) ) ||
+      info.connected ||
+      operation( "inspect RS232 TX",
+                 fuse_host_copy_rs232_info( FUSE_RS232_TX, &info ) ) ||
+      !info.connected ||
+      operation( "disconnect RS232 TX",
+                 fuse_host_disconnect_rs232( FUSE_RS232_TX ) ) ||
+      operation( "inspect RS232 TX",
+                 fuse_host_copy_rs232_info( FUSE_RS232_TX, &info ) ) ||
+      info.connected ) return 1;
+  puts( "host: RS232 RX and TX connected and disconnected independently" );
+#endif
+  return 0;
+}
+
 int
 main( int argc, char **argv )
 {
@@ -738,6 +776,7 @@ main( int argc, char **argv )
   int rzx_movie = argc >= 3 && !strcmp( argv[2], "--rzx-to-movie" );
   int rzx_record = argc >= 3 && !strcmp( argv[2], "--record-rzx" );
   int microdrive = argc >= 3 && !strcmp( argv[2], "--microdrive" );
+  int rs232 = argc >= 3 && !strcmp( argv[2], "--rs232" );
   int open_over_tape = argc >= 3 && !strcmp( argv[2], "--open-over-tape" );
   int open_over_floppy = argc >= 3 && !strcmp( argv[2], "--open-over-floppy" );
   int plus3 = disk_save || disk_lifecycle || open_over_floppy;
@@ -755,12 +794,12 @@ main( int argc, char **argv )
         !rzx_record &&
         !parked_eject &&
         !snapshot_save && !filesystem && !divmmc ) ||
-      ( ( rzx_movie || binary ) && argc != 5 ) ||
-      ( argc == 5 && !disk_save && !tape_lifecycle && !tape_replacement && !rzx_movie && !binary ) ||
+      ( ( rzx_movie || binary || rs232 ) && argc != 5 ) ||
+      ( argc == 5 && !disk_save && !tape_lifecycle && !tape_replacement && !rzx_movie && !binary && !rs232 ) ||
       ( argc == 3 && ( !strcmp( argv[2], "--open" ) || !strcmp( argv[2], "--save-disk" ) ||
                       !strcmp( argv[2], "--disk-lifecycle" ) || !strcmp( argv[2], "--tape-lifecycle" ) || !strcmp( argv[2], "--replace-tape" ) ||
                       !strcmp( argv[2], "--record-tape" ) || !strcmp( argv[2], "--parked-tape-eject" ) || !strcmp( argv[2], "--save-snapshot" ) || !strcmp( argv[2], "--filesystem" ) || !strcmp( argv[2], "--divmmc" ) ) ) ) {
-    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --diagnostics MISSING_FILE | --open-pok FILE | --binary-roundtrip INPUT OUTPUT | --poke-finder INPUT | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --record-rzx OUTPUT | --rzx-to-movie INPUT OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
+    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --diagnostics MISSING_FILE | --open-pok FILE | --binary-roundtrip INPUT OUTPUT | --poke-finder INPUT | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --rs232 RX TX | --record-rzx OUTPUT | --rzx-to-movie INPUT OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
     return EXIT_FAILURE;
   }
   if( filesystem || divmmc ) {
@@ -785,7 +824,7 @@ main( int argc, char **argv )
         fuse_host_config_set_tape_traps( config, 0 ) ) ||
       ( filesystem && fuse_host_config_set_auto_load( config, 0 ) ) ||
       ( divmmc && fuse_host_config_set_divmmc( config, 1 ) ) ||
-      ( microdrive && fuse_host_config_set_interface1( config, 1 ) ) ||
+      ( ( microdrive || rs232 ) && fuse_host_config_set_interface1( config, 1 ) ) ||
       fuse_host_config_set_joystick( config, FUSE_HOST_JOYSTICK_1,
                                     JOYSTICK_TYPE_KEMPSTON ) ) {
     fprintf( stderr, "host: configuration rejected\n" );
@@ -800,6 +839,10 @@ main( int argc, char **argv )
   }
   prepared = 1;
   puts( plus3 ? "host: prepared plus3" : "host: prepared 48" );
+  if( rs232 ) {
+    if( !rs232_session( argv[3], argv[4] ) ) status = EXIT_SUCCESS;
+    goto cleanup;
+  }
   if( diagnostics ) {
     fuse_open_request request;
     capture.errors = 0;

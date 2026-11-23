@@ -1553,32 +1553,36 @@ fuse_host_set_microdrive_write_protected( int slot, int write_protected )
 #define O_NONBLOCK FNDELAY
 #endif
 
-void
+int
 if1_plug( const char *filename, int what )
 {
 #ifdef WIN32
   ui_error( UI_ERROR_ERROR, "Not yet implemented on Win32" );
-  return; 
+  return 1;
 #else
-  int fd = -1;
+  int fd = -1, error = 0;
 
   switch( what ) {
   case 1:
     if( if1_ula.fd_r >= 0 )
       close( if1_ula.fd_r );
     fd = if1_ula.fd_r = open( filename, O_RDWR | O_NONBLOCK );
-    if( fcntl( fd, F_SETFL, O_RDONLY | O_NONBLOCK ) )
+    if( fd >= 0 && fcntl( fd, F_SETFL, O_RDONLY | O_NONBLOCK ) ) {
       ui_error( UI_ERROR_ERROR, "Cannot set O_RDONLY on '%s': %s",
-		filename, strerror( errno ) );
+                filename, strerror( errno ) );
+      error = 1;
+    }
     if1_ula.rs232_buffer = 0x100;		/* buffer is empty */
     break;
   case 2:
     if( if1_ula.fd_t >= 0 )
       close( if1_ula.fd_t );
     fd = if1_ula.fd_t = open( filename, O_RDWR | O_NONBLOCK );
-    if( fcntl( fd, F_SETFL, O_WRONLY | O_NONBLOCK ) )
+    if( fd >= 0 && fcntl( fd, F_SETFL, O_WRONLY | O_NONBLOCK ) ) {
       ui_error( UI_ERROR_ERROR, "Cannot set O_WRONLY on '%s': %s",
-		filename, strerror( errno ) );
+                filename, strerror( errno ) );
+      error = 1;
+    }
     break;
   case 3:
     if( if1_ula.fd_net >= 0 )
@@ -1594,12 +1598,15 @@ if1_plug( const char *filename, int what )
 
   if( fd < 0 ) {
     ui_error( UI_ERROR_ERROR, "Error opening '%s': %s",
-		filename, strerror( errno ) );
-    return;
+              filename, strerror( errno ) );
+    if( what == FUSE_RS232_RX || what == FUSE_RS232_TX )
+      update_menu( UMENU_RS232 );
+    return 1;
   }
 
   if1_ula.s_net_mode = settings_current.raw_s_net ? 0 : 1;
   update_menu( UMENU_RS232 );
+  return error;
 #endif
 }
 
@@ -1629,6 +1636,75 @@ if1_unplug( int what )
 	( if1_ula.fd_t == -1 || if1_ula.fd_r == -1 ) )
     if1_ula.dtr = 0;
   update_menu( UMENU_RS232 );
+}
+
+static int
+rs232_available( void )
+{
+#ifdef WIN32
+  return 0;
+#else
+  return periph_is_active( PERIPH_TYPE_INTERFACE1 );
+#endif
+}
+
+static int
+rs232_endpoint_valid( fuse_rs232_endpoint endpoint )
+{
+  return endpoint == FUSE_RS232_RX || endpoint == FUSE_RS232_TX;
+}
+
+fuse_host_operation_result
+fuse_host_copy_rs232_info( fuse_rs232_endpoint endpoint, fuse_rs232_info *info )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( !info ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *info = (fuse_rs232_info){ 0 };
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !rs232_endpoint_valid(
+        endpoint ) ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  info->available = rs232_available();
+  info->connected = ( endpoint ==
+                      FUSE_RS232_RX ? if1_ula.fd_r : if1_ula.fd_t ) >= 0;
+  return FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_connect_rs232( fuse_rs232_endpoint endpoint, const char *path )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  int error;
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !rs232_endpoint_valid( endpoint ) || !path || !*path )
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( !rs232_available() ) return FUSE_HOST_OPERATION_MEDIA_ERROR;
+
+  fuse_engine_begin_operation();
+  fuse_emulation_pause();
+  error = if1_plug( path, endpoint );
+  fuse_emulation_unpause();
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_disconnect_rs232( fuse_rs232_endpoint endpoint )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !rs232_endpoint_valid(
+        endpoint ) ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  /* A retained descriptor may still be disconnected on an inactive machine. */
+  if( !rs232_available() &&
+      ( endpoint == FUSE_RS232_RX ? if1_ula.fd_r : if1_ula.fd_t ) < 0 )
+    return FUSE_HOST_OPERATION_MEDIA_ERROR;
+
+  fuse_engine_begin_operation();
+  fuse_emulation_pause();
+  if1_unplug( endpoint );
+  fuse_emulation_unpause();
+  fuse_engine_end_operation();
+  return FUSE_HOST_OPERATION_OK;
 }
 
 int

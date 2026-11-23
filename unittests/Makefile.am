@@ -478,6 +478,10 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    test -s "$$consumer.rzx"; rm "$$consumer.rzx"; \
 	    "$$program" interface1 --microdrive "$$consumer.mdr" > "$$consumer-microdrive.out" 2> "$$consumer-microdrive.err"; \
 	    grep -Fx 'host: Microdrive 2 kept on Cancel and saved on Quit' "$$consumer-microdrive.out" > /dev/null; \
+	    : > serial-rx.dat; : > serial-tx.dat; \
+	    "$$program" interface1 --rs232 serial-rx.dat serial-tx.dat > "$$consumer-rs232.out"; \
+	    grep -Ex 'host: RS232 (RX and TX connected and disconnected independently|unavailable on Win32)' "$$consumer-rs232.out" > /dev/null; \
+	    rm serial-rx.dat serial-tx.dat; \
 	    test -s "$$consumer.mdr"; rm "$$consumer.mdr"; \
 	    "$$program" only48 --open-over-tape sample.tap > "$$consumer-open-tape.out" 2> "$$consumer-open-tape.err"; \
 	    grep -Fx 'host: modified tape; discard' "$$consumer-open-tape.out" > /dev/null; \
@@ -605,7 +609,7 @@ check-host-operations: unittests/legacyenginelinktest unittests/legacyenginesour
 	  for consumer in legacyenginelinktest legacyenginesourcetest; do \
 	    for mode in success filesystem-oracle filesystem tape-contract tape-info trapped-recording snapshot-roundtrip autoload-success autoload-failure \
 	      open-auto open-noauto open-custom open-reset-failure open-snapshot open-snapshot-joystick open-fallback open-rzx-stop open-rzx-embedded open-rzx-external record-rzx record-rzx-restore record-rzx-rollback record-rzx-movie open-pok host-binary host-poke-finder open-floppy floppy-merge cartridge-lifecycle \
-	      disk-save disk-save-beta microdrive host-quit host-quit-shutdown \
+	      disk-save disk-save-beta microdrive rs232 host-quit host-quit-shutdown \
 	      reset-failure select-failure peripheral-reset-failure peripheral-select-failure; do \
 	      "$$root/$$consumer$(EXEEXT)" --host-operations-test "$$mode" "$$roms"; \
 	    done; \

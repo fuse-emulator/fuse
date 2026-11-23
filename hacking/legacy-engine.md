@@ -328,6 +328,19 @@ for an unnamed cartridge. As in legacy Fuse, saving an unnamed cartridge
 leaves it unnamed. `--microdrive OUTPUT` in `hacking/null-host.c` demonstrates
 Cancel retaining a cartridge and Quit saving it to the supplied target.
 
+## Interface 1 RS232
+
+`fuse_host_connect_rs232()` and `fuse_host_disconnect_rs232()` operate on the
+separate RX and TX endpoints. Connect takes a host-chosen path and uses the
+existing native serial backend, not the regular-file backend. Interface 1 must
+be active for Connect; Win32 does not support these endpoints. A replacement
+closes the old descriptor first, so an open failure can leave that endpoint
+disconnected. A setup error can leave the new descriptor attached; check
+`fuse_host_copy_rs232_info()` for the actual status. A retained connection can
+still be disconnected after switching to a machine without Interface 1.
+`hacking/null-host.c` demonstrates both endpoints with `--rs232 RX TX`; pass
+existing native paths. It does not transmit bytes.
+
 ## Interface 2 and Timex Dock cartridges
 
 `fuse_host_insert_cartridge()` takes a chosen image path and a slot on the

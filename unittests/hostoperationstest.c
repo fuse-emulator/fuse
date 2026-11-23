@@ -2004,6 +2004,60 @@ active_callback( libspectrum_dword ts, int type, void *data )
 }
 
 static void
+check_rs232( void )
+{
+  fuse_rs232_info info;
+  assert( fuse_host_copy_rs232_info( FUSE_RS232_RX, &info ) == OK );
+  assert( !info.connected );
+  assert( fuse_host_connect_rs232( 0,
+                                   "unused" ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_host_connect_rs232( FUSE_RS232_TX,
+                                   "" ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+#ifdef WIN32
+  assert( !info.available );
+  assert( fuse_host_connect_rs232( FUSE_RS232_RX,
+                                   "rx.dat" ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+#else
+  FILE *file;
+  assert( info.available );
+  file = fopen( "rx.dat", "wb" );
+  assert( file && !fclose( file ) );
+  file = fopen( "tx.dat", "wb" );
+  assert( file && !fclose( file ) );
+
+  assert( fuse_host_set_paused( 1 ) == OK );
+  assert( fuse_host_connect_rs232( FUSE_RS232_RX, "rx.dat" ) == OK );
+  assert( fuse_host_connect_rs232( FUSE_RS232_TX, "tx.dat" ) == OK );
+  assert( fuse_run_frame() == FUSE_RUN_PAUSED );
+  assert( fuse_host_set_paused( 0 ) == OK );
+  assert( fuse_host_copy_rs232_info( FUSE_RS232_RX,
+                                     &info ) == OK && info.connected );
+  assert( fuse_host_connect_rs232( FUSE_RS232_RX,
+                                   "missing-rx.dat" ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( fuse_host_copy_rs232_info( FUSE_RS232_RX,
+                                     &info ) == OK && !info.connected );
+  assert( fuse_host_copy_rs232_info( FUSE_RS232_TX,
+                                     &info ) == OK && info.connected );
+  assert( fuse_host_disconnect_rs232( FUSE_RS232_RX ) == OK );
+
+  assert( fuse_host_select_machine( "plus3" ) == OK );
+  assert( fuse_host_copy_rs232_info( FUSE_RS232_TX, &info ) == OK );
+  assert( !info.available && info.connected );
+  assert( fuse_host_disconnect_rs232( FUSE_RS232_TX ) == OK );
+  assert( fuse_host_copy_rs232_info( FUSE_RS232_TX,
+                                     &info ) == OK && !info.connected );
+  assert( fuse_host_connect_rs232( FUSE_RS232_TX,
+                                   "tx.dat" ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( !remove( "rx.dat" ) && !remove( "tx.dat" ) );
+#endif
+}
+
+static void
 check_cartridge_lifecycle( void )
 {
   const fuse_cartridge_slot if2 = FUSE_CARTRIDGE_INTERFACE2;
@@ -2093,7 +2147,8 @@ host_operations_test( int argc, char **argv )
     assert( !fuse_host_config_set_machine( config, "plus3" ) );
   if( !strcmp( argv[1], "disk-save-beta" ) ) assert( !fuse_host_config_set_machine( config, "pentagon" ) );
   assert( !fuse_host_config_set_sound( config, 0 ) );
-  if( !strcmp( argv[1], "microdrive" ) || !strncmp( argv[1], "host-quit", 9 ) )
+  if( !strcmp( argv[1], "microdrive" ) || !strcmp( argv[1], "rs232" ) ||
+      !strncmp( argv[1], "host-quit", 9 ) )
     assert( !fuse_host_config_set_interface1( config, 1 ) );
   assert( fuse_host_config_set_auto_load( NULL, 0 ) );
   assert( fuse_host_config_set_auto_load( config, 2 ) );
@@ -2148,6 +2203,8 @@ host_operations_test( int argc, char **argv )
     check_lifecycle_disk_file();
   } else if( !strcmp( argv[1], "disk-save" ) || !strcmp( argv[1], "disk-save-beta" ) ) {
     check_disk_save( !strcmp( argv[1], "disk-save" ) ? FUSE_DISK_CONTROLLER_PLUS3 : FUSE_DISK_CONTROLLER_BETA );
+  } else if( !strcmp( argv[1], "rs232" ) ) {
+    check_rs232();
   } else if( !strcmp( argv[1], "cartridge-lifecycle" ) ) {
     check_cartridge_lifecycle();
   } else if( !strcmp( argv[1], "microdrive" ) ) {
