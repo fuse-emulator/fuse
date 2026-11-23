@@ -704,6 +704,21 @@ open_demo( const char *filename, const char *movie_target,
 }
 
 static int
+profile_session( const char *path, unsigned int *completed )
+{
+  int active;
+  if( operation( "start profile", fuse_host_start_profile() ) ||
+      operation( "inspect profile", fuse_host_copy_profile_state( &active ) ) ||
+      !active || frames( 1, completed ) ||
+      operation( "finish profile", fuse_host_finish_profile( path ) ) ||
+      operation( "inspect finished profile",
+                 fuse_host_copy_profile_state( &active ) ) ||
+      active ) return 1;
+  puts( "host: saved instruction profile" );
+  return 0;
+}
+
+static int
 psg_session( const char *path, unsigned int *completed )
 {
   int active;
@@ -905,6 +920,7 @@ main( int argc, char **argv )
   int capture_svg = argc >= 3 && !strcmp( argv[2], "--capture-svg" );
   int record_movie = argc >= 3 && !strcmp( argv[2], "--record-movie" );
   int record_psg = argc >= 3 && !strcmp( argv[2], "--record-psg" );
+  int profile = argc >= 3 && !strcmp( argv[2], "--profile" );
   int open_over_tape = argc >= 3 && !strcmp( argv[2], "--open-over-tape" );
   int open_over_floppy = argc >= 3 && !strcmp( argv[2], "--open-over-floppy" );
   int plus3 = disk_save || disk_lifecycle || open_over_floppy;
@@ -912,12 +928,12 @@ main( int argc, char **argv )
   if( ( argc != 2 && argc != 3 && argc != 4 && argc != 5 ) ||
       ( ( microdrive || rzx_record || open_over_tape || open_over_floppy ||
           open_pok || poke_finder || diagnostics || record_movie ||
-          record_psg ) &&
+          record_psg || profile ) &&
         argc != 4 ) ||
       ( argc == 4 && strcmp( argv[2],
                              "--open" ) && !open_over_tape &&
         !open_over_floppy && !open_pok && !poke_finder && !diagnostics &&
-        !microdrive && !record_movie && !record_psg &&
+        !microdrive && !record_movie && !record_psg && !profile &&
         !disk_lifecycle &&
         !tape_record &&
         !rzx_record &&
@@ -928,7 +944,7 @@ main( int argc, char **argv )
       ( argc == 3 && ( !strcmp( argv[2], "--open" ) || !strcmp( argv[2], "--save-disk" ) ||
                       !strcmp( argv[2], "--disk-lifecycle" ) || !strcmp( argv[2], "--tape-lifecycle" ) || !strcmp( argv[2], "--replace-tape" ) ||
                       !strcmp( argv[2], "--record-tape" ) || !strcmp( argv[2], "--parked-tape-eject" ) || !strcmp( argv[2], "--save-snapshot" ) || !strcmp( argv[2], "--filesystem" ) || !strcmp( argv[2], "--divmmc" ) ) ) ) {
-    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --diagnostics MISSING_FILE | --open-pok FILE | --binary-roundtrip INPUT OUTPUT | --poke-finder INPUT | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --rs232 RX TX | --machine-button NAME SNAPSHOT | --save-screen FORMAT OUTPUT | --capture-svg MODE ROOT | --record-movie OUTPUT | --record-psg OUTPUT | --record-rzx OUTPUT | --rzx-to-movie INPUT OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
+    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --diagnostics MISSING_FILE | --open-pok FILE | --binary-roundtrip INPUT OUTPUT | --poke-finder INPUT | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --rs232 RX TX | --machine-button NAME SNAPSHOT | --save-screen FORMAT OUTPUT | --capture-svg MODE ROOT | --record-movie OUTPUT | --record-psg OUTPUT | --profile OUTPUT | --record-rzx OUTPUT | --rzx-to-movie INPUT OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
     return EXIT_FAILURE;
   }
   if( filesystem || divmmc ) {
@@ -971,6 +987,10 @@ main( int argc, char **argv )
   prepared = 1;
   puts( plus3 ? "host: prepared plus3" : record_psg ? "host: prepared 128" :
         "host: prepared 48" );
+  if( profile ) {
+    if( !profile_session( argv[3], &frame_turns ) ) status = EXIT_SUCCESS;
+    goto cleanup;
+  }
   if( record_psg ) {
     if( !psg_session( argv[3], &frame_turns ) ) status = EXIT_SUCCESS;
     goto cleanup;

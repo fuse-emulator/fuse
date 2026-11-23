@@ -30,6 +30,8 @@
 #include "libspectrum.h"
 
 #include "event.h"
+#include "fuse-engine.h"
+#include "fuse.h"
 #include "infrastructure/startup_manager.h"
 #include "module.h"
 #include "profile.h"
@@ -117,17 +119,18 @@ profile_from_snapshot( libspectrum_snap *snap GCC_UNUSED )
   init_profiling_counters();
 }
 
-void
+int
 profile_finish( const char *filename )
 {
   compat_fd f;
   size_t i;
+  int error = 0;
 
   f = compat_file_open( filename, COMPAT_FILE_WRITE );
   if( !f ) {
     ui_error( UI_ERROR_ERROR, "unable to open profile map '%s' for writing",
 	      filename );
-    return;
+    return 1;
   }
 
   for( i = 0; i < 0x10000; i++ ) {
@@ -138,11 +141,14 @@ profile_finish( const char *filename )
     int length = snprintf( line, sizeof( line ), "0x%04lx,%d\n",
                            (unsigned long)i, total_tstates[ i ] );
     if( length < 0 || (size_t)length >= sizeof( line ) ||
-        compat_file_write( f, (const unsigned char *)line, (size_t)length ) ) break;
+        compat_file_write( f, (const unsigned char *)line, (size_t)length ) ) {
+      error = 1;
+      break;
+    }
 
   }
 
-  compat_file_close( f );
+  if( compat_file_close( f ) ) error = 1;
 
   profile_active = 0;
 
@@ -151,4 +157,42 @@ profile_finish( const char *filename )
   event_add( tstates, event_type_null );
 
   ui_menu_activate( UI_MENU_ITEM_MACHINE_PROFILER, 0 );
+  return error;
+}
+
+fuse_host_operation_result
+fuse_host_copy_profile_state( int *active )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( !active ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *active = result == FUSE_HOST_OPERATION_OK && profile_active;
+  return result;
+}
+
+fuse_host_operation_result
+fuse_host_start_profile( void )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( profile_active ) return FUSE_HOST_OPERATION_BUSY;
+  fuse_engine_begin_operation();
+  profile_start();
+  fuse_engine_end_operation();
+  return FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_finish_profile( const char *path )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  int error;
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !path || !*path ||
+      !profile_active ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  fuse_engine_begin_operation();
+  fuse_emulation_pause();
+  error = profile_finish( path );
+  fuse_emulation_unpause();
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
 }

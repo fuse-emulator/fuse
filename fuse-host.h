@@ -209,6 +209,14 @@ fuse_host_operation_result fuse_host_answer_tape_eject(
    Archive-info panels/raw block metadata are not represented by these rows. */
 fuse_host_operation_result fuse_host_copy_tape_info( fuse_tape_info **info );
 
+/* Start instruction profiling with fresh counters. An active profile is BUSY. */
+fuse_host_operation_result fuse_host_start_profile( void );
+fuse_host_operation_result fuse_host_copy_profile_state( int *active );
+/* Finish and write the legacy address/T-state report to an authorized path.
+   An open failure leaves profiling active for a retry. Once opened, writing
+   ends profiling even on error and may leave a partial report. */
+fuse_host_operation_result fuse_host_finish_profile( const char *path );
+
 /* Log AY register writes to a chosen PSG path, which may be overwritten.
    Start reports open/header failure; an active log is BUSY. Stop is idle-safe
    and flushes the legacy log, which does not report later write/close errors. */

@@ -30,6 +30,6 @@ void profile_register_startup( void );
 void profile_start( void );
 void profile_map( libspectrum_word pc );
 void profile_frame( libspectrum_dword frame_length );
-void profile_finish( const char *filename );
+int profile_finish( const char *filename );
 
 #endif			/* #ifndef FUSE_PROFILE_H */

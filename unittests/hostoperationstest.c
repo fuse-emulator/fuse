@@ -2118,6 +2118,37 @@ check_svg_document( const char *path, int drawing )
 #endif
 
 static void
+check_profile( void )
+{
+  utils_file file;
+  int active;
+  unsigned char nop = 0;
+
+  assert( fuse_host_copy_profile_state( &active ) == OK && !active );
+  assert( fuse_host_finish_profile( "unused.csv" ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  writebyte_internal( 0x8000, nop );
+  writebyte_internal( 0x8001, nop );
+  z80.pc.w = 0x8000;
+  assert( fuse_host_start_profile() == OK );
+  assert( fuse_host_start_profile() == FUSE_HOST_OPERATION_BUSY );
+  assert( fuse_run_tstates( 5 ) == FUSE_RUN_COMPLETED );
+  assert( fuse_host_set_paused( 1 ) == OK );
+  assert( fuse_host_finish_profile( "missing-directory/profile.csv" ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( fuse_host_copy_profile_state( &active ) == OK && active );
+  assert( fuse_host_finish_profile( "profile.csv" ) == OK );
+  assert( fuse_host_copy_profile_state( &active ) == OK && !active );
+  assert( fuse_run_frame() == FUSE_RUN_PAUSED );
+  assert( fuse_host_set_paused( 0 ) == OK );
+  assert( !utils_read_file( "profile.csv", &file ) );
+  assert( file.length == sizeof( "0x8000,4\n" ) - 1 &&
+          !memcmp( file.buffer, "0x8000,4\n", file.length ) );
+  utils_file_free( &file );
+  assert( !remove( "profile.csv" ) );
+}
+
+static void
 check_psg_logging( void )
 {
   static const unsigned char program[] = {
@@ -2524,6 +2555,8 @@ host_operations_test( int argc, char **argv )
     check_disk_save( !strcmp( argv[1], "disk-save" ) ? FUSE_DISK_CONTROLLER_PLUS3 : FUSE_DISK_CONTROLLER_BETA );
   } else if( provider.synthetic_buttons ) {
     check_machine_buttons( !strcmp( argv[1], "machine-button-fixture" ) );
+  } else if( !strcmp( argv[1], "profile" ) ) {
+    check_profile();
   } else if( !strcmp( argv[1], "psg-logging" ) ) {
     check_psg_logging();
   } else if( !strcmp( argv[1], "live-movie" ) ) {

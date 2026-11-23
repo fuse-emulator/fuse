@@ -631,6 +631,16 @@ it returns a null ID, then pass a listed ID to Save. A build without PNG support
 returns no IDs. SCR and MLT take no scaler. The null host shows export with
 `--save-screen FORMAT OUTPUT`.
 
+## Instruction profiling
+
+`fuse_host_start_profile()` starts a fresh instruction profile;
+`fuse_host_copy_profile_state()` reports whether it is active.
+`fuse_host_finish_profile()` stops profiling and writes the existing address and
+T-state report to a host-authorized path. If opening the target fails, profiling
+remains active for a retry. A write or close failure after opening ends profiling
+and may leave a partial report. The null host demonstrates this with
+`--profile OUTPUT`.
+
 ## AY register logging
 
 `fuse_host_start_psg_logging()` starts a PSG log at a host-chosen path, which
