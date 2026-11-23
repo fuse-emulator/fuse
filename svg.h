@@ -28,13 +28,10 @@
 
 extern int svg_capture_active;     /* SVG capture enabled? */
 
-typedef enum svg_capture_type {
-  SVG_CAPTURE_DOTS,
-  SVG_CAPTURE_LINES,
-} svg_capture_type;
+#include "fuse-host.h"
 
-void svg_startcapture( const char *name, svg_capture_type mode );
-void svg_stopcapture( void );
+int svg_startcapture( const char *name, svg_capture_type mode );
+int svg_stopcapture( void );
 
 void svg_capture( void );
 void svg_capture_end( void );

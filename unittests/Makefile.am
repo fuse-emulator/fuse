@@ -487,6 +487,15 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    rm serial-rx.dat serial-tx.dat; \
 	    "$$program" button-roms --machine-button multiface button-multiface.szx > "$$consumer-button.out"; \
 	    grep -Fx 'host: queued and ran multiface button' "$$consumer-button.out" > /dev/null; \
+	    for mode in lines dots; do \
+	      "$$program" "$$roms" --capture-svg "$$mode" "$$consumer-$$mode" > "$$consumer-svg.out"; \
+	      if grep -Fx "host: saved SVG $$mode capture" "$$consumer-svg.out" > /dev/null; then \
+	        grep -F '</svg>' "$$consumer-$${mode}0.svg" > /dev/null; rm "$$consumer-$${mode}0.svg"; \
+	      else \
+	        grep -Fx 'host: SVG capture unavailable' "$$consumer-svg.out" > /dev/null; \
+	        test ! -e "$$consumer-$${mode}0.svg"; \
+	      fi; \
+	    done; \
 	    for format in scr mlt png; do \
 	      "$$program" "$$roms" --save-screen "$$format" "$$consumer-screen.$$format" > "$$consumer-screen.out"; \
 	      if grep -Fx "host: saved $$format screenshot" "$$consumer-screen.out"; then \
@@ -623,7 +632,7 @@ check-host-operations: unittests/legacyenginelinktest unittests/legacyenginesour
 	  for consumer in legacyenginelinktest legacyenginesourcetest; do \
 	    for mode in success filesystem-oracle filesystem tape-contract tape-info trapped-recording snapshot-roundtrip autoload-success autoload-failure \
 	      open-auto open-noauto open-custom open-reset-failure open-snapshot open-snapshot-joystick open-fallback open-rzx-stop open-rzx-embedded open-rzx-external record-rzx record-rzx-restore record-rzx-rollback record-rzx-movie open-pok host-binary host-poke-finder open-floppy floppy-merge cartridge-lifecycle \
-	      disk-save disk-save-beta microdrive rs232 machine-buttons screenshots host-quit host-quit-shutdown \
+	      disk-save disk-save-beta microdrive rs232 machine-buttons screenshots svg-capture host-quit host-quit-shutdown \
 	      reset-failure select-failure peripheral-reset-failure peripheral-select-failure; do \
 	      "$$root/$$consumer$(EXEEXT)" --host-operations-test "$$mode" "$$roms"; \
 	    done; \

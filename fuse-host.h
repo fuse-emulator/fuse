@@ -209,6 +209,23 @@ fuse_host_operation_result fuse_host_answer_tape_eject(
    Archive-info panels/raw block metadata are not represented by these rows. */
 fuse_host_operation_result fuse_host_copy_tape_info( fuse_tape_info **info );
 
+typedef enum svg_capture_type {
+  SVG_CAPTURE_DOTS, SVG_CAPTURE_LINES
+} svg_capture_type;
+
+typedef struct fuse_svg_capture_info {
+  int available, active;
+  svg_capture_type mode; /* Meaningful only while active. */
+} fuse_svg_capture_info;
+
+/* Authorize the existing numbered output series: root0.svg, root1.svg, ...
+   Start copies root. ROM clear-screen events can write before Stop. */
+fuse_host_operation_result fuse_host_start_svg_capture( const char *root,
+                                                        svg_capture_type mode );
+fuse_host_operation_result fuse_host_stop_svg_capture( void );
+fuse_host_operation_result fuse_host_copy_svg_capture_info(
+  fuse_svg_capture_info *info );
+
 typedef enum fuse_screenshot_format {
   FUSE_SCREENSHOT_SCR, FUSE_SCREENSHOT_MLT, FUSE_SCREENSHOT_PNG
 } fuse_screenshot_format;

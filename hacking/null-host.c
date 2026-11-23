@@ -704,6 +704,34 @@ open_demo( const char *filename, const char *movie_target,
 }
 
 static int
+svg_session( const char *name, const char *root, unsigned int *completed )
+{
+  fuse_svg_capture_info info;
+  svg_capture_type mode;
+  if( !strcmp( name, "lines" ) ) mode = SVG_CAPTURE_LINES;
+  else if( !strcmp( name, "dots" ) ) mode = SVG_CAPTURE_DOTS;
+  else return 1;
+  if( operation( "query SVG capture",
+                 fuse_host_copy_svg_capture_info( &info ) ) )
+    return 1;
+  if( !info.available ) {
+    puts( "host: SVG capture unavailable" );
+    return 0;
+  }
+  if( operation( "start SVG capture",
+                 fuse_host_start_svg_capture( root, mode ) ) ||
+      operation( "inspect SVG capture",
+                 fuse_host_copy_svg_capture_info( &info ) ) ||
+      !info.active || info.mode != mode || frames( 1, completed ) ||
+      operation( "stop SVG capture", fuse_host_stop_svg_capture() ) ||
+      operation( "inspect SVG capture",
+                 fuse_host_copy_svg_capture_info( &info ) ) ||
+      info.active ) return 1;
+  printf( "host: saved SVG %s capture\n", name );
+  return 0;
+}
+
+static int
 screenshot_session( const char *name, const char *output,
                     unsigned int *completed )
 {
@@ -836,6 +864,7 @@ main( int argc, char **argv )
   int rs232 = argc >= 3 && !strcmp( argv[2], "--rs232" );
   int machine_button = argc >= 3 && !strcmp( argv[2], "--machine-button" );
   int save_screen = argc >= 3 && !strcmp( argv[2], "--save-screen" );
+  int capture_svg = argc >= 3 && !strcmp( argv[2], "--capture-svg" );
   int open_over_tape = argc >= 3 && !strcmp( argv[2], "--open-over-tape" );
   int open_over_floppy = argc >= 3 && !strcmp( argv[2], "--open-over-floppy" );
   int plus3 = disk_save || disk_lifecycle || open_over_floppy;
@@ -853,12 +882,12 @@ main( int argc, char **argv )
         !rzx_record &&
         !parked_eject &&
         !snapshot_save && !filesystem && !divmmc ) ||
-      ( ( rzx_movie || binary || rs232 || machine_button || save_screen ) && argc != 5 ) ||
-      ( argc == 5 && !disk_save && !tape_lifecycle && !tape_replacement && !rzx_movie && !binary && !rs232 && !machine_button && !save_screen ) ||
+      ( ( rzx_movie || binary || rs232 || machine_button || save_screen || capture_svg ) && argc != 5 ) ||
+      ( argc == 5 && !disk_save && !tape_lifecycle && !tape_replacement && !rzx_movie && !binary && !rs232 && !machine_button && !save_screen && !capture_svg ) ||
       ( argc == 3 && ( !strcmp( argv[2], "--open" ) || !strcmp( argv[2], "--save-disk" ) ||
                       !strcmp( argv[2], "--disk-lifecycle" ) || !strcmp( argv[2], "--tape-lifecycle" ) || !strcmp( argv[2], "--replace-tape" ) ||
                       !strcmp( argv[2], "--record-tape" ) || !strcmp( argv[2], "--parked-tape-eject" ) || !strcmp( argv[2], "--save-snapshot" ) || !strcmp( argv[2], "--filesystem" ) || !strcmp( argv[2], "--divmmc" ) ) ) ) {
-    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --diagnostics MISSING_FILE | --open-pok FILE | --binary-roundtrip INPUT OUTPUT | --poke-finder INPUT | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --rs232 RX TX | --machine-button NAME SNAPSHOT | --save-screen FORMAT OUTPUT | --record-rzx OUTPUT | --rzx-to-movie INPUT OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
+    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --diagnostics MISSING_FILE | --open-pok FILE | --binary-roundtrip INPUT OUTPUT | --poke-finder INPUT | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --rs232 RX TX | --machine-button NAME SNAPSHOT | --save-screen FORMAT OUTPUT | --capture-svg MODE ROOT | --record-rzx OUTPUT | --rzx-to-movie INPUT OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
     return EXIT_FAILURE;
   }
   if( filesystem || divmmc ) {
@@ -898,6 +927,10 @@ main( int argc, char **argv )
   }
   prepared = 1;
   puts( plus3 ? "host: prepared plus3" : "host: prepared 48" );
+  if( capture_svg ) {
+    if( !svg_session( argv[3], argv[4], &frame_turns ) ) status = EXIT_SUCCESS;
+    goto cleanup;
+  }
   if( save_screen ) {
     if( !screenshot_session( argv[3], argv[4],
                              &frame_turns ) ) status = EXIT_SUCCESS;

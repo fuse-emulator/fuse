@@ -2101,6 +2101,76 @@ compare_screenshot_files( const char *host, const char *legacy )
   assert( !remove( host ) && !remove( legacy ) );
 }
 
+#ifdef HAVE_LIB_XML2
+static void
+check_svg_document( const char *path, int drawing )
+{
+  utils_file file;
+  assert( !utils_read_file( path, &file ) );
+  assert( g_strstr_len( (const char *)file.buffer, file.length, "<svg" ) );
+  assert( g_strstr_len( (const char *)file.buffer, file.length, "</svg>" ) );
+  if( drawing )
+    assert( g_strstr_len( (const char *)file.buffer, file.length, "<line " ) );
+  utils_file_free( &file );
+  assert( !remove( path ) );
+}
+
+#endif
+
+static void
+check_svg_capture( void )
+{
+  fuse_svg_capture_info info;
+  assert( fuse_host_copy_svg_capture_info( &info ) == OK && !info.active );
+  assert( fuse_host_start_svg_capture( "",
+                                       SVG_CAPTURE_LINES ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_host_start_svg_capture( "lines",
+                                       99 ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+#ifdef HAVE_LIB_XML2
+  assert( info.available );
+  assert( fuse_host_stop_svg_capture() == OK );
+  assert( fuse_host_set_paused( 1 ) == OK );
+  assert( fuse_host_start_svg_capture( "lines", SVG_CAPTURE_LINES ) == OK );
+  assert( fuse_host_start_svg_capture( "other",
+                                       SVG_CAPTURE_DOTS ) ==
+          FUSE_HOST_OPERATION_BUSY );
+  assert( fuse_host_copy_svg_capture_info( &info ) == OK && info.active &&
+          info.mode == SVG_CAPTURE_LINES );
+  assert( fuse_run_frame() == FUSE_RUN_PAUSED );
+  assert( fuse_host_set_paused( 0 ) == OK );
+  z80.pc.w = 0x24ba; /* DRAW in the standard ROM. */
+  assert( fuse_run_tstates( 1 ) == FUSE_RUN_COMPLETED );
+  z80.pc.w = 0x0daf; /* CLS after drawing produces a numbered segment. */
+  assert( fuse_run_tstates( 1 ) == FUSE_RUN_COMPLETED );
+  check_svg_document( "lines0.svg", 1 );
+  assert( fuse_host_stop_svg_capture() == OK );
+  check_svg_document( "lines1.svg", 0 );
+
+  assert( fuse_host_start_svg_capture( "dots", SVG_CAPTURE_DOTS ) == OK );
+  assert( fuse_host_copy_svg_capture_info( &info ) == OK && info.active &&
+          info.mode == SVG_CAPTURE_DOTS );
+  z80.pc.w = 0x22e5; /* PLOT in dot mode. */
+  assert( fuse_run_tstates( 1 ) == FUSE_RUN_COMPLETED );
+  assert( fuse_host_stop_svg_capture() == OK );
+  check_svg_document( "dots0.svg", 1 );
+
+  assert( fuse_host_start_svg_capture( "missing-directory/capture",
+                                       SVG_CAPTURE_LINES ) == OK );
+  assert( fuse_host_stop_svg_capture() == FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( fuse_host_copy_svg_capture_info( &info ) == OK && !info.active );
+  assert( fuse_host_start_svg_capture( "recovered", SVG_CAPTURE_LINES ) == OK );
+  fuse_shutdown();
+  check_svg_document( "recovered0.svg", 0 );
+#else
+  assert( !info.available );
+  assert( fuse_host_start_svg_capture( "lines",
+                                       SVG_CAPTURE_LINES ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+#endif
+}
+
 static void
 check_screenshots( void )
 {
@@ -2369,6 +2439,8 @@ host_operations_test( int argc, char **argv )
     check_disk_save( !strcmp( argv[1], "disk-save" ) ? FUSE_DISK_CONTROLLER_PLUS3 : FUSE_DISK_CONTROLLER_BETA );
   } else if( provider.synthetic_buttons ) {
     check_machine_buttons( !strcmp( argv[1], "machine-button-fixture" ) );
+  } else if( !strcmp( argv[1], "svg-capture" ) ) {
+    check_svg_capture();
   } else if( !strcmp( argv[1], "screenshots" ) ) {
     check_screenshots();
   } else if( !strcmp( argv[1], "rs232" ) ) {

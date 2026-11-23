@@ -631,6 +631,18 @@ it returns a null ID, then pass a listed ID to Save. A build without PNG support
 returns no IDs. SCR and MLT take no scaler. The null host shows export with
 `--save-screen FORMAT OUTPUT`.
 
+## SVG capture
+
+`fuse_host_start_svg_capture()` starts line or dot capture with a chosen filename
+prefix. It copies the prefix and uses the existing numbered output series
+(`prefix0.svg`, `prefix1.svg`, …). A ROM clear-screen event after drawing may
+write a segment during a turn; stopping capture or shutting down writes the
+last segment. Existing targets may be overwritten. Stop reports detected
+output failures and ends capture even if a write failed; this does not imply
+rollback of earlier segments. `fuse_host_copy_svg_capture_info()` reports build
+availability, activity, and the current mode. The null host demonstrates the
+operations with `--capture-svg MODE ROOT`.
+
 ## Memory and binary files
 
 `fuse_host_copy_memory()` reads the current mapped address space into a

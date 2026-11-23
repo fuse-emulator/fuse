@@ -39,6 +39,8 @@
 #define ENCODING "utf-8"
 #endif
 
+#include "fuse.h"
+#include "fuse-engine.h"
 #include "machine.h"
 #include "memory_pages.h"
 #include "svg.h"
@@ -54,16 +56,25 @@ int svg_capture_active = 0;
 
 static svg_capture_type svg_capture_mode = SVG_CAPTURE_LINES;
 
-static char *svg_fname;
 static char *svg_fnameroot;
+static int svg_failed;
 
 static int svg_filecount;
 
 static int svg_flag = 0;
 static int svg_y_size = 176;
 
-xmlBuffer* buffer;
-xmlTextWriter* writer;
+static xmlBuffer *buffer;
+static xmlTextWriter *writer;
+
+static void
+svg_free_document( void )
+{
+  if( writer ) xmlFreeTextWriter( writer );
+  if( buffer ) xmlBufferFree( buffer );
+  writer = NULL;
+  buffer = NULL;
+}
 
 
 static const
@@ -146,39 +157,33 @@ svg_write_metadata( void )
   return 0;
 }
 
-static void
+static int
 svg_openfile( void )
 {
   int err;
 
   if( ( buffer = xmlBufferCreate() ) == NULL ) {
     ui_error( UI_ERROR_ERROR, "error creating the XML buffer" );
-    return;
+    return 1;
   }
 
   if( ( writer = xmlNewTextWriterMemory( buffer, 0 ) ) == NULL ) {
     ui_error( UI_ERROR_ERROR, "error allocating the XML writer" );
-    return;
+    return 1;
   }
 
-  /*
-  we free the writer at the start of each of
-  these branches since this must be done before
-  using the buffer
-  */
-    
   /* start xml */
 
   if( xmlTextWriterStartDocument( writer, NULL, ENCODING, NULL ) < 0 ) {
     ui_error( UI_ERROR_ERROR, "error on SVG document start" );
-    return;
+    return 1;
   }
 
   /* svg */
 
   if( xmlTextWriterStartElement( writer, BAD_CAST "svg" ) < 0 ) {
     ui_error( UI_ERROR_ERROR, "error on SVG open" );
-    return;
+    return 1;
   }
 
   err = 0;
@@ -187,8 +192,9 @@ svg_openfile( void )
 
   if( err ) {
     ui_error( UI_ERROR_ERROR, "error setting the SVG attributes" );
-    return;
+    return 1;
   }
+  return 0;
 }
 
 static void
@@ -226,7 +232,7 @@ svg_rect( int xpos, int ypos, const char *xsize, const char *ysize,
   }
 }
 
-static void
+static int
 svg_openpath( void )
 {
   int err;
@@ -245,7 +251,7 @@ svg_openpath( void )
 
   if( xmlTextWriterStartElement( writer, BAD_CAST "g" ) < 0 ) {
     ui_error( UI_ERROR_ERROR, "error opening the SVG element" );
-    return;
+    return 1;
   }
 
   svg_ink = ( readbyte_internal( 0x5c8d ) & 7 ) +
@@ -260,62 +266,68 @@ svg_openpath( void )
 
   if( err ) {
     ui_error( UI_ERROR_ERROR, "error setting the SVG element attributes" );
-    return;
+    return 1;
   }
+  return 0;
 }
 
-static void
+static int
 svg_closepath( void )
 {
   if( xmlTextWriterEndElement( writer ) < 0 ) {
     ui_error( UI_ERROR_ERROR, "error on SVG element close" );
-    return;
+    return 1;
   }
+  return 0;
 }
 
-static void
+static int
 svg_closefile( void )
 {
   compat_fd fp;
+  char *filename;
+  size_t length = strlen( svg_fnameroot ) + BUFSIZ;
+  int error;
 
-  if( svg_write_metadata() != 0 ) {
-    ui_error( UI_ERROR_ERROR, "error writing the SVG metadata" );
-    return;
-  }
-
-  if( xmlTextWriterEndElement( writer ) < 0 ) {
-    ui_error( UI_ERROR_ERROR, "error on SVG close" );
-    return;
-  }
-
-  if( xmlTextWriterEndDocument( writer) < 0 ) {
-    ui_error( UI_ERROR_ERROR, "error on SVG document end" );
-    return;
+  if( svg_closepath() || svg_write_metadata() ||
+      xmlTextWriterEndElement( writer ) < 0 ||
+      xmlTextWriterEndDocument( writer ) < 0 ) {
+    ui_error( UI_ERROR_ERROR, "error finalizing the SVG document" );
+    svg_free_document();
+    return 1;
   }
 
   xmlFreeTextWriter( writer );
+  writer = NULL;
 
-  svg_fname = libspectrum_new( char, strlen( svg_fnameroot ) + BUFSIZ );
-  snprintf( svg_fname, strlen( svg_fnameroot ) + BUFSIZ, "%s%d.svg", 
-            svg_fnameroot, svg_filecount++ );
-
-  fp = compat_file_open( svg_fname, COMPAT_FILE_WRITE );
-  if( fp != COMPAT_FILE_OPEN_FAILED ) {
-    compat_file_write( fp, xmlBufferContent( buffer ), xmlBufferLength( buffer ) );
-
+  filename = libspectrum_new( char, length );
+  snprintf( filename, length, "%s%d.svg", svg_fnameroot, svg_filecount++ );
+  fp = compat_file_open( filename, COMPAT_FILE_WRITE );
+  error = fp == COMPAT_FILE_OPEN_FAILED;
+  if( error ) {
+    ui_error( UI_ERROR_ERROR, "error opening SVG file '%s': %s", filename,
+              strerror( errno ) );
+  } else {
+    if( compat_file_write( fp, xmlBufferContent( buffer ),
+                           xmlBufferLength( buffer ) ) ) {
+      ui_error( UI_ERROR_ERROR, "error writing SVG file '%s'", filename );
+      error = 1;
+    }
     if( compat_file_close( fp ) ) {
-      ui_error( UI_ERROR_ERROR, "error closing SVG file '%s': %s", svg_fname,
+      ui_error( UI_ERROR_ERROR, "error closing SVG file '%s': %s", filename,
                 strerror( errno ) );
+      error = 1;
     }
   }
-
-  libspectrum_free( svg_fname );
+  libspectrum_free( filename );
+  svg_free_document();
+  return error;
 }
 
 
 
 /* some init, open file (name)*/
-void
+int
 svg_startcapture( const char *name, svg_capture_type mode )
 {
   if( !svg_capture_active ) {
@@ -329,26 +341,30 @@ svg_startcapture( const char *name, svg_capture_type mode )
     strcpy( svg_fnameroot, name );
     svg_filecount = 0;
 
-    svg_capture_active = 1;
+    svg_failed = 0;
     svg_flag = 0;
     svg_y_size = 176;
 
-    svg_openfile();
-    svg_openpath();
+    if( svg_openfile() || svg_openpath() ) {
+      svg_free_document();
+      libspectrum_free( svg_fnameroot );
+      svg_fnameroot = NULL;
+      return 1;
+    }
+    svg_capture_active = 1;
   }
+  return 0;
 }
 
-void
+int
 svg_stopcapture( void )
 {
-  if( svg_capture_active ) {
-    svg_closepath();
-    svg_closefile();
-
-    libspectrum_free( svg_fnameroot );
-
-    svg_capture_active = 0;
-  }
+  if( !svg_capture_active ) return 0;
+  if( writer ) svg_failed |= svg_closefile();
+  libspectrum_free( svg_fnameroot );
+  svg_fnameroot = NULL;
+  svg_capture_active = 0;
+  return svg_failed;
 }
 
 static void
@@ -598,16 +614,18 @@ svg_capture_char( void )
 static void
 svg_capture_cls( void )
 {
+  int error;
   if( svg_flag ) {
-    svg_closepath();
-    svg_closefile();
-    svg_openfile();
-    svg_openpath();
+    svg_failed |= svg_closefile();
+    error = svg_openfile() || svg_openpath();
   } else {
     /* This trick could load empty fake paths into the SVG file when CLS
        happens */
-    svg_closepath();
-    svg_openpath();
+    error = svg_closepath() || svg_openpath();
+  }
+  if( error ) {
+    svg_failed = 1;
+    svg_free_document();
   }
 
   svg_flag = 0;
@@ -636,7 +654,7 @@ svg_capture_scroll( void )
 void
 svg_capture( void )
 {
-  if( trap_check_rom( CHECK_48K_ROM ) ) {
+  if( writer && trap_check_rom( CHECK_48K_ROM ) ) {
 
     if( ( machine_current->machine == LIBSPECTRUM_MACHINE_TS2068 ) ||
         ( machine_current->machine == LIBSPECTRUM_MACHINE_TC2068 ) ) {
@@ -697,3 +715,57 @@ svg_capture_end( void )
 }
 
 #endif  /* HAVE_LIB_XML2 */
+
+fuse_host_operation_result
+fuse_host_copy_svg_capture_info( fuse_svg_capture_info *info )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( !info ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *info = (fuse_svg_capture_info){ 0 };
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+#ifdef HAVE_LIB_XML2
+  info->available = 1;
+  info->active = svg_capture_active;
+  info->mode = svg_capture_mode;
+#endif
+  return FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_start_svg_capture( const char *root, svg_capture_type mode )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !root || !*root ||
+      ( mode != SVG_CAPTURE_LINES && mode != SVG_CAPTURE_DOTS ) )
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+#ifdef HAVE_LIB_XML2
+  if( svg_capture_active ) return FUSE_HOST_OPERATION_BUSY;
+  fuse_engine_begin_operation();
+  fuse_emulation_pause();
+  if( svg_startcapture( root, mode ) ) result = FUSE_HOST_OPERATION_MEDIA_ERROR;
+  fuse_emulation_unpause();
+  fuse_engine_end_operation();
+  return result;
+#else
+  return FUSE_HOST_OPERATION_MEDIA_ERROR;
+#endif
+}
+
+fuse_host_operation_result
+fuse_host_stop_svg_capture( void )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+#ifdef HAVE_LIB_XML2
+  if( !svg_capture_active ) return FUSE_HOST_OPERATION_OK;
+  fuse_engine_begin_operation();
+  fuse_emulation_pause();
+  if( svg_stopcapture() ) result = FUSE_HOST_OPERATION_MEDIA_ERROR;
+  fuse_emulation_unpause();
+  fuse_engine_end_operation();
+  return result;
+#else
+  return FUSE_HOST_OPERATION_MEDIA_ERROR;
+#endif
+}
