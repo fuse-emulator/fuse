@@ -631,6 +631,16 @@ it returns a null ID, then pass a listed ID to Save. A build without PNG support
 returns no IDs. SCR and MLT take no scaler. The null host shows export with
 `--save-screen FORMAT OUTPUT`.
 
+## Live FMF recording
+
+`fuse_host_start_movie()` starts live capture with the existing FMF writer.
+The host authorizes the output path (including overwrite); the writer adds
+`.fmf` if needed. `fuse_host_toggle_movie_pause()` pauses or resumes capture
+without pausing emulation. `fuse_host_copy_movie_state()` distinguishes idle,
+recording, and paused capture. `fuse_host_stop_movie()` finalizes the recording
+with legacy write/close reporting. The null host demonstrates this with
+`--record-movie OUTPUT`.
+
 ## SVG capture
 
 `fuse_host_start_svg_capture()` starts line or dot capture with a chosen filename

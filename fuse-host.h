@@ -209,6 +209,20 @@ fuse_host_operation_result fuse_host_answer_tape_eject(
    Archive-info panels/raw block metadata are not represented by these rows. */
 fuse_host_operation_result fuse_host_copy_tape_info( fuse_tape_info **info );
 
+typedef enum fuse_movie_state {
+  FUSE_MOVIE_IDLE, FUSE_MOVIE_RECORDING, FUSE_MOVIE_PAUSED
+} fuse_movie_state;
+
+/* Start live FMF recording at an authorized path. The existing writer adds
+   .fmf if needed and may overwrite. An active (even paused) recording is BUSY. */
+fuse_host_operation_result fuse_host_start_movie( const char *path );
+/* Toggle capture only, not emulation. Toggle and Stop are idle-safe. Stop
+   finalizes with the legacy writer, which does not report write/close errors. */
+fuse_host_operation_result fuse_host_toggle_movie_pause( void );
+fuse_host_operation_result fuse_host_stop_movie( void );
+fuse_host_operation_result fuse_host_copy_movie_state(
+  fuse_movie_state *state );
+
 typedef enum svg_capture_type {
   SVG_CAPTURE_DOTS, SVG_CAPTURE_LINES
 } svg_capture_type;

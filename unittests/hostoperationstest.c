@@ -2118,6 +2118,48 @@ check_svg_document( const char *path, int drawing )
 #endif
 
 static void
+check_live_movie( void )
+{
+  fuse_movie_state state;
+  utils_file file;
+
+  assert( fuse_host_copy_movie_state( &state ) == OK &&
+          state == FUSE_MOVIE_IDLE );
+  assert( fuse_host_toggle_movie_pause() == OK );
+  assert( fuse_host_stop_movie() == OK );
+  assert( fuse_host_start_movie( "" ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_host_start_movie( "missing-directory/movie" ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( fuse_host_copy_movie_state( &state ) == OK &&
+          state == FUSE_MOVIE_IDLE );
+
+  settings_set_string( &settings_current.movie_compr, "None" );
+  assert( !utils_write_file( "live.fmf", (const unsigned char *)"old", 3 ) );
+  assert( fuse_host_set_paused( 1 ) == OK );
+  assert( fuse_host_start_movie( "live" ) == OK );
+  assert( fuse_run_frame() == FUSE_RUN_PAUSED );
+  assert( fuse_host_set_paused( 0 ) == OK );
+  assert( fuse_run_frame() == FUSE_RUN_COMPLETED );
+  assert( fuse_host_toggle_movie_pause() == OK );
+  assert( fuse_host_copy_movie_state( &state ) == OK &&
+          state == FUSE_MOVIE_PAUSED );
+  assert( fuse_host_start_movie( "not-created" ) == FUSE_HOST_OPERATION_BUSY );
+  assert( fuse_run_frame() == FUSE_RUN_COMPLETED );
+  assert( fuse_host_toggle_movie_pause() == OK );
+  assert( fuse_host_copy_movie_state( &state ) == OK &&
+          state == FUSE_MOVIE_RECORDING );
+  assert( fuse_run_frame() == FUSE_RUN_COMPLETED );
+  assert( fuse_host_stop_movie() == OK );
+  assert( fuse_host_copy_movie_state( &state ) == OK &&
+          state == FUSE_MOVIE_IDLE );
+  assert( !utils_read_file( "live.fmf", &file ) );
+  assert( file.length > 16 && !memcmp( file.buffer, "FMF_V1", 6 ) );
+  assert( file.buffer[7] == 'U' && file.buffer[file.length - 1] == 'X' );
+  utils_file_free( &file );
+  assert( !remove( "live.fmf" ) );
+}
+
+static void
 check_svg_capture( void )
 {
   fuse_svg_capture_info info;
@@ -2439,6 +2481,8 @@ host_operations_test( int argc, char **argv )
     check_disk_save( !strcmp( argv[1], "disk-save" ) ? FUSE_DISK_CONTROLLER_PLUS3 : FUSE_DISK_CONTROLLER_BETA );
   } else if( provider.synthetic_buttons ) {
     check_machine_buttons( !strcmp( argv[1], "machine-button-fixture" ) );
+  } else if( !strcmp( argv[1], "live-movie" ) ) {
+    check_live_movie();
   } else if( !strcmp( argv[1], "svg-capture" ) ) {
     check_svg_capture();
   } else if( !strcmp( argv[1], "screenshots" ) ) {

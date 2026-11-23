@@ -43,6 +43,7 @@
 
 #include "display.h"
 #include "fuse.h"
+#include "fuse-engine.h"
 #include "machine.h"
 #include "movie.h"
 #include "movie_tables.h"
@@ -450,6 +451,57 @@ movie_pause( void )
     movie_paused = 1;
     ui_menu_activate( UI_MENU_ITEM_FILE_MOVIE_PAUSE, 1 );
   }
+}
+
+fuse_host_operation_result
+fuse_host_copy_movie_state( fuse_movie_state *state )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( !state ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *state = FUSE_MOVIE_IDLE;
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( movie_recording ) *state = FUSE_MOVIE_RECORDING;
+  else if( movie_paused ) *state = FUSE_MOVIE_PAUSED;
+  return FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_start_movie( const char *path )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  int error;
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !path || !*path ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( movie_is_active() ) return FUSE_HOST_OPERATION_BUSY;
+
+  fuse_engine_begin_operation();
+  fuse_emulation_pause();
+  error = movie_start_authorized( path );
+  fuse_emulation_unpause();
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_toggle_movie_pause( void )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  fuse_engine_begin_operation();
+  movie_pause();
+  fuse_engine_end_operation();
+  return FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_stop_movie( void )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  fuse_engine_begin_operation();
+  movie_stop();
+  fuse_engine_end_operation();
+  return FUSE_HOST_OPERATION_OK;
 }
 
 void
