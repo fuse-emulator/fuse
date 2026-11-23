@@ -37,8 +37,8 @@ extern const char *fuse_progname;	/* argv[0] */
 extern int fuse_exiting;		/* Shall we exit now? */
 
 extern int fuse_emulation_paused;	/* Is Spectrum emulation paused? */
-int fuse_emulation_pause(void);		/* Stop and start emulation */
-int fuse_emulation_unpause(void);
+int fuse_emulation_pause( void );
+int fuse_emulation_unpause( void );
 
 #ifdef UI_WIN32
 int fuse_main(int argc, char **argv);

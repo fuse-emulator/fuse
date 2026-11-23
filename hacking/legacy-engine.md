@@ -671,6 +671,7 @@ still apply.
 An optional tape filename selects a separate scenario: insert on 48K with the
 deck stopped, run five frame turns and shut down. This mode needs only `48.rom`;
 it does not perform the input/reset/128K sequence or wait for tape completion.
+
 `--open FILE` demonstrates general File → Open followed by five turns. The
 example verifies that execution is parked for a returned question, maps the
 first requested joystick to keyboard input, and declines any further mappings.
@@ -760,3 +761,53 @@ usual directories. Supply explicit ROM paths when needed. For tape-autoload
 checks, use standard ROM filenames resolved through those directories: a different
 `--rom-*` filename marks the ROM custom and suppresses autoload even if its bytes
 match the default. The direct host provider has its own resource policy instead.
+
+## SDL-owned event loop probe
+
+`hacking/sdl-loop-host.c` is a scripted same-thread consumer of an SDL2-backed
+engine. It starts SDL video itself, drives `SDL_PollEvent()` and `fuse_run_frame()`
+without entering the legacy application loop, and reuses the linked SDL2 renderer.
+It loads an existing tape and inspects its blocks, checks keyboard input against
+emulated RAM, pauses and resumes, and answers a parked dirty-tape Quit before
+shutting down Fuse and then SDL. It uses a built-in
+fixture ROM and silent worker-style turns; it is not an interactive UI or a
+nonblocking execution test.
+
+Configure with `--with-sdl --with-audio-driver=null` and build normally. From a
+separate consumer directory, with `build` and `src` pointing to the configured
+build and extracted source (absolute paths):
+
+```sh
+make -C "$build" -f Makefile -f "$src/hacking/host-consumer.mk" \
+  HOST_INPUT="$src/hacking/sdl-loop-host.c" HOST_OUTPUT="$PWD/sdl-loop-host" \
+  host-consumer-archive
+SDL_VIDEODRIVER=dummy FUSE_DISPLAY_TIMING=1 ./sdl-loop-host input.tap
+```
+
+Use `host-consumer-source` instead to link the configured canonical source
+objects and special objects, without the archive. Both recipes compile the
+consumer against `fuse-host.h`, `fuse-disk.h`, `fuse-peripheral.h` and
+`fuse-tape.h` staged in `host-include/`, plus the configured dependency headers. They do not put private
+Fuse or generated headers on the consumer's include path. This is a source
+subset for the demonstrated operations, not an installed SDK or a shared ABI.
+With display timing enabled, a nonzero `presentation_count` confirms a call to
+the SDL renderer; it does not measure what the OS displayed or validate GTK4.
+
+`hacking/worker-loop-host.c` uses the same recipes with a separate build
+configured `--with-null-ui --with-audio-driver=null`. A GLib main loop queues
+Quit to a single Fuse owner thread and dispatches another callback while the
+worker is deliberately held. The UI joins the worker only after it acknowledges
+shutdown. The hold is a test gate, not an interruptible engine turn. This probe
+does not move a toolkit-bound renderer to a worker.
+
+After building both configurations, run the repeatable check from any directory:
+
+```sh
+sh "$src/hacking/check-host-consumers.sh" "$build" "$null_build"
+```
+
+The script creates an isolated TAP fixture and checks SDL presentation and both
+host lifecycles for both link modes. Set `SDL_VIDEODRIVER=cocoa` on macOS to
+exercise the system video driver rather than the default SDL dummy driver.
+See [the migration guide](host-migration.md) for the source boundary and thread
+ownership rules.

@@ -16,6 +16,8 @@
 #include "memory.h"
 #include "spectrum.h"
 #include "snapshot.h"
+#include "rzx.h"
+#include "sound.h"
 #include "z80/z80.h"
 #include "settings.h"
 #include "ui/ui.h"
@@ -152,6 +154,7 @@ frame_callback( libspectrum_dword when, int type, void *data )
   frame_callback_fired++;
   assert( fuse_run_frame() == FUSE_RUN_BUSY );
   assert( fuse_run_tstates( 0 ) == FUSE_RUN_BUSY );
+  assert( fuse_host_set_paused( 1 ) == FUSE_HOST_OPERATION_BUSY );
   assert( fuse_legacy_execute( &status ) == 1 && status == 73 );
   assert( fuse_legacy_prepare( 0, NULL ) == FUSE_INIT_BUSY );
   fuse_shutdown(); /* Active dispatch must retain the session. */
@@ -261,6 +264,55 @@ check_frame_contract( int argc, char **argv, int shutdown_only )
 }
 
 extern int null_ui_debugger_activate_calls;
+
+static void
+check_host_pause( int argc, char **argv )
+{
+  const fuse_host_operation_result ok = FUSE_HOST_OPERATION_OK;
+  int audio;
+  libspectrum_dword before;
+
+  assert( fuse_host_set_paused( 1 ) == FUSE_HOST_OPERATION_NOT_READY );
+  assert( fuse_legacy_prepare( argc, argv ) == FUSE_INIT_READY );
+  audio = settings_current.sound;
+  assert( !!sound_enabled == audio );
+  assert( fuse_host_set_paused( -1 ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_host_set_paused( 0 ) == ok && !fuse_emulation_paused );
+
+  assert( !fuse_emulation_pause() );
+  assert( fuse_host_set_paused( 0 ) == ok && fuse_emulation_paused == 1 );
+  assert( fuse_host_set_paused( 1 ) == ok && fuse_emulation_paused == 2 );
+  assert( fuse_host_set_paused( 1 ) == ok && fuse_emulation_paused == 2 );
+  assert( fuse_host_set_paused( 0 ) == ok && fuse_emulation_paused == 1 );
+  assert( fuse_run_frame() == FUSE_RUN_PAUSED && !sound_enabled );
+  assert( !fuse_emulation_unpause() && !!sound_enabled == audio );
+
+  settings_current.competition_mode = 0;
+  assert( !rzx_start_recording( "host-pause.rzx", 0 ) && rzx_recording );
+  assert( fuse_host_set_paused( 1 ) == ok && rzx_recording && !sound_enabled );
+  before = tstates;
+  assert( fuse_run_frame() == FUSE_RUN_PAUSED && tstates == before );
+  assert( fuse_run_tstates( 1 ) == FUSE_RUN_PAUSED && tstates == before );
+  assert( fuse_host_set_paused( 0 ) == ok && !!sound_enabled == audio );
+  assert( !rzx_stop_recording() && !remove( "host-pause.rzx" ) );
+
+  settings_current.competition_mode = 1;
+  assert( !rzx_start_recording( "host-pause.rzx", 0 ) && rzx_recording );
+  assert( fuse_host_set_paused( 1 ) == ok && !rzx_recording && !sound_enabled );
+  assert( !remove( "host-pause.rzx" ) );
+  assert( fuse_host_set_paused( 0 ) == ok && !!sound_enabled == audio );
+  assert( !rzx_start_recording( "missing-directory/host-pause.rzx", 0 ) );
+  assert( fuse_host_set_paused( 1 ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( !rzx_recording && !sound_enabled );
+  assert( fuse_host_set_paused( 1 ) == ok && fuse_emulation_paused == 1 );
+  assert( fuse_run_frame() == FUSE_RUN_PAUSED );
+  assert( fuse_host_set_paused( 0 ) == ok && !!sound_enabled == audio );
+  assert( fuse_host_set_paused( 0 ) == ok && !fuse_emulation_paused );
+  assert( fuse_run_frame() == FUSE_RUN_COMPLETED );
+  fuse_shutdown();
+  assert( fuse_host_set_paused( 0 ) == FUSE_HOST_OPERATION_NOT_READY );
+  check_closed();
+}
 
 static void
 check_debugger_stop( int argc, char **argv )
@@ -747,6 +799,8 @@ legacy_lifecycle_test( int argc, char **argv )
     check_debugger_step( argc - 1, argv + 1, !strcmp( argv[1], "debugger-step-frame" ) );
   } else if( !strncmp( argv[1], "budgets", 7 ) ) {
     check_budget_run( argc - 1, argv + 1, argv[1] );
+  } else if( !strcmp( argv[1], "host-pause" ) ) {
+    check_host_pause( argc - 1, argv + 1 );
   } else if( !strcmp( argv[1], "frame-contract" ) ||
       !strcmp( argv[1], "frame-shutdown" ) ) {
     check_frame_contract( argc - 1, argv + 1,

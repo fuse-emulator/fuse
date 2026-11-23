@@ -117,6 +117,7 @@ int fuse_exiting;
 
 /* Is Spectrum emulation currently paused, and if so, how many times? */
 int fuse_emulation_paused;
+static int host_pause_requested;
 
 /* The creator information we'll store in file formats that support this */
 libspectrum_creator *fuse_creator;
@@ -830,6 +831,7 @@ fuse_init( int argc, char **argv, const fuse_host_config *config )
   if( ui_mouse_present ) ui_mouse_grabbed = ui_mouse_grab( 1 );
 
   fuse_emulation_paused = 0;
+  host_pause_requested = 0;
   movie_init();
 
 #ifdef FUSE_TEST_BUILD
@@ -1001,9 +1003,10 @@ static void fuse_show_help( void )
 }
 
 /* Stop all activities associated with actual Spectrum emulation */
-int fuse_emulation_pause(void)
+static int
+emulation_pause( int complete_on_error )
 {
-  int error, was_paused;
+  int error = 0, was_paused;
 
   /* If we were already paused, just return. In any case, increment
      the pause count */
@@ -1014,14 +1017,21 @@ int fuse_emulation_pause(void)
   /* Stop recording any competition mode RZX file */
   if( rzx_recording && rzx_competition_mode ) {
     ui_error( UI_ERROR_INFO, "Stopping competition mode RZX recording" );
-    error = rzx_stop_recording(); if( error ) return error;
+    error = rzx_stop_recording();
+    if( error && !complete_on_error ) return error;
   }
       
   /* If we had sound enabled (and hence doing the speed regulation),
      turn it off */
   sound_pause();
 
-  return 0;
+  return error;
+}
+
+int
+fuse_emulation_pause( void )
+{
+  return emulation_pause( 0 );
 }
 
 /* Restart emulation activities */
@@ -1042,6 +1052,25 @@ int fuse_emulation_unpause(void)
   error = timer_estimate_reset(); if( error ) return error;
 
   return 0;
+}
+
+fuse_host_operation_result
+fuse_host_set_paused( int paused )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( paused != 0 && paused != 1 ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( paused == host_pause_requested ) return FUSE_HOST_OPERATION_OK;
+
+  fuse_engine_begin_operation();
+  host_pause_requested = paused;
+  if( paused ) {
+    if( emulation_pause( 1 ) ) result = FUSE_HOST_OPERATION_MEDIA_ERROR;
+  } else {
+    if( fuse_emulation_unpause() ) result = FUSE_HOST_OPERATION_FAILED;
+  }
+  fuse_engine_end_operation();
+  return result;
 }
 
 /* Make 'best guesses' as to what to do with non-option arguments */
