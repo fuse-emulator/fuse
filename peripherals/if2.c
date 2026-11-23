@@ -30,6 +30,8 @@
 #include <string.h>
 
 #include "if2.h"
+#include "fuse-engine.h"
+#include "fuse.h"
 #include "infrastructure/startup_manager.h"
 #include "machine.h"
 #include "memory_pages.h"
@@ -114,6 +116,7 @@ if2_end( void )
 static int
 if2_insert_internal( const char *filename, const utils_file *file )
 {
+  int error;
   if ( !periph_is_active( PERIPH_TYPE_INTERFACE2 ) ) {
     ui_error( UI_ERROR_ERROR,
 	      "This machine does not support the Interface 2" );
@@ -124,10 +127,10 @@ if2_insert_internal( const char *filename, const utils_file *file )
   memory_rom_bank_clear( &if2_snapshot_cartridge );
 
   if2_loaded_file = file;
-  machine_reset( 0 );
+  error = machine_reset( 0 );
   if2_loaded_file = NULL;
 
-  return 0;
+  return error;
 }
 
 int
@@ -143,13 +146,20 @@ if2_insert_loaded( const utils_file *file )
   return if2_insert_internal( file->filename, file );
 }
 
-void
+const char *
+if2_attachment_path( void )
+{
+  return if2_active &&
+         !if2_snapshot_cartridge.data ? settings_current.if2_file : NULL;
+}
+
+int
 if2_eject( void )
 {
   if ( !periph_is_active( PERIPH_TYPE_INTERFACE2 ) ) {
     ui_error( UI_ERROR_ERROR,
 	      "This machine does not support the Interface 2" );
-    return;
+    return 1;
   }
 
   if( settings_current.if2_file ) libspectrum_free( settings_current.if2_file );
@@ -160,7 +170,7 @@ if2_eject( void )
 
   ui_menu_activate( UI_MENU_ITEM_MEDIA_CARTRIDGE_IF2_EJECT, 0 );
 
-  machine_reset( 0 );
+  return machine_reset( 0 );
 }
 
 static void
@@ -184,12 +194,28 @@ if2_reset( int hard_reset )
     return;
   }
 
-  if( if2_loaded_file ) {
-    if( if2_loaded_file->length != 0x4000 ||
-        machine_load_rom_bank_from_snapshot( if2_memory_map_romcs, 0,
-                                           if2_loaded_file->buffer,
-                                           if2_loaded_file->length, 1 ) )
+  if( if2_loaded_file || fuse_host_resources_active() ) {
+    int error;
+    utils_file file;
+    const utils_file *image = if2_loaded_file;
+
+    /* Host ROM providers supply machine/peripheral ROMs, not user media. */
+    utils_file_init( &file, settings_current.if2_file );
+    error = !image && utils_file_read( &file );
+    if( !image ) image = &file;
+    if( !error && image->length != 0x4000 ) {
+      ui_error( UI_ERROR_ERROR, "Interface 2 cartridge must be 16384 bytes" );
+      error = 1;
+    }
+    if( !error )
+      error = machine_load_rom_bank_from_snapshot( if2_memory_map_romcs, 0,
+                                                   image->buffer, image->length,
+                                                   1 );
+    utils_file_free( &file );
+    if( error ) {
+      fuse_host_resource_error();
       return;
+    }
   } else if( machine_load_rom_bank( if2_memory_map_romcs, 0,
                                     settings_current.if2_file,
                                     NULL, 0x4000 ) )

@@ -2003,6 +2003,71 @@ active_callback( libspectrum_dword ts, int type, void *data )
   assert( insert_tape_without_decision( "not-opened.tap" ) == FUSE_HOST_OPERATION_BUSY );
 }
 
+static void
+check_cartridge_lifecycle( void )
+{
+  const fuse_cartridge_slot if2 = FUSE_CARTRIDGE_INTERFACE2;
+  const fuse_cartridge_slot dock = FUSE_CARTRIDGE_TIMEX_DOCK;
+  static const unsigned char if2_image[ 0x4000 ] = { 0x76 };
+  static const unsigned char dock_image[ 9 + 0x2000 ] = { 255, 2, 0, 0, 0, 0, 0,
+                                                          0, 0, 0x3c };
+  fuse_cartridge_info *if2_copy, *dock_copy, *info;
+  unsigned char value;
+
+  assert( fuse_host_copy_cartridge_info( dock, &info ) == OK );
+  assert( !info->available && !info->loaded && !info->filename );
+  fuse_cartridge_info_free( info );
+  assert( fuse_host_insert_cartridge( dock,
+                                      "dock.dck" ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( fuse_host_eject_cartridge( 99 ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( !utils_write_file( "host.if2", if2_image, sizeof( if2_image ) ) );
+  assert( fuse_host_insert_cartridge( if2, "host.if2" ) == OK );
+  assert( fuse_host_copy_memory( 0, 1, &value ) == OK && value == 0x76 );
+  assert( fuse_host_copy_cartridge_info( if2, &if2_copy ) == OK );
+  assert( if2_copy->available && if2_copy->loaded &&
+          !strcmp( if2_copy->filename, "host.if2" ) );
+  assert( fuse_host_insert_cartridge( if2,
+                                      "missing.if2" ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( fuse_host_copy_memory( 0, 1, &value ) == OK && value == 0x76 );
+  assert( fuse_host_reset( FUSE_HOST_RESET_HARD ) == OK );
+  assert( fuse_host_copy_memory( 0, 1, &value ) == OK && value == 0x76 );
+  assert( fuse_host_eject_cartridge( if2 ) == OK );
+  assert( fuse_host_copy_cartridge_info( if2, &info ) == OK );
+  assert( info->available && !info->loaded && !info->filename );
+  fuse_cartridge_info_free( info );
+  assert( !remove( "host.if2" ) );
+
+  assert( fuse_host_select_machine( "2068" ) == OK );
+  assert( !utils_write_file( "host.dck", dock_image, sizeof( dock_image ) ) );
+  assert( fuse_host_insert_cartridge( dock, "host.dck" ) == OK );
+  assert( fuse_host_copy_memory( 0, 1, &value ) == OK && value == 0x3c );
+  assert( fuse_host_copy_cartridge_info( dock, &dock_copy ) == OK );
+  assert( dock_copy->available && dock_copy->loaded &&
+          !strcmp( dock_copy->filename, "host.dck" ) );
+  assert( !utils_write_file( "bad.dck", dock_image, 9 ) );
+  assert( fuse_host_insert_cartridge( dock,
+                                      "bad.dck" ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( !remove( "bad.dck" ) );
+  assert( fuse_host_copy_cartridge_info( dock, &info ) == OK );
+  assert( info->available && !info->loaded && !info->filename );
+  fuse_cartridge_info_free( info );
+  assert( fuse_host_insert_cartridge( dock, "host.dck" ) == OK );
+  assert( fuse_host_eject_cartridge( dock ) == OK );
+  assert( fuse_host_copy_cartridge_info( dock, &info ) == OK );
+  assert( info->available && !info->loaded && !info->filename );
+  fuse_cartridge_info_free( info );
+  assert( !remove( "host.dck" ) );
+  fuse_shutdown();
+  assert( !strcmp( if2_copy->filename,
+                   "host.if2" ) && !strcmp( dock_copy->filename, "host.dck" ) );
+  fuse_cartridge_info_free( if2_copy );
+  fuse_cartridge_info_free( dock_copy );
+}
+
 int
 host_operations_test( int argc, char **argv )
 {
@@ -2083,6 +2148,8 @@ host_operations_test( int argc, char **argv )
     check_lifecycle_disk_file();
   } else if( !strcmp( argv[1], "disk-save" ) || !strcmp( argv[1], "disk-save-beta" ) ) {
     check_disk_save( !strcmp( argv[1], "disk-save" ) ? FUSE_DISK_CONTROLLER_PLUS3 : FUSE_DISK_CONTROLLER_BETA );
+  } else if( !strcmp( argv[1], "cartridge-lifecycle" ) ) {
+    check_cartridge_lifecycle();
   } else if( !strcmp( argv[1], "microdrive" ) ) {
     check_microdrive();
   } else if( !strcmp( argv[1], "host-quit" ) || !strcmp( argv[1], "host-quit-shutdown" ) ) {

@@ -328,6 +328,23 @@ for an unnamed cartridge. As in legacy Fuse, saving an unnamed cartridge
 leaves it unnamed. `--microdrive OUTPUT` in `hacking/null-host.c` demonstrates
 Cancel retaining a cartridge and Quit saving it to the supplied target.
 
+## Interface 2 and Timex Dock cartridges
+
+`fuse_host_insert_cartridge()` takes a chosen image path and a slot on the
+current machine. Unlike general File → Open, it never selects a different
+machine for a Dock image. It borrows the path through return and uses the
+regular-file backend, not the machine ROM provider. Insert and eject preserve
+the existing Interface 2 soft reset and Timex Dock hard reset. A failed read
+leaves the old attachment in place; a failure after reset begins does not
+promise rollback. An invalid Dock image can leave the slot empty through the
+existing reset fallback.
+
+`fuse_host_copy_cartridge_info()` distinguishes unavailable, empty and loaded
+slots on the selected machine. Its filename is an owned copy when available;
+a snapshot-restored cartridge need not have a path. Release observations with
+`fuse_cartridge_info_free()` even after teardown. Neither an observation nor an
+unavailable slot authorizes a machine switch.
+
 ## File → Open
 
 `fuse_host_open_file(path, &request)` invokes the existing general Open dispatcher with

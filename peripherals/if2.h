@@ -36,7 +36,8 @@ struct libspectrum_file;
 void if2_register_startup( void );
 int if2_insert( const char *filename );
 int if2_insert_loaded( const struct libspectrum_file *file );
-void if2_eject( void );
+const char *if2_attachment_path( void );
+int if2_eject( void );
 
 int if2_unittest( void );
 

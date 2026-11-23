@@ -209,6 +209,28 @@ fuse_host_operation_result fuse_host_answer_tape_eject(
    Archive-info panels/raw block metadata are not represented by these rows. */
 fuse_host_operation_result fuse_host_copy_tape_info( fuse_tape_info **info );
 
+typedef enum fuse_cartridge_slot {
+  FUSE_CARTRIDGE_INTERFACE2, FUSE_CARTRIDGE_TIMEX_DOCK
+} fuse_cartridge_slot;
+
+typedef struct fuse_cartridge_info {
+  int available; /* The selected machine can use this slot. */
+  int loaded;    /* Cartridge installed on the selected machine. */
+  char *filename; /* NULL for empty slots or snapshot-restored cartridges. */
+} fuse_cartridge_info;
+
+/* Explicit insertion/ejection does not select a different machine. Both reset
+   the machine (soft for Interface 2, hard for Dock). Read failure leaves the
+   old attachment alone; failure after reset begins need not restore it. */
+fuse_host_operation_result fuse_host_insert_cartridge(
+  fuse_cartridge_slot slot, const char *filename );
+fuse_host_operation_result fuse_host_eject_cartridge(
+  fuse_cartridge_slot slot );
+/* Owned copy independent of subsequent operations and engine shutdown. */
+fuse_host_operation_result fuse_host_copy_cartridge_info(
+  fuse_cartridge_slot slot, fuse_cartridge_info **info );
+void fuse_cartridge_info_free( fuse_cartridge_info *info );
+
 /* Record into the engine's tape, including an empty deck; no file sink here.
    Start requires tape traps disabled; enabled traps, missing tape object or
    RZX refusal is MEDIA_ERROR (the existing RZX diagnostic remains). With traps

@@ -29,6 +29,8 @@
 #include "keyboard.h"
 #include "machine.h"
 #include "movie.h"
+#include "peripherals/dck.h"
+#include "peripherals/if2.h"
 #include "peripherals/ide/divmmc.h"
 #include "peripherals/ide/simpleide.h"
 #include "peripherals/ide/zxatasp.h"
@@ -41,8 +43,119 @@
 #include "settings.h"
 #include "snapshot.h"
 #include "tape.h"
+#include "ui/ui.h"
 #include "utils.h"
 #include "z80/z80.h"
+
+static int
+cartridge_available( fuse_cartridge_slot slot )
+{
+  switch( slot ) {
+  case FUSE_CARTRIDGE_INTERFACE2:
+    return periph_is_active( PERIPH_TYPE_INTERFACE2 );
+  case FUSE_CARTRIDGE_TIMEX_DOCK:
+    return !!( machine_current->capabilities &
+               LIBSPECTRUM_MACHINE_CAPABILITY_TIMEX_DOCK );
+  }
+  return -1;
+}
+
+static int
+cartridge_loaded( fuse_cartridge_slot slot )
+{
+  return slot == FUSE_CARTRIDGE_INTERFACE2 ? if2_active : dck_active;
+}
+
+void
+fuse_cartridge_info_free( fuse_cartridge_info *info )
+{
+  if( !info ) return;
+  libspectrum_free( info->filename );
+  libspectrum_free( info );
+}
+
+fuse_host_operation_result
+fuse_host_copy_cartridge_info( fuse_cartridge_slot slot,
+                               fuse_cartridge_info **info )
+{
+  const char *filename;
+  int available;
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( !info ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *info = NULL;
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  available = cartridge_available( slot );
+  if( available < 0 ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+
+  *info = libspectrum_new0( fuse_cartridge_info, 1 );
+  (*info )->available = available;
+  (*info )->loaded = available && cartridge_loaded( slot );
+  if( (*info )->loaded ) {
+    filename = slot ==
+               FUSE_CARTRIDGE_INTERFACE2 ? if2_attachment_path() :
+               settings_current.dck_file;
+    if( filename ) (*info )->filename = utils_safe_strdup( filename );
+  }
+  return FUSE_HOST_OPERATION_OK;
+}
+
+static fuse_host_operation_result
+check_cartridge_operation( fuse_cartridge_slot slot )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  int available;
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  available = cartridge_available( slot );
+  if( available < 0 ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( fuse_engine_pending_decision() !=
+      FUSE_DECISION_NONE ) return FUSE_HOST_OPERATION_BUSY;
+  return available ? FUSE_HOST_OPERATION_OK : FUSE_HOST_OPERATION_MEDIA_ERROR;
+}
+
+fuse_host_operation_result
+fuse_host_insert_cartridge( fuse_cartridge_slot slot, const char *filename )
+{
+  fuse_host_operation_result result = check_cartridge_operation( slot );
+  utils_file file;
+  int error;
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !filename || !*filename ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+
+  fuse_engine_begin_operation();
+  fuse_emulation_pause();
+  utils_file_init( &file, filename );
+  error = utils_file_read( &file );
+  if( !error && slot == FUSE_CARTRIDGE_INTERFACE2 && file.length != 0x4000 ) {
+    ui_error( UI_ERROR_ERROR, "Interface 2 cartridge must be 16384 bytes" );
+    error = 1;
+  }
+  if( error ) {
+    utils_file_free( &file );
+    fuse_emulation_unpause();
+    fuse_engine_end_operation();
+    return FUSE_HOST_OPERATION_MEDIA_ERROR;
+  }
+  error = slot ==
+          FUSE_CARTRIDGE_INTERFACE2 ? if2_insert_loaded( &file ) :
+          dck_insert_loaded( &file );
+  utils_file_free( &file );
+  fuse_emulation_unpause();
+  result = fuse_engine_end_machine_operation( error );
+  if( result == FUSE_HOST_OPERATION_OK && !cartridge_loaded( slot ) )
+    return FUSE_HOST_OPERATION_MEDIA_ERROR;
+  return result;
+}
+
+fuse_host_operation_result
+fuse_host_eject_cartridge( fuse_cartridge_slot slot )
+{
+  fuse_host_operation_result result = check_cartridge_operation( slot );
+  int error;
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  fuse_engine_begin_operation();
+  error = slot == FUSE_CARTRIDGE_INTERFACE2 ? if2_eject() : dck_eject();
+  return fuse_engine_end_machine_operation( error );
+}
 
 static void
 release_physical_input( void )

@@ -131,13 +131,13 @@ dck_insert_loaded( const utils_file *file )
   return dck_insert_internal( file->filename, file );
 }
 
-void
+int
 dck_eject( void )
 {
   if ( !( libspectrum_machine_capabilities( machine_current->machine ) &
 	  LIBSPECTRUM_MACHINE_CAPABILITY_TIMEX_DOCK ) ) {
     ui_error( UI_ERROR_ERROR, "This machine does not support the dock" );
-    return;
+    return 1;
   }
 
   settings_set_string( &settings_current.dck_file, NULL );
@@ -146,7 +146,7 @@ dck_eject( void )
 
   ui_menu_activate( UI_MENU_ITEM_MEDIA_CARTRIDGE_DOCK_EJECT, 0 );
 
-  machine_reset( 1 );
+  return machine_reset( 1 );
 }
 
 static memory_page *

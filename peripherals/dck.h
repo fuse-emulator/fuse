@@ -36,7 +36,7 @@ struct libspectrum_file;
 
 int dck_insert( const char *filename );
 int dck_insert_loaded( const struct libspectrum_file *file );
-void dck_eject( void );
+int dck_eject( void );
 int dck_reset( int hard_reset );
 void dck_discard( void );
 int dck_restore_page( libspectrum_dck_bank bank, int page, int writable,
