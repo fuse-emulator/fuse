@@ -209,6 +209,27 @@ fuse_host_operation_result fuse_host_answer_tape_eject(
    Archive-info panels/raw block metadata are not represented by these rows. */
 fuse_host_operation_result fuse_host_copy_tape_info( fuse_tape_info **info );
 
+typedef enum fuse_screenshot_format {
+  FUSE_SCREENSHOT_SCR, FUSE_SCREENSHOT_MLT, FUSE_SCREENSHOT_PNG
+} fuse_screenshot_format;
+
+/* Enumerate PNG scaler IDs for the current machine in menu order, from index
+   zero. A successful query past the last item (or without PNG support) sets
+   *id to NULL. IDs are borrowed static strings. */
+fuse_host_operation_result fuse_host_png_scaler_id( size_t index,
+                                                    const char **id );
+/* Import SCR or MLT into the current machine. No machine selection or turn. */
+fuse_host_operation_result fuse_host_load_screenshot(
+  fuse_screenshot_format format,
+  const char *path );
+/* Export using the existing screenshot writers and an authorized path. PNG
+   requires a currently available scaler ID; SCR and MLT require NULL. A failed
+   write need not preserve the target. No chooser or implicit display update. */
+fuse_host_operation_result fuse_host_save_screenshot(
+  fuse_screenshot_format format,
+  const char *path,
+  const char *scaler_id );
+
 typedef enum fuse_machine_button {
   FUSE_MACHINE_BUTTON_MULTIFACE_RED,
   FUSE_MACHINE_BUTTON_DISCIPLE_MAGIC,

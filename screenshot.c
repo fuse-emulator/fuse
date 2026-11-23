@@ -31,6 +31,8 @@
 
 #include "compat.h"
 #include "display.h"
+#include "fuse.h"
+#include "fuse-engine.h"
 #include "infrastructure/startup_manager.h"
 #include "machine.h"
 #include "peripherals/scld.h"
@@ -678,6 +680,95 @@ screenshot_scr_read( const char *filename )
   display_refresh_all();
 
   return error;
+}
+
+fuse_host_operation_result
+fuse_host_png_scaler_id( size_t index, const char **id )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+#ifdef USE_LIBPNG
+  scaler_type scaler;
+#else
+  (void)index;
+#endif
+  if( !id ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *id = NULL;
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+#ifdef USE_LIBPNG
+  for( scaler = 0; scaler < SCALER_NUM; scaler++ ) {
+    if( screenshot_available_scalers( scaler ) && !index-- ) {
+      *id = scaler_id( scaler );
+      break;
+    }
+  }
+#endif
+  return FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_load_screenshot( fuse_screenshot_format format, const char *path )
+{
+  int error;
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !path || !*path || ( format != FUSE_SCREENSHOT_SCR &&
+                           format != FUSE_SCREENSHOT_MLT ) )
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+
+  fuse_engine_begin_operation();
+  fuse_emulation_pause();
+  error = format == FUSE_SCREENSHOT_SCR ? screenshot_scr_read( path ) :
+          screenshot_mlt_read( path );
+  fuse_emulation_unpause();
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_save_screenshot( fuse_screenshot_format format, const char *path,
+                           const char *png_scaler )
+{
+  int error;
+#ifdef USE_LIBPNG
+  scaler_type scaler = SCALER_NUM;
+#endif
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !path || !*path ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  switch( format ) {
+  case FUSE_SCREENSHOT_SCR:
+  case FUSE_SCREENSHOT_MLT:
+    if( png_scaler ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+    break;
+  case FUSE_SCREENSHOT_PNG:
+    if( !png_scaler ||
+        !*png_scaler ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+#ifdef USE_LIBPNG
+    for( scaler = 0; scaler < SCALER_NUM; scaler++ ) {
+      if( screenshot_available_scalers( scaler ) &&
+          !strcmp( png_scaler, scaler_id( scaler ) ) ) break;
+    }
+    if( scaler == SCALER_NUM ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+    break;
+#else
+    return FUSE_HOST_OPERATION_MEDIA_ERROR;
+#endif
+  default:
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  }
+
+  fuse_engine_begin_operation();
+  fuse_emulation_pause();
+  if( format == FUSE_SCREENSHOT_SCR ) error = screenshot_scr_write( path );
+  else if( format == FUSE_SCREENSHOT_MLT ) error = screenshot_mlt_write( path );
+#ifdef USE_LIBPNG
+  else error = screenshot_write( path, scaler );
+#else
+  else error = 1;
+#endif
+  fuse_emulation_unpause();
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
 }
 
 int

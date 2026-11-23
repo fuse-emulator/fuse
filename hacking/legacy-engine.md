@@ -620,6 +620,17 @@ empty. The value and strings survive replacement, eject and shutdown; release
 with `fuse_disk_drive_info_free`, which needs no live engine. Copies are observations,
 not command tokens: operations still resolve current controller/slot state.
 
+## Screenshot files
+
+`fuse_host_load_screenshot()` imports SCR or MLT on the current machine.
+`fuse_host_save_screenshot()` exports SCR, MLT, or PNG to an authorized path
+without a chooser. The legacy readers, writers, and pause effects still apply;
+MLT export is unsupported in Timex hi-res mode. Export does not run a frame or
+refresh the captured image. For PNG, enumerate `fuse_host_png_scaler_id()` until
+it returns a null ID, then pass a listed ID to Save. A build without PNG support
+returns no IDs. SCR and MLT take no scaler. The null host shows export with
+`--save-screen FORMAT OUTPUT`.
+
 ## Memory and binary files
 
 `fuse_host_copy_memory()` reads the current mapped address space into a

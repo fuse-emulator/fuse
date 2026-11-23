@@ -253,6 +253,12 @@ scaler_name( scaler_type scaler )
   return available_scalers[scaler].name;
 }
 
+const char *
+scaler_id( scaler_type scaler )
+{
+  return available_scalers[scaler].id;
+}
+
 ScalerProc*
 scaler_get_proc16( scaler_type scaler )
 {

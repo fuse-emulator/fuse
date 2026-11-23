@@ -26,6 +26,8 @@
 #include "ui/uimedia.h"
 #include "settings.h"
 #include "snapshot.h"
+#include "screenshot.h"
+#include "peripherals/scld.h"
 #include "rzx.h"
 #include "movie.h"
 #include "tape.h"
@@ -2088,6 +2090,82 @@ check_machine_buttons( int keep_fixture )
 }
 
 static void
+compare_screenshot_files( const char *host, const char *legacy )
+{
+  utils_file a, b;
+  assert( !utils_read_file( host, &a ) && !utils_read_file( legacy, &b ) );
+  assert( a.length && a.length == b.length && !memcmp( a.buffer, b.buffer,
+                                                       a.length ) );
+  utils_file_free( &a );
+  utils_file_free( &b );
+  assert( !remove( host ) && !remove( legacy ) );
+}
+
+static void
+check_screenshots( void )
+{
+  unsigned char scr[ 6912 ] = { 0x81 };
+  unsigned char mlt[ 12288 ] = { 0x42 };
+  unsigned char value;
+  const char *id;
+  assert( !utils_write_file( "input.scr", scr, sizeof( scr ) ) );
+  assert( !utils_write_file( "input.mlt", mlt, sizeof( mlt ) ) );
+  assert( fuse_host_set_paused( 1 ) == OK );
+  assert( fuse_host_load_screenshot( FUSE_SCREENSHOT_SCR, "input.scr" ) == OK );
+  assert( fuse_host_copy_memory( 0x4000, 1, &value ) == OK && value == scr[0] );
+  assert( fuse_host_load_screenshot( FUSE_SCREENSHOT_MLT, "input.mlt" ) == OK );
+  assert( fuse_host_copy_memory( 0x4000, 1, &value ) == OK && value == mlt[0] );
+  assert( fuse_host_load_screenshot( FUSE_SCREENSHOT_SCR,
+                                     "missing.scr" ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( fuse_host_load_screenshot( FUSE_SCREENSHOT_PNG,
+                                     "input.png" ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_run_frame() == FUSE_RUN_PAUSED );
+  assert( fuse_host_set_paused( 0 ) == OK &&
+          fuse_run_frame() == FUSE_RUN_COMPLETED );
+  assert( fuse_host_save_screenshot( FUSE_SCREENSHOT_SCR, "host.scr",
+                                     NULL ) == OK );
+  assert( !screenshot_scr_write( "legacy.scr" ) );
+  compare_screenshot_files( "host.scr", "legacy.scr" );
+  assert( fuse_host_save_screenshot( FUSE_SCREENSHOT_MLT, "host.mlt",
+                                     NULL ) == OK );
+  assert( !screenshot_mlt_write( "legacy.mlt" ) );
+  compare_screenshot_files( "host.mlt", "legacy.mlt" );
+  assert( fuse_host_png_scaler_id( 0, &id ) == OK );
+#ifdef USE_LIBPNG
+  assert( id && !strcmp( id, "normal" ) );
+  assert( fuse_host_save_screenshot( FUSE_SCREENSHOT_PNG, "host.png",
+                                     "2x" ) == OK );
+  assert( !screenshot_write( "legacy.png", SCALER_DOUBLESIZE ) );
+  compare_screenshot_files( "host.png", "legacy.png" );
+  assert( fuse_host_save_screenshot( FUSE_SCREENSHOT_PNG, "invalid.png",
+                                     "not-a-scaler" ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+#else
+  assert( !id );
+  assert( fuse_host_save_screenshot( FUSE_SCREENSHOT_PNG, "host.png",
+                                     "normal" ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+#endif
+  assert( fuse_host_save_screenshot( FUSE_SCREENSHOT_SCR,
+                                     "missing-directory/screen.scr",
+                                     NULL ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( fuse_host_select_machine( "2068" ) == OK );
+  scld_last_dec.name.hires = 1;
+  assert( fuse_host_save_screenshot( FUSE_SCREENSHOT_MLT, "invalid.mlt",
+                                     NULL ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+#ifdef USE_LIBPNG
+  assert( fuse_host_save_screenshot( FUSE_SCREENSHOT_PNG, "invalid.png",
+                                     "2x" ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+#endif
+  assert( !remove( "input.scr" ) && !remove( "input.mlt" ) );
+}
+
+static void
 check_rs232( void )
 {
   fuse_rs232_info info;
@@ -2291,6 +2369,8 @@ host_operations_test( int argc, char **argv )
     check_disk_save( !strcmp( argv[1], "disk-save" ) ? FUSE_DISK_CONTROLLER_PLUS3 : FUSE_DISK_CONTROLLER_BETA );
   } else if( provider.synthetic_buttons ) {
     check_machine_buttons( !strcmp( argv[1], "machine-button-fixture" ) );
+  } else if( !strcmp( argv[1], "screenshots" ) ) {
+    check_screenshots();
   } else if( !strcmp( argv[1], "rs232" ) ) {
     check_rs232();
   } else if( !strcmp( argv[1], "cartridge-lifecycle" ) ) {

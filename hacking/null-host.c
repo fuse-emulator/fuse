@@ -704,6 +704,33 @@ open_demo( const char *filename, const char *movie_target,
 }
 
 static int
+screenshot_session( const char *name, const char *output,
+                    unsigned int *completed )
+{
+  fuse_screenshot_format format;
+  const char *scaler = NULL;
+
+  if( !strcmp( name, "scr" ) ) format = FUSE_SCREENSHOT_SCR;
+  else if( !strcmp( name, "mlt" ) ) format = FUSE_SCREENSHOT_MLT;
+  else if( !strcmp( name, "png" ) ) {
+    format = FUSE_SCREENSHOT_PNG;
+    if( operation( "query PNG scaler", fuse_host_png_scaler_id( 0, &scaler ) ) )
+      return 1;
+    if( !scaler ) {
+      puts( "host: PNG screenshots unavailable" );
+      return 0;
+    }
+  } else return 1;
+
+  if( frames( 1, completed ) ||
+      operation( "save screenshot",
+                 fuse_host_save_screenshot( format, output, scaler ) ) )
+    return 1;
+  printf( "host: saved %s screenshot\n", name );
+  return 0;
+}
+
+static int
 machine_button_session( const char *name, const char *snapshot )
 {
   fuse_machine_button button;
@@ -808,6 +835,7 @@ main( int argc, char **argv )
   int microdrive = argc >= 3 && !strcmp( argv[2], "--microdrive" );
   int rs232 = argc >= 3 && !strcmp( argv[2], "--rs232" );
   int machine_button = argc >= 3 && !strcmp( argv[2], "--machine-button" );
+  int save_screen = argc >= 3 && !strcmp( argv[2], "--save-screen" );
   int open_over_tape = argc >= 3 && !strcmp( argv[2], "--open-over-tape" );
   int open_over_floppy = argc >= 3 && !strcmp( argv[2], "--open-over-floppy" );
   int plus3 = disk_save || disk_lifecycle || open_over_floppy;
@@ -825,12 +853,12 @@ main( int argc, char **argv )
         !rzx_record &&
         !parked_eject &&
         !snapshot_save && !filesystem && !divmmc ) ||
-      ( ( rzx_movie || binary || rs232 || machine_button ) && argc != 5 ) ||
-      ( argc == 5 && !disk_save && !tape_lifecycle && !tape_replacement && !rzx_movie && !binary && !rs232 && !machine_button ) ||
+      ( ( rzx_movie || binary || rs232 || machine_button || save_screen ) && argc != 5 ) ||
+      ( argc == 5 && !disk_save && !tape_lifecycle && !tape_replacement && !rzx_movie && !binary && !rs232 && !machine_button && !save_screen ) ||
       ( argc == 3 && ( !strcmp( argv[2], "--open" ) || !strcmp( argv[2], "--save-disk" ) ||
                       !strcmp( argv[2], "--disk-lifecycle" ) || !strcmp( argv[2], "--tape-lifecycle" ) || !strcmp( argv[2], "--replace-tape" ) ||
                       !strcmp( argv[2], "--record-tape" ) || !strcmp( argv[2], "--parked-tape-eject" ) || !strcmp( argv[2], "--save-snapshot" ) || !strcmp( argv[2], "--filesystem" ) || !strcmp( argv[2], "--divmmc" ) ) ) ) {
-    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --diagnostics MISSING_FILE | --open-pok FILE | --binary-roundtrip INPUT OUTPUT | --poke-finder INPUT | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --rs232 RX TX | --machine-button NAME SNAPSHOT | --record-rzx OUTPUT | --rzx-to-movie INPUT OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
+    fprintf( stderr, "Usage: %s ROM_DIRECTORY [TAPE_FILE | --open FILE | --diagnostics MISSING_FILE | --open-pok FILE | --binary-roundtrip INPUT OUTPUT | --poke-finder INPUT | --open-over-tape FILE | --open-over-floppy FILE | --save-disk INPUT OUTPUT | --disk-lifecycle OUTPUT | --tape-lifecycle INPUT OUTPUT | --record-tape OUTPUT | --parked-tape-eject OUTPUT | --replace-tape INPUT BAD_INPUT | --save-snapshot OUTPUT | --filesystem TAPE_FILE | --divmmc CARD_FILE | --microdrive OUTPUT | --rs232 RX TX | --machine-button NAME SNAPSHOT | --save-screen FORMAT OUTPUT | --record-rzx OUTPUT | --rzx-to-movie INPUT OUTPUT | --queued-input | --debugger-step | --debugger-watchpoint]\n", argv[0] );
     return EXIT_FAILURE;
   }
   if( filesystem || divmmc ) {
@@ -870,6 +898,11 @@ main( int argc, char **argv )
   }
   prepared = 1;
   puts( plus3 ? "host: prepared plus3" : "host: prepared 48" );
+  if( save_screen ) {
+    if( !screenshot_session( argv[3], argv[4],
+                             &frame_turns ) ) status = EXIT_SUCCESS;
+    goto cleanup;
+  }
   if( machine_button ) {
     if( !machine_button_session( argv[3], argv[4] ) ) status = EXIT_SUCCESS;
     goto cleanup;
