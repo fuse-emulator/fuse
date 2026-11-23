@@ -299,6 +299,14 @@ check_debugger_stop( int argc, char **argv )
   assert( fuse_host_debugger_copy_views( &views ) == FUSE_HOST_OPERATION_OK );
   assert( views->breakpoint_count == 2 && views->page_count &&
           views->event_count );
+  before = tstates;
+  assert( fuse_host_debugger_command( "exit 7", NULL ) ==
+          FUSE_HOST_OPERATION_OK );
+  assert( debugger_get_exit_code() == 7 );
+  assert( fuse_run_frame() == FUSE_RUN_EXITING );
+  assert( fuse_run_tstates( 100 ) == FUSE_RUN_EXITING );
+  assert( tstates == before && z80.pc.w == 0x8000 &&
+          !null_ui_debugger_activate_calls );
   fuse_shutdown();
   assert( views->breakpoints[1].condition || views->breakpoints[0].condition );
   assert( *views->pages[0].source && *views->events[0].name );
