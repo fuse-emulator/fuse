@@ -491,6 +491,10 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    grep -Fx 'host: recorded, paused, resumed and finalized live FMF' "$$consumer-live.out" > /dev/null; \
 	    test "$$(dd if="$$consumer-live.fmf" bs=6 count=1 2>/dev/null)" = FMF_V1; \
 	    rm "$$consumer-live.fmf"; \
+	    "$$program" "$$roms" --record-psg "$$consumer-ay.psg" > "$$consumer-ay.out"; \
+	    grep -Fx 'host: recorded and finalized PSG' "$$consumer-ay.out" > /dev/null; \
+	    test "$$(dd if="$$consumer-ay.psg" bs=3 count=1 2>/dev/null)" = PSG; \
+	    rm "$$consumer-ay.psg"; \
 	    for mode in lines dots; do \
 	      "$$program" "$$roms" --capture-svg "$$mode" "$$consumer-$$mode" > "$$consumer-svg.out"; \
 	      if grep -Fx "host: saved SVG $$mode capture" "$$consumer-svg.out" > /dev/null; then \
@@ -636,7 +640,7 @@ check-host-operations: unittests/legacyenginelinktest unittests/legacyenginesour
 	  for consumer in legacyenginelinktest legacyenginesourcetest; do \
 	    for mode in success filesystem-oracle filesystem tape-contract tape-info trapped-recording snapshot-roundtrip autoload-success autoload-failure \
 	      open-auto open-noauto open-custom open-reset-failure open-snapshot open-snapshot-joystick open-fallback open-rzx-stop open-rzx-embedded open-rzx-external record-rzx record-rzx-restore record-rzx-rollback record-rzx-movie open-pok host-binary host-poke-finder open-floppy floppy-merge cartridge-lifecycle \
-	      disk-save disk-save-beta microdrive rs232 machine-buttons screenshots svg-capture live-movie host-quit host-quit-shutdown \
+	      disk-save disk-save-beta microdrive rs232 machine-buttons screenshots svg-capture live-movie psg-logging host-quit host-quit-shutdown \
 	      reset-failure select-failure peripheral-reset-failure peripheral-select-failure; do \
 	      "$$root/$$consumer$(EXEEXT)" --host-operations-test "$$mode" "$$roms"; \
 	    done; \

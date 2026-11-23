@@ -631,6 +631,15 @@ it returns a null ID, then pass a listed ID to Save. A build without PNG support
 returns no IDs. SCR and MLT take no scaler. The null host shows export with
 `--save-screen FORMAT OUTPUT`.
 
+## AY register logging
+
+`fuse_host_start_psg_logging()` starts a PSG log at a host-chosen path, which
+may be overwritten. `fuse_host_copy_psg_logging()` reports whether logging is
+active. `fuse_host_stop_psg_logging()` flushes and closes the existing log and
+is safe to call when idle. Start reports open and header errors; the legacy
+writer does not report later write or close errors. The null host demonstrates
+logging on a 128K machine with `--record-psg OUTPUT`.
+
 ## Live FMF recording
 
 `fuse_host_start_movie()` starts live capture with the existing FMF writer.

@@ -2118,6 +2118,49 @@ check_svg_document( const char *path, int drawing )
 #endif
 
 static void
+check_psg_logging( void )
+{
+  static const unsigned char program[] = {
+    0x01, 0xfd, 0xff, 0x3e, 8, 0xed, 0x79, /* Select AY register 8. */
+    0x06, 0xbf, 0x3e, 15, 0xed, 0x79, 0x76  /* Write value 15; HALT. */
+  };
+  static const unsigned char expected[] = {
+    'P', 'S', 'G', 0x1a, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0xff, 8, 15, 0xff, 0xff
+  };
+  utils_file file;
+  int active;
+  size_t i;
+
+  assert( fuse_host_select_machine( "128" ) == OK );
+  assert( fuse_host_copy_psg_logging( &active ) == OK && !active );
+  assert( fuse_host_stop_psg_logging() == OK );
+  assert( fuse_host_start_psg_logging( "" ) ==
+          FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_host_start_psg_logging( "missing-directory/out.psg" ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( fuse_host_copy_psg_logging( &active ) == OK && !active );
+  for( i = 0; i < sizeof( program );
+       i++ ) writebyte_internal( 0x8000 + i, program[i] );
+  z80.pc.w = 0x8000;
+  assert( fuse_host_set_paused( 1 ) == OK );
+  assert( fuse_host_start_psg_logging( "ay.psg" ) == OK );
+  assert( fuse_host_start_psg_logging( "unused.psg" ) ==
+          FUSE_HOST_OPERATION_BUSY );
+  assert( fuse_host_copy_psg_logging( &active ) == OK && active );
+  assert( fuse_run_frame() == FUSE_RUN_PAUSED );
+  assert( fuse_host_set_paused( 0 ) == OK );
+  assert( fuse_run_frame() == FUSE_RUN_COMPLETED );
+  assert( fuse_host_stop_psg_logging() == OK );
+  assert( fuse_host_copy_psg_logging( &active ) == OK && !active );
+  assert( !utils_read_file( "ay.psg", &file ) );
+  assert( file.length == sizeof( expected ) && !memcmp( file.buffer, expected,
+                                                        sizeof( expected ) ) );
+  utils_file_free( &file );
+  assert( !remove( "ay.psg" ) );
+}
+
+static void
 check_live_movie( void )
 {
   fuse_movie_state state;
@@ -2481,6 +2524,8 @@ host_operations_test( int argc, char **argv )
     check_disk_save( !strcmp( argv[1], "disk-save" ) ? FUSE_DISK_CONTROLLER_PLUS3 : FUSE_DISK_CONTROLLER_BETA );
   } else if( provider.synthetic_buttons ) {
     check_machine_buttons( !strcmp( argv[1], "machine-button-fixture" ) );
+  } else if( !strcmp( argv[1], "psg-logging" ) ) {
+    check_psg_logging();
   } else if( !strcmp( argv[1], "live-movie" ) ) {
     check_live_movie();
   } else if( !strcmp( argv[1], "svg-capture" ) ) {

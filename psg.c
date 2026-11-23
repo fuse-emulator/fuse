@@ -26,6 +26,8 @@
 
 #include <stdio.h>
 
+#include "fuse-engine.h"
+#include "fuse.h"
 #include "infrastructure/startup_manager.h"
 #include "psg.h"
 #include "compat.h"
@@ -171,6 +173,42 @@ psg_write_register( libspectrum_byte reg, libspectrum_byte value )
   psg_register_values[reg] = value;
   psg_registers_written[reg] = 1;
   return 0;
+}
+
+fuse_host_operation_result
+fuse_host_copy_psg_logging( int *active )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( !active ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *active = result == FUSE_HOST_OPERATION_OK && psg_recording;
+  return result;
+}
+
+fuse_host_operation_result
+fuse_host_start_psg_logging( const char *path )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  int error;
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !path || !*path ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( psg_recording ) return FUSE_HOST_OPERATION_BUSY;
+  fuse_engine_begin_operation();
+  fuse_emulation_pause();
+  error = psg_start_recording( path );
+  fuse_emulation_unpause();
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_stop_psg_logging( void )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK || !psg_recording ) return result;
+  fuse_engine_begin_operation();
+  psg_stop_recording();
+  fuse_engine_end_operation();
+  return FUSE_HOST_OPERATION_OK;
 }
 
 static void

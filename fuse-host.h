@@ -209,6 +209,13 @@ fuse_host_operation_result fuse_host_answer_tape_eject(
    Archive-info panels/raw block metadata are not represented by these rows. */
 fuse_host_operation_result fuse_host_copy_tape_info( fuse_tape_info **info );
 
+/* Log AY register writes to a chosen PSG path, which may be overwritten.
+   Start reports open/header failure; an active log is BUSY. Stop is idle-safe
+   and flushes the legacy log, which does not report later write/close errors. */
+fuse_host_operation_result fuse_host_start_psg_logging( const char *path );
+fuse_host_operation_result fuse_host_stop_psg_logging( void );
+fuse_host_operation_result fuse_host_copy_psg_logging( int *active );
+
 typedef enum fuse_movie_state {
   FUSE_MOVIE_IDLE, FUSE_MOVIE_RECORDING, FUSE_MOVIE_PAUSED
 } fuse_movie_state;
