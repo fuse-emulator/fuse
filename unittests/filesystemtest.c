@@ -36,7 +36,7 @@
 #include "ui/scaler/scaler.h"
 #include "ui/ui.h"
 #include "z80/z80.h"
-#include "../hacking/memory-filesystem.h"
+#include "integration/memory-filesystem.h"
 #undef NDEBUG
 #include <assert.h>
 

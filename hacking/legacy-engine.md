@@ -273,7 +273,7 @@ Magic, or Didaktik SNAP can accept a press. `fuse_host_press_machine_button()`
 uses the existing device action, including the Multiface model priority and
 lockout, DISCiPLE's paging rules, and Didaktik's SNAP latch. A press queues an
 NMI without running the CPU, even while paused. An unavailable button makes no
-changes. `hacking/null-host.c` demonstrates the API with
+changes. `unittests/integration/null-host.c` demonstrates the API with
 `--machine-button NAME SNAPSHOT`, using a snapshot that enables the device.
 
 ## Host debugger stops
@@ -347,7 +347,7 @@ Dirty eject, Insert and New return a decision ID for
 asking. A failed read, Cancel or failed Save retains the old cartridge; a
 load failure after an approved eject does not restore it. Save needs a path
 for an unnamed cartridge. As in legacy Fuse, saving an unnamed cartridge
-leaves it unnamed. `--microdrive OUTPUT` in `hacking/null-host.c` demonstrates
+leaves it unnamed. `--microdrive OUTPUT` in `unittests/integration/null-host.c` demonstrates
 Cancel retaining a cartridge and Quit saving it to the supplied target.
 
 ## Interface 1 RS232
@@ -360,7 +360,7 @@ closes the old descriptor first, so an open failure can leave that endpoint
 disconnected. A setup error can leave the new descriptor attached; check
 `fuse_host_copy_rs232_info()` for the actual status. A retained connection can
 still be disconnected after switching to a machine without Interface 1.
-`hacking/null-host.c` demonstrates both endpoints with `--rs232 RX TX`; pass
+`unittests/integration/null-host.c` demonstrates both endpoints with `--rs232 RX TX`; pass
 existing native paths. It does not transmit bytes.
 
 ## Interface 2 and Timex Dock cartridges
@@ -747,7 +747,7 @@ in `--divmmc CARD_FILE`, using the same RAM filesystem for both workflows.
 
 ## Direct null-backed example
 
-[null-host.c](null-host.c) has its own `main` and uses the opt-in domain headers
+[null-host.c](../unittests/integration/null-host.c) has its own `main` and uses the opt-in domain headers
 and configured test support.
 It configures a 48K machine, supplies a directory ROM provider, runs frame/budget
 turns, delivers input, handles focus loss, resets, selects 128 and shuts down.
@@ -869,7 +869,7 @@ match the default. The direct host provider has its own resource policy instead.
 
 ## SDL-owned event loop probe
 
-`hacking/sdl-loop-host.c` is a scripted same-thread consumer of an SDL2-backed
+`examples/sdl-loop-host.c` is a scripted same-thread consumer of an SDL2-backed
 engine. It starts SDL video itself, drives `SDL_PollEvent()` and `fuse_run_frame()`
 without entering the legacy application loop, and reuses the linked SDL2 renderer.
 It loads an existing tape and inspects its blocks, checks keyboard input against
@@ -883,8 +883,8 @@ separate consumer directory, with `build` and `src` pointing to the configured
 build and extracted source (absolute paths):
 
 ```sh
-make -C "$build" -f Makefile -f "$src/hacking/host-consumer.mk" \
-  HOST_INPUT="$src/hacking/sdl-loop-host.c" HOST_OUTPUT="$PWD/sdl-loop-host" \
+make -C "$build" -f Makefile -f "$src/examples/host-consumer.mk" \
+  HOST_INPUT="$src/examples/sdl-loop-host.c" HOST_OUTPUT="$PWD/sdl-loop-host" \
   host-consumer-archive
 SDL_VIDEODRIVER=dummy FUSE_DISPLAY_TIMING=1 ./sdl-loop-host input.tap
 ```
@@ -899,7 +899,7 @@ subset for the demonstrated operations, not an installed SDK or a shared ABI.
 With display timing enabled, a nonzero `presentation_count` confirms a call to
 the SDL renderer; it does not measure what the OS displayed or validate GTK4.
 
-`hacking/worker-loop-host.c` uses the same recipes with a separate build
+`examples/worker-loop-host.c` uses the same recipes with a separate build
 configured `--with-null-ui --with-audio-driver=null`. A GLib main loop queues
 Quit to a single Fuse owner thread and dispatches another callback while the
 worker is deliberately held. The UI joins the worker only after it acknowledges
@@ -909,7 +909,7 @@ does not move a toolkit-bound renderer to a worker.
 After building both configurations, run the repeatable check from any directory:
 
 ```sh
-sh "$src/hacking/check-host-consumers.sh" "$build" "$null_build"
+sh "$src/unittests/integration/check-host-consumers.sh" "$build" "$null_build"
 ```
 
 The script creates an isolated TAP fixture and checks SDL presentation and both

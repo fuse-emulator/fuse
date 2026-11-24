@@ -9,7 +9,7 @@
 #include "fuse-legacy.h"
 #include "infrastructure/startup_files.h"
 #include "settings.h"
-#include "../hacking/memory-filesystem.h"
+#include "integration/memory-filesystem.h"
 #ifdef ENABLE_AUTOMATION
 #include "automation/automation.h"
 #endif

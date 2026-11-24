@@ -266,16 +266,27 @@ check_PROGRAMS += unittests/legacyenginelinktest unittests/legacyenginesourcetes
                   unittests/startupownershiptest
 unittests_startupownershiptest_SOURCES = unittests/startupownershiptest.c
 unittests_startupownershiptest_LDADD = libfuse.la $(FUSE_UI_LINK)
+host_operation_test_files = \
+  unittests/integration/host-operations.h \
+  unittests/integration/host-operations-main.c \
+  unittests/integration/host-operations-tape.c \
+  unittests/integration/host-operations-replay.c \
+  unittests/integration/host-operations-memory.c \
+  unittests/integration/host-operations-open.c \
+  unittests/integration/host-operations-disk.c \
+  unittests/integration/host-operations-peripherals.c \
+  unittests/integration/host-operations-capture.c
+
 unittests_legacyenginelinktest_SOURCES = unittests/legacyenginetest.c \
                                        unittests/hostpreparetest.c \
-                                       unittests/hostoperationstest.c \
+                                       $(host_operation_test_files) \
                                        unittests/snapshotfiletest.c \
                                        unittests/filesystemtest.c \
                                        unittests/legacylifecycletest.c
 unittests_legacyenginelinktest_LDADD = libfuse.la $(FUSE_UI_LINK)
 unittests_legacyenginesourcetest_SOURCES = unittests/legacyenginetest.c \
                                         unittests/hostpreparetest.c \
-                                        unittests/hostoperationstest.c \
+                                        $(host_operation_test_files) \
                                         unittests/snapshotfiletest.c \
                                         unittests/filesystemtest.c \
                                         unittests/legacylifecycletest.c \
@@ -346,13 +357,13 @@ check-floppy-save-ui: unittests/floppysaveuitest unittests/floppysavelegacytest
 	  test -z "$$(find . -type f -print)"; \
 	  echo 'Shared floppy target/chooser saves match; choices, failure retention and pauses passed'
 
-noinst_HEADERS += hacking/memory-filesystem.h
+noinst_HEADERS += unittests/integration/memory-filesystem.h
 
 # A separate own-main consumer: no legacy CLI/test dispatcher or core globals.
 check_PROGRAMS += unittests/nullhostlink unittests/nullhostsource
-unittests_nullhostlink_SOURCES = hacking/null-host.c
+unittests_nullhostlink_SOURCES = unittests/integration/null-host.c
 unittests_nullhostlink_LDADD = libfuse.la $(FUSE_UI_LINK)
-unittests_nullhostsource_SOURCES = hacking/null-host.c $(libfuse_la_SOURCES)
+unittests_nullhostsource_SOURCES = unittests/integration/null-host.c $(libfuse_la_SOURCES)
 unittests_nullhostsource_CPPFLAGS = $(AM_CPPFLAGS)
 unittests_nullhostsource_LDADD = $(libfuse_la_LIBADD) $(FUSE_UI_LINK)
 unittests_nullhostsource_DEPENDENCIES = $(libfuse_la_DEPENDENCIES) $(FUSE_UI_OBJECTS)

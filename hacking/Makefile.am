@@ -23,21 +23,21 @@
 
 EXTRA_DIST += \
               hacking/audio-pacing.md \
-              hacking/check-host-consumers.sh \
+              unittests/integration/check-host-consumers.sh \
               hacking/code_beautifiers.txt \
               hacking/coding_style.txt \
               hacking/display-timing.txt \
               hacking/cvs-tags \
               hacking/implementation_notes.txt \
               hacking/input.txt \
-              hacking/host-consumer.mk \
+              examples/host-consumer.mk \
               hacking/host-migration.md \
               hacking/legacy-engine.md \
               hacking/libspectrum-filesystem.md \
               hacking/metrics.txt \
               hacking/peripheral_tests.txt \
               hacking/releasing.md \
-              hacking/sdl-loop-host.c \
+              examples/sdl-loop-host.c \
               hacking/sound.txt \
               hacking/spectranet.txt \
               hacking/tc2048_tech_notes.txt \
@@ -46,4 +46,4 @@ EXTRA_DIST += \
               hacking/ui.txt \
               hacking/uncrustify.cfg \
               hacking/valgrind.supp \
-              hacking/worker-loop-host.c
+              examples/worker-loop-host.c

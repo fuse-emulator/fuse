@@ -20,7 +20,7 @@ if [ "$#" -ne 2 ]; then
     printf 'Usage: sh %s SDL_BUILD NULL_BUILD\n' "$0" >&2
     exit 2
 fi
-src=$(cd "$(dirname "$0")/.." && pwd)
+src=$(cd "$(dirname "$0")/../.." && pwd)
 sdl=$(cd "$1" && pwd)
 null=$(cd "$2" && pwd)
 tmp=$(mktemp -d)
@@ -32,8 +32,8 @@ export HOME="$tmp" XDG_CONFIG_HOME="$tmp" USERPROFILE="$tmp" APPDATA="$tmp"
 # TAP: length 3, flag FF, one data byte 00, checksum FF.
 printf '\003\000\377\000\377' > input.tap
 for mode in archive source; do
-    "${MAKE:-make}" -C "$sdl" -f Makefile -f "$src/hacking/host-consumer.mk" \
-        HOST_INPUT="$src/hacking/sdl-loop-host.c" HOST_OUTPUT="$tmp/sdl" \
+    "${MAKE:-make}" -C "$sdl" -f Makefile -f "$src/examples/host-consumer.mk" \
+        HOST_INPUT="$src/examples/sdl-loop-host.c" HOST_OUTPUT="$tmp/sdl" \
         "host-consumer-$mode"
     if ! SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-dummy}" FUSE_DISPLAY_TIMING=1 \
         "$tmp/sdl" "$tmp/input.tap" > sdl.log 2>&1; then
@@ -45,8 +45,8 @@ for mode in archive source; do
     grep -x 'SDL host: input observed, pause/resume verified, quit answered and shut down' sdl.log
     test "$(grep -c 'presentation_count=1 ' sdl.log)" -eq 3
 
-    "${MAKE:-make}" -C "$null" -f Makefile -f "$src/hacking/host-consumer.mk" \
-        HOST_INPUT="$src/hacking/worker-loop-host.c" HOST_OUTPUT="$tmp/worker" \
+    "${MAKE:-make}" -C "$null" -f Makefile -f "$src/examples/host-consumer.mk" \
+        HOST_INPUT="$src/examples/worker-loop-host.c" HOST_OUTPUT="$tmp/worker" \
         "host-consumer-$mode"
     "$tmp/worker" > worker.log 2>&1
     grep -x 'worker host: UI dispatched work while Quit was waiting' worker.log
@@ -57,8 +57,8 @@ done
 # Use the very same SDL-configured core archive with a non-widget adapter.
 archive="$sdl/.libs/libfuse.a"
 before=$(cksum < "$archive")
-"${MAKE:-make}" -C "$sdl" -f Makefile -f "$src/hacking/host-consumer.mk" \
-    HOST_INPUT="$src/hacking/worker-loop-host.c" HOST_OUTPUT="$tmp/alternate" \
+"${MAKE:-make}" -C "$sdl" -f Makefile -f "$src/examples/host-consumer.mk" \
+    HOST_INPUT="$src/examples/worker-loop-host.c" HOST_OUTPUT="$tmp/alternate" \
     host-consumer-test-adapter
 "$tmp/alternate" > alternate.log 2>&1
 grep -x 'worker host: UI dispatched work while Quit was waiting' alternate.log
