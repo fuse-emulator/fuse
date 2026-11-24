@@ -17,7 +17,9 @@
 # Include after the configured Fuse Makefile. Build the engine first to
 # generate its own headers. The consumer only sees the source interface.
 # Use absolute HOST_INPUT (C file) and HOST_OUTPUT (executable) paths.
-HOST_HEADER_NAMES = fuse-host.h fuse-disk.h fuse-peripheral.h fuse-tape.h
+HOST_HEADER_NAMES = fuse-host.h fuse-disk.h fuse-peripheral.h fuse-tape.h \
+                    fuse-host-input.h fuse-host-media.h fuse-host-memory.h \
+                    fuse-joystick.h input.h
 HOST_HEADER_DIR = $(abs_builddir)/host-include
 HOST_HEADERS = $(addprefix $(HOST_HEADER_DIR)/,$(HOST_HEADER_NAMES))
 HOST_CPPFLAGS ?= $(GLIB_CFLAGS) $(SDL2_CFLAGS)

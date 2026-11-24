@@ -19,7 +19,7 @@
 #ifndef FUSE_ENGINE_H
 #define FUSE_ENGINE_H
 
-#include "fuse-internal.h"
+#include "fuse-host-media.h"
 
 /* Engine-owned lifecycle/admission. No lifecycle state is shared with callers.
    Machine failures can invalidate the session; ordinary tape-open failure does

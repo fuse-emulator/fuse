@@ -35,8 +35,13 @@ compile alternative UI/audio adapters together or omit the special scaler rules.
 
 ## Lifecycle
 
-The host API is declared in `fuse-internal.h`; CLI adapter entries are in
-`fuse-legacy.h`, which includes the host header for shared types and operations.
+Start with `fuse-host.h` for the narrow source interface. Opt into
+`fuse-host-media.h`, `fuse-host-input.h` or `fuse-host-memory.h` for more
+workflows without private build headers. `fuse-host-debugger.h` requires
+matching build headers (include `config.h` first for the CPU register layout).
+`fuse-internal.h` is a compatibility umbrella for configured consumers;
+new consumers should include the domain headers they use. CLI adapter entries
+are in `fuse-legacy.h`; `fuse-engine.h` is implementation-only.
 `fuse-host.c` retains only host ROM-provider callback storage/routing.
 `fuse-config.c` owns the opaque configuration, engine defaults and application.
 `fuse-operations.c` implements routine-backed machine/input/File Open and tape
@@ -735,7 +740,8 @@ in `--divmmc CARD_FILE`, using the same RAM filesystem for both workflows.
 
 ## Direct null-backed example
 
-[null-host.c](null-host.c) has its own `main` and uses `fuse-internal.h` directly.
+[null-host.c](null-host.c) has its own `main` and uses the opt-in domain headers
+and configured test support.
 It configures a 48K machine, supplies a directory ROM provider, runs frame/budget
 turns, delivers input, handles focus loss, resets, selects 128 and shuts down.
 The host drives the loop; the scripted key, joystick and focus events stand in
@@ -878,9 +884,10 @@ SDL_VIDEODRIVER=dummy FUSE_DISPLAY_TIMING=1 ./sdl-loop-host input.tap
 
 Use `host-consumer-source` instead to link the configured canonical source
 objects and special objects, without the archive. Both recipes compile the
-consumer against `fuse-host.h`, `fuse-disk.h`, `fuse-peripheral.h` and
-`fuse-tape.h` staged in `host-include/`, plus the configured dependency headers. They do not put private
-Fuse or generated headers on the consumer's include path. This is a source
+consumer against the headers staged in `host-include/`: `fuse-host.h`, the
+opt-in input, media and memory headers, and their type dependencies. The
+configured debugger header is not staged. Neither recipe puts private Fuse
+or generated headers on the consumer's include path. This is a source
 subset for the demonstrated operations, not an installed SDK or a shared ABI.
 With display timing enabled, a nonzero `presentation_count` confirms a call to
 the SDL renderer; it does not measure what the OS displayed or validate GTK4.

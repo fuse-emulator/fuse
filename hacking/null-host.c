@@ -6,7 +6,11 @@
 #include <string.h>
 
 #include "config.h"
-#include "fuse-internal.h"
+#include "fuse-filesystem.h"
+#include "fuse-host-debugger.h"
+#include "fuse-host-input.h"
+#include "fuse-host-media.h"
+#include "fuse-host-memory.h"
 #include "debugger/debugger.h"
 #include "keyboard_refresh.h"
 

@@ -22,6 +22,7 @@
 #include <SDL.h>
 
 #include "fuse-host.h"
+#include "fuse-host-media.h"
 
 /* Read A's keyboard row into RAM, then toggle the border and MIC with a
    delay. The memory byte is observable without using engine internals. */
@@ -107,6 +108,7 @@ main( int argc, char **argv )
   CHECK( fuse_host_insert_tape_file( argv[1], &insert ) ==
          FUSE_HOST_OPERATION_OK && !insert );
   CHECK( fuse_host_copy_tape_info( &tape ) == FUSE_HOST_OPERATION_OK );
+  CHECK( fuse_host_select_tape_block( 0 ) == FUSE_HOST_OPERATION_OK );
   CHECK( tape->present && !tape->playing && !tape->modified &&
          tape->block_count > 0 );
   printf( "SDL host: loaded and inspected %zu tape blocks\n",

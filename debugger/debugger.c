@@ -29,6 +29,7 @@
 #include "event.h"
 #include "fuse.h"
 #include "fuse-engine.h"
+#include "fuse-host-debugger.h"
 #include "infrastructure/startup_manager.h"
 #include "memory_pages.h"
 #include "mempool.h"

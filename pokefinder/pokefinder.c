@@ -28,6 +28,7 @@
 #include "libspectrum.h"
 
 #include "fuse-engine.h"
+#include "fuse-host-memory.h"
 #include "machine.h"
 #include "memory_pages.h"
 #include "pokefinder.h"

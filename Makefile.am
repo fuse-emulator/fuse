@@ -157,6 +157,10 @@ noinst_HEADERS = bitmap.h \
 	event.h \
 	fuse.h \
 	fuse-host.h \
+	fuse-host-debugger.h \
+	fuse-host-input.h \
+	fuse-host-media.h \
+	fuse-host-memory.h \
 	fuse-peripheral.h \
 	fuse-internal.h \
 	fuse-disk.h \

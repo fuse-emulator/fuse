@@ -25,6 +25,7 @@
 #include "event.h"
 #include "fuse.h"
 #include "fuse-engine.h"
+#include "fuse-host-memory.h"
 #include "input.h"
 #include "keyboard.h"
 #include "machine.h"
