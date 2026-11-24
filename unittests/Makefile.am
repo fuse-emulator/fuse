@@ -20,7 +20,7 @@
 ##
 ## E-mail: philip-fuse@shadowmagic.org.uk
 
-libfuselegacy_la_SOURCES += unittests/helpers.c unittests/floatingbus.c
+libfuse_la_SOURCES += unittests/helpers.c unittests/floatingbus.c
 noinst_HEADERS += unittests/helpers.h
 EXTRA_DIST += unittests/fixtures/floatingbus/README.md \
 	unittests/fixtures/floatingbus/.gitignore
@@ -252,7 +252,7 @@ endif
 
 if UI_NULL
 
-libfuselegacy_la_SOURCES += unittests/unittests.c
+libfuse_la_SOURCES += unittests/unittests.c
 noinst_HEADERS += unittests/unittests.h
 
 ## Standalone internal test programs
@@ -262,31 +262,33 @@ noinst_HEADERS += unittests/unittests.h
 check_PROGRAMS += unittests/legacyenginelinktest unittests/legacyenginesourcetest \
                   unittests/startupownershiptest
 unittests_startupownershiptest_SOURCES = unittests/startupownershiptest.c
-unittests_startupownershiptest_LDADD = libfuselegacy.la
+unittests_startupownershiptest_LDADD = libfuse.la $(FUSE_UI_LINK)
 unittests_legacyenginelinktest_SOURCES = unittests/legacyenginetest.c \
                                        unittests/hostpreparetest.c \
                                        unittests/hostoperationstest.c \
                                        unittests/snapshotfiletest.c \
                                        unittests/filesystemtest.c \
                                        unittests/legacylifecycletest.c
-unittests_legacyenginelinktest_LDADD = libfuselegacy.la
+unittests_legacyenginelinktest_LDADD = libfuse.la $(FUSE_UI_LINK)
 unittests_legacyenginesourcetest_SOURCES = unittests/legacyenginetest.c \
                                         unittests/hostpreparetest.c \
                                         unittests/hostoperationstest.c \
                                         unittests/snapshotfiletest.c \
                                         unittests/filesystemtest.c \
                                         unittests/legacylifecycletest.c \
-                                        $(libfuselegacy_la_SOURCES)
+                                        $(libfuse_la_SOURCES)
 unittests_legacyenginesourcetest_CPPFLAGS = $(AM_CPPFLAGS)
-unittests_legacyenginesourcetest_LDADD = $(libfuselegacy_la_LIBADD)
-unittests_legacyenginesourcetest_DEPENDENCIES = $(libfuselegacy_la_DEPENDENCIES)
+unittests_legacyenginesourcetest_LDADD = $(libfuse_la_LIBADD) $(FUSE_UI_LINK)
+unittests_legacyenginesourcetest_DEPENDENCIES = $(libfuse_la_DEPENDENCIES) $(FUSE_UI_OBJECTS)
 $(unittests_legacyenginesourcetest_OBJECTS): config.h
 
 # Exercise the original common UI helper with selected-service doubles; the
 # normal engine archive supplies the real tape implementation and teardown.
 check_PROGRAMS += unittests/tapesaveuitest
 unittests_tapesaveuitest_SOURCES = unittests/tapesaveuitest.c unittests/tapesaveui.c
-unittests_tapesaveuitest_LDADD = libfuselegacy.la
+TAPE_TEST_UI_OBJECTS = $(filter-out ui.$(OBJEXT),$(FUSE_UI_OBJECTS))
+unittests_tapesaveuitest_LDADD = libfuse.la $(TAPE_TEST_UI_OBJECTS) $(FUSE_UI_LIBS)
+unittests_tapesaveuitest_DEPENDENCIES = libfuse.la $(TAPE_TEST_UI_OBJECTS)
 LIFECYCLE_CHECK_TARGETS += check-tape-save-ui
 .PHONY: check-tape-save-ui
 check-tape-save-ui: unittests/tapesaveuitest
@@ -299,7 +301,7 @@ check-tape-save-ui: unittests/tapesaveuitest
 # Real recorder with controlled append failures and selected-menu reentry.
 check_PROGRAMS += unittests/taperecordtest
 unittests_taperecordtest_SOURCES = unittests/taperecordtest.c
-unittests_taperecordtest_LDADD = libfuselegacy.la
+unittests_taperecordtest_LDADD = libfuse.la $(FUSE_UI_LINK)
 LIFECYCLE_CHECK_TARGETS += check-tape-recording
 .PHONY: check-tape-recording
 check-tape-recording: unittests/taperecordtest
@@ -312,10 +314,10 @@ check-tape-recording: unittests/taperecordtest
 check_PROGRAMS += unittests/floppysaveuitest unittests/floppysavelegacytest
 unittests_floppysaveuitest_SOURCES = unittests/floppysaveuitest.c unittests/floppysaveui.c
 unittests_floppysaveuitest_CPPFLAGS = $(AM_CPPFLAGS)
-unittests_floppysaveuitest_LDADD = libfuselegacy.la
+unittests_floppysaveuitest_LDADD = libfuse.la $(FUSE_UI_LINK)
 unittests_floppysavelegacytest_SOURCES = $(unittests_floppysaveuitest_SOURCES)
 unittests_floppysavelegacytest_CPPFLAGS = $(AM_CPPFLAGS) -DFUSE_MEDIA_SAVE_BASELINE
-unittests_floppysavelegacytest_LDADD = libfuselegacy.la
+unittests_floppysavelegacytest_LDADD = libfuse.la $(FUSE_UI_LINK)
 LIFECYCLE_CHECK_TARGETS += check-floppy-save-ui
 .PHONY: check-floppy-save-ui
 check-floppy-save-ui: unittests/floppysaveuitest unittests/floppysavelegacytest
@@ -343,11 +345,11 @@ noinst_HEADERS += hacking/memory-filesystem.h
 # A separate own-main consumer: no legacy CLI/test dispatcher or core globals.
 check_PROGRAMS += unittests/nullhostlink unittests/nullhostsource
 unittests_nullhostlink_SOURCES = hacking/null-host.c
-unittests_nullhostlink_LDADD = libfuselegacy.la
-unittests_nullhostsource_SOURCES = hacking/null-host.c $(libfuselegacy_la_SOURCES)
+unittests_nullhostlink_LDADD = libfuse.la $(FUSE_UI_LINK)
+unittests_nullhostsource_SOURCES = hacking/null-host.c $(libfuse_la_SOURCES)
 unittests_nullhostsource_CPPFLAGS = $(AM_CPPFLAGS)
-unittests_nullhostsource_LDADD = $(libfuselegacy_la_LIBADD)
-unittests_nullhostsource_DEPENDENCIES = $(libfuselegacy_la_DEPENDENCIES)
+unittests_nullhostsource_LDADD = $(libfuse_la_LIBADD) $(FUSE_UI_LINK)
+unittests_nullhostsource_DEPENDENCIES = $(libfuse_la_DEPENDENCIES) $(FUSE_UI_OBJECTS)
 $(unittests_nullhostsource_OBJECTS): config.h
 LIFECYCLE_CHECK_TARGETS += check-null-host
 .PHONY: check-null-host
@@ -808,7 +810,7 @@ AUDIO_TEST_OBJECTS = unittests/audio-cut-0.lo \
                     unittests/audio-cut-1.lo
 CLEANFILES += $(AUDIO_TEST_BINARIES) $(AUDIO_TEST_OBJECTS)
 
-$(AUDIO_TEST_OBJECTS): $(srcdir)/sound.c $(fuse_OBJECTS) $(libfuselegacy_la_OBJECTS)
+$(AUDIO_TEST_OBJECTS): $(srcdir)/sound.c $(fuse_OBJECTS) $(libfuse_la_OBJECTS)
 	$(AM_V_CC)interval=$@; interval=$${interval#unittests/audio-cut-}; \
 	  interval=$${interval%.lo}; \
 	  $(LTCOMPILE) -DFUSE_SOUND_TEST_INTERVAL=$$interval -c -o $@ $(srcdir)/sound.c
@@ -820,13 +822,13 @@ unittests/fuse-audio-8750: unittests/audio-cut-8750.lo
 unittests/fuse-audio-997: unittests/audio-cut-997.lo
 unittests/fuse-audio-1: unittests/audio-cut-1.lo
 
-$(AUDIO_TEST_BINARIES): $(fuse_OBJECTS) $(fuse_DEPENDENCIES) $(libfuselegacy_la_OBJECTS) $(libfuselegacy_la_DEPENDENCIES)
-	$(AM_V_CCLD)objects=; for object in $(libfuselegacy_la_OBJECTS); do \
+$(AUDIO_TEST_BINARIES): $(fuse_OBJECTS) $(fuse_DEPENDENCIES) $(libfuse_la_OBJECTS) $(libfuse_la_DEPENDENCIES)
+	$(AM_V_CCLD)objects=; for object in $(libfuse_la_OBJECTS); do \
 	  case $$object in sound.lo) ;; \
 	    *) objects="$$objects $$object" ;; esac; \
 	  done; \
 	  interval=$@; interval=$${interval#unittests/fuse-audio-}; \
-	  $(fuse_LINK) $(fuse_OBJECTS) $$objects unittests/audio-cut-$$interval.lo $(libfuselegacy_la_LIBADD) $(FUSE_APP_LIBS) $(LIBS)
+	  $(fuse_LINK) $(fuse_OBJECTS) $$objects unittests/audio-cut-$$interval.lo $(libfuse_la_LIBADD) $(FUSE_UI_LIBS) $(FUSE_APP_LIBS) $(LIBS)
 
 check-sound-engine-equivalence: fuse$(EXEEXT) $(AUDIO_TEST_BINARIES)
 	python3 $(srcdir)/unittests/audio-frame-equivalence.py \
@@ -898,10 +900,10 @@ endif
 
 # A compile-time-instrumented source consumer; production has no failure switch.
 unittests_startupunwindtest_SOURCES = unittests/startupunwindtest.c \
-                                    $(libfuselegacy_la_SOURCES)
+                                    $(libfuse_la_SOURCES)
 unittests_startupunwindtest_CPPFLAGS = $(AM_CPPFLAGS) -DFUSE_STARTUP_TEST
-unittests_startupunwindtest_LDADD = $(libfuselegacy_la_LIBADD)
-unittests_startupunwindtest_DEPENDENCIES = $(libfuselegacy_la_DEPENDENCIES)
+unittests_startupunwindtest_LDADD = $(libfuse_la_LIBADD) $(FUSE_UI_LINK)
+unittests_startupunwindtest_DEPENDENCIES = $(libfuse_la_DEPENDENCIES) $(FUSE_UI_OBJECTS)
 $(unittests_startupunwindtest_OBJECTS): config.h
 .PHONY: check-startup-unwind
 

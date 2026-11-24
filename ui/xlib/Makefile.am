@@ -22,14 +22,14 @@
 
 if UI_X
 
-libfuselegacy_la_SOURCES += $(ui_xlib_files)
+FUSE_UI_SOURCES += $(ui_xlib_files)
 
 BUILT_SOURCES += $(ui_xlib_built)
 
 endif
 
 
-EXTRA_libfuselegacy_la_SOURCES += $(ui_xlib_files)
+EXTRA_fuse_SOURCES += $(ui_xlib_files)
 
 CLEANFILES += $(ui_xlib_built)
 

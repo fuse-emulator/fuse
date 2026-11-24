@@ -27,14 +27,20 @@ bin_PROGRAMS = fuse
 noinst_PROGRAMS =
 check_PROGRAMS =
 
-# Configured, UI-bound legacy engine; no installed library or SDK.
-noinst_LTLIBRARIES = libfuselegacy.la
-fuse_SOURCES = fuse-main.c
+# Configured common engine; the final executable supplies UI hooks.
+noinst_LTLIBRARIES = libfuse.la
+FUSE_UI_SOURCES = ui.c menu.c
+EXTRA_fuse_SOURCES =
+FUSE_UI_LIBS = $(GTK_LIBS) $(X_LIBS)
+FUSE_UI_LINK = $(FUSE_UI_OBJECTS) $(FUSE_UI_LIBS)
+fuse_SOURCES = fuse-main.c $(FUSE_UI_SOURCES)
+FUSE_UI_C_SOURCES = $(filter %.c,$(FUSE_UI_SOURCES))
+FUSE_UI_OBJECTS = $(FUSE_UI_C_SOURCES:.c=.$(OBJEXT))
 FUSE_APP_LIBS =
-fuse_LDADD = libfuselegacy.la $(FUSE_APP_LIBS)
-fuse_DEPENDENCIES = libfuselegacy.la
+fuse_LDADD = libfuse.la $(FUSE_UI_LIBS) $(FUSE_APP_LIBS)
+fuse_DEPENDENCIES = libfuse.la
 
-libfuselegacy_la_SOURCES = display.c \
+libfuse_la_SOURCES = display.c \
 	display_border.c \
 	display_dirty.c \
 	display_internal.h \
@@ -56,7 +62,6 @@ libfuselegacy_la_SOURCES = display.c \
 	machine.c \
 	memory_pages.c \
 	mempool.c \
-	menu.c \
 	movie.c \
 	module.c \
 	periph.c \
@@ -80,28 +85,25 @@ libfuselegacy_la_SOURCES = display.c \
 	tape_record.c \
 	tape_traps.c \
 	unittests/tape.c \
-	ui.c \
 	uidisplay.c \
 	uimedia.c \
 	utils.c \
 	utils_string.c
 
-FUSE_LEGACY_LIBS = \
+FUSE_CORE_LIBS = \
              $(PTHREAD_LIBS) \
              $(LIBSPECTRUM_LIBS) \
-             $(GTK_LIBS) \
              $(GLIB_LIBS) \
              $(PNG_LIBS) \
-             $(X_LIBS) \
              $(XML_LIBS)
 
 if USE_SDL2
-FUSE_LEGACY_LIBS += $(SDL2_LIBS)
+FUSE_CORE_LIBS += $(SDL2_LIBS)
 endif
 
 LEGACY_ENGINE_OBJECTS = $(SOUND_LIBADD) $(TIMER_LIBADD) $(LEGACY_SCALER_OBJECTS)
-libfuselegacy_la_LIBADD = $(LEGACY_ENGINE_OBJECTS) $(FUSE_LEGACY_LIBS)
-libfuselegacy_la_DEPENDENCIES = $(LEGACY_ENGINE_OBJECTS)
+libfuse_la_LIBADD = $(LEGACY_ENGINE_OBJECTS) $(FUSE_CORE_LIBS)
+libfuse_la_DEPENDENCIES = $(LEGACY_ENGINE_OBJECTS)
 
 if EMSCRIPTEN
 fuse_LDFLAGS = -sUSE_SDL=2 -sASYNCIFY
@@ -121,12 +123,12 @@ clean-local:
 	-rm -rf emscripten-data emscripten-data.stamp
 endif
 
-EXTRA_libfuselegacy_la_SOURCES =
+EXTRA_libfuse_la_SOURCES =
 
 BUILT_SOURCES = options.h settings.c settings.h
 
 # Rebuild even sources without config.h when the assertion policy changes.
-$(fuse_OBJECTS) $(libfuselegacy_la_OBJECTS) $(SOUND_LIBADD) $(TIMER_LIBADD): config.h
+$(fuse_OBJECTS) $(libfuse_la_OBJECTS) $(FUSE_UI_OBJECTS) $(SOUND_LIBADD) $(TIMER_LIBADD): config.h
 
 settings.c: settings.pl settings.dat
 	$(AM_V_GEN)$(PERL) -I$(srcdir)/perl $(srcdir)/settings.pl $(srcdir)/settings.dat > $@.tmp && mv $@.tmp $@
@@ -134,8 +136,8 @@ settings.c: settings.pl settings.dat
 settings.h: settings-header.pl settings.dat
 	$(AM_V_GEN)$(PERL) -I$(srcdir)/perl $(srcdir)/settings-header.pl $(srcdir)/settings.dat > $@.tmp && mv $@.tmp $@
 
-options.h: $(srcdir)/perl/cpp-perl.pl config.h $(srcdir)/ui/@OPTIONS_DIR@/options-header.pl $(srcdir)/ui/options.dat $(srcdir)/perl/Fuse.pm $(srcdir)/perl/Fuse/Dialog.pm
-	$(AM_V_GEN)$(PERL) $(srcdir)/perl/cpp-perl.pl config.h $(srcdir)/ui/options.dat | $(PERL) -I$(srcdir)/perl $(srcdir)/ui/@OPTIONS_DIR@/options-header.pl - public > $@.tmp && mv $@.tmp $@
+options.h: $(srcdir)/perl/cpp-perl.pl config.h $(srcdir)/ui/null/options-header.pl $(srcdir)/ui/options.dat $(srcdir)/perl/Fuse.pm $(srcdir)/perl/Fuse/Dialog.pm
+	$(AM_V_GEN)$(PERL) $(srcdir)/perl/cpp-perl.pl config.h $(srcdir)/ui/options.dat | $(PERL) -I$(srcdir)/perl $(srcdir)/ui/null/options-header.pl - > $@.tmp && mv $@.tmp $@
 
 AM_CPPFLAGS = \
               $(GLIB_CFLAGS) \
@@ -252,9 +254,10 @@ check-metrics:
 # Special objects retain their recipes (notably the two scaler data sizes).
 .PHONY: print-legacy-engine-inputs
 print-legacy-engine-inputs:
-	@printf '%s\n' 'Sources:' $(libfuselegacy_la_SOURCES) \
+	@printf '%s\n' 'Sources:' $(libfuse_la_SOURCES) \
+	  'Selected adapter objects:' $(FUSE_UI_OBJECTS) \
 	  'Special objects:' $(LEGACY_ENGINE_OBJECTS) \
-	  'External link flags:' '$(FUSE_LEGACY_LIBS)'
+	  'External link flags:' '$(FUSE_CORE_LIBS)'
 
 .PHONY: metrics check-metrics check-sfifo check-coreaudio
 .PHONY: install-win32 install-win32-strip dist-win32 dist-win32-dir \
@@ -266,7 +269,7 @@ if COMPAT_WIN32
 
 fuse_LDFLAGS = -mwindows
 fuse_SOURCES += windres.rc
-FUSE_LEGACY_LIBS += -lcomctl32 -lwinmm
+FUSE_CORE_LIBS += -lcomctl32 -lwinmm
 FUSE_APP_LIBS += windres.o
 fuse_DEPENDENCIES += windres.o
 

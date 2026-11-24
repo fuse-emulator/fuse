@@ -20,7 +20,7 @@
 ##
 ## E-mail: philip-fuse@shadowmagic.org.uk
 
-libfuselegacy_la_SOURCES += \
+libfuse_la_SOURCES += \
                 peripherals/dck.c \
                 peripherals/if1.c \
                 peripherals/if2.c \
@@ -62,11 +62,11 @@ libfuselegacy_la_SOURCES += \
                 peripherals/ide/zxmmc.c
 
 if BUILD_SPECCYBOOT
-libfuselegacy_la_SOURCES += peripherals/nic/enc28j60.c
+libfuse_la_SOURCES += peripherals/nic/enc28j60.c
 endif
 
 if BUILD_SPECTRANET
-libfuselegacy_la_SOURCES += \
+libfuse_la_SOURCES += \
                 peripherals/flash/am29f010.c \
                 peripherals/nic/w5100.c \
                 peripherals/nic/w5100_socket.c

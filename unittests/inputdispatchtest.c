@@ -18,6 +18,11 @@
 
 settings_info settings_current;
 int ui_widget_level = -1, ui_mouse_grabbed, fuse_emulation_paused;
+#ifdef USE_WIDGET
+const int ui_has_widget_menu = 1;
+#else
+const int ui_has_widget_menu = 0;
+#endif
 static int physical[0x200], joystick_down[3][5];
 static int presses, releases, popups, widgets, mouse_calls, errors;
 static int last_popup, mouse_result, recursive_popup;

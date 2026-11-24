@@ -23,7 +23,7 @@
 if UI_WIN32
 
 fuse_SOURCES += ui/win32/win32main.c
-libfuselegacy_la_SOURCES += $(ui_win32_files)
+FUSE_UI_SOURCES += $(ui_win32_files)
 
 BUILT_SOURCES += $(ui_win32_built)
 

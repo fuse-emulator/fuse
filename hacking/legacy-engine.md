@@ -2,10 +2,13 @@
 
 ## Scope and build inputs
 
-`libfuselegacy.la` is a non-installed Libtool convenience library containing the
-configured application engine: machine emulation, selected UI, debugger, pacing
-and audio backend. It is not a toolkit-free core, installed SDK or stable binary
-ABI. Consumers must use coherent sources, generated files and build configuration.
+`libfuse.la` is a non-installed Libtool convenience library containing the
+configured engine: machine emulation, debugger, pacing and audio backend. The
+executable links the selected UI objects directly; they are not in the archive.
+An alternative adapter must satisfy the same configured hook contract. This is
+not an installed SDK, stable binary ABI or guarantee of toolkit-free backend
+dependencies. Consumers must use coherent sources, generated files and build
+configuration.
 
 `fuse-main.c` owns normal/SDL entry and platform bootstrap. Win32 also uses
 `ui/win32/win32main.c` and its executable resources. Platform entry points and
@@ -22,11 +25,12 @@ The relevant build variables are:
 
 | Variable | Contents |
 | --- | --- |
-| `libfuselegacy_la_SOURCES` | Engine and selected frontend sources, assembled by the included Automake fragments. |
+| `libfuse_la_SOURCES` | Common engine sources, assembled by the included Automake fragments. |
+| `FUSE_UI_OBJECTS` | Selected adapter objects supplied at final link. |
 | `SOUND_LIBADD`, `TIMER_LIBADD` | Configured Libtool backend objects. |
 | `LEGACY_SCALER_OBJECTS` | Two compilations of `ui/scaler/scalers.c`, with `SCALER_DATA_SIZE=2` and `4`. |
 | `LEGACY_ENGINE_OBJECTS` | Combined backend/scaler object list. |
-| `FUSE_LEGACY_LIBS` | Configured external service link flags. |
+| `FUSE_CORE_LIBS`, `FUSE_UI_LIBS` | Configured engine and adapter link flags. |
 
 Canonical-source consumers also need the configured headers, generated
 settings/options/keysyms/menus/Z80 files, include roots, feature definitions and

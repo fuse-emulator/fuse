@@ -21,7 +21,7 @@
 ##
 ## E-mail: philip-fuse@shadowmagic.org.uk
 
-libfuselegacy_la_SOURCES += ui/scaler/scaler.c \
+libfuse_la_SOURCES += ui/scaler/scaler.c \
                 ui/scaler/snes_ntsc.c
 
 LEGACY_SCALER_OBJECTS = ui/scaler/scalers16.lo ui/scaler/scalers32.lo

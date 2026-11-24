@@ -38,20 +38,20 @@ endif
 endif
 
 if HAVE_PCM_ADMISSION
-libfuselegacy_la_SOURCES += $(COMPAT_WAIT_SOURCES)
+libfuse_la_SOURCES += $(COMPAT_WAIT_SOURCES)
 endif
 
 if COMPAT_DIRNAME
-libfuselegacy_la_SOURCES += compat/dirname.c
+libfuse_la_SOURCES += compat/dirname.c
 endif
 
 if COMPAT_GETOPT
-libfuselegacy_la_SOURCES += compat/getopt.c compat/getopt1.c
+libfuse_la_SOURCES += compat/getopt.c compat/getopt1.c
 endif
 
 ## Amiga routines
 if COMPAT_AMIGA
-libfuselegacy_la_SOURCES += \
+libfuse_la_SOURCES += \
                 compat/unix/dir.c \
                 compat/amiga/osname.c \
                 compat/amiga/paths.c \
@@ -61,7 +61,7 @@ endif
 
 ## Linux routines
 if COMPAT_LINUX
-libfuselegacy_la_SOURCES += \
+libfuse_la_SOURCES += \
                 compat/unix/dir.c \
                 compat/unix/osname.c \
                 compat/linux/relative_paths.c \
@@ -70,13 +70,13 @@ libfuselegacy_la_SOURCES += \
                 compat/unix/monotonic.c
 
 if HAVE_SOCKETS
-libfuselegacy_la_SOURCES += compat/unix/socket.c
+libfuse_la_SOURCES += compat/unix/socket.c
 endif
 endif
 
 ## Morphos routines
 if COMPAT_MORPHOS
-libfuselegacy_la_SOURCES += \
+libfuse_la_SOURCES += \
                 compat/unix/dir.c \
                 compat/morphos/osname.c \
                 compat/amiga/paths.c \
@@ -86,7 +86,7 @@ endif
 
 ## Unix routines
 if COMPAT_UNIX
-libfuselegacy_la_SOURCES += \
+libfuse_la_SOURCES += \
                 compat/unix/dir.c \
                 compat/unix/osname.c \
                 compat/unix/relative_paths.c \
@@ -95,13 +95,13 @@ libfuselegacy_la_SOURCES += \
                 compat/unix/monotonic.c
 
 if HAVE_SOCKETS
-libfuselegacy_la_SOURCES += compat/unix/socket.c
+libfuse_la_SOURCES += compat/unix/socket.c
 endif
 endif
 
 ## Wii routines
 if COMPAT_WII
-libfuselegacy_la_SOURCES += \
+libfuse_la_SOURCES += \
                 compat/unix/dir.c \
                 compat/wii/osname.c \
                 compat/wii/paths.c \
@@ -111,7 +111,7 @@ endif
 
 ## Windows routines
 if COMPAT_WIN32
-libfuselegacy_la_SOURCES += \
+libfuse_la_SOURCES += \
                 compat/unix/dir.c \
                 compat/win32/osname.c \
                 compat/win32/paths.c \
@@ -119,11 +119,11 @@ libfuselegacy_la_SOURCES += \
                 compat/win32/monotonic.c
 
 if HAVE_SOCKETS
-libfuselegacy_la_SOURCES += compat/win32/socket.c
+libfuse_la_SOURCES += compat/win32/socket.c
 endif
 endif
 
 ## SpeccyBoot routines
 if HAVE_TUNTAP
-libfuselegacy_la_SOURCES += compat/unix/tuntap.c
+libfuse_la_SOURCES += compat/unix/tuntap.c
 endif

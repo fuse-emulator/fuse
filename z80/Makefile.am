@@ -20,7 +20,7 @@
 ##
 ## E-mail: philip-fuse@shadowmagic.org.uk
 
-libfuselegacy_la_SOURCES += \
+libfuse_la_SOURCES += \
                 z80/z80.c \
                 z80/z80_debugger_variables.c \
                 z80/z80_ops.c

@@ -870,3 +870,23 @@ ui_widget_keyhandler( int native_key )
 {
   widget_keyhandler( native_key );
 }
+
+const int ui_has_widget_menu = 1;
+
+void
+ui_widget_finish( void )
+{
+  widget_finish();
+}
+
+int
+ui_widget_init( void )
+{
+  return widget_init();
+}
+
+int
+ui_widget_end( void )
+{
+  return widget_end();
+}

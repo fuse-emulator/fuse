@@ -194,9 +194,8 @@ disciple_snapshot_nmi( void )
 static void
 disciple_snapshot_menu_activate( int active GCC_UNUSED )
 {
-#ifdef USE_WIDGET
-  ui_menu_activate( UI_MENU_ITEM_MACHINE_DISCIPLE_MAGIC_BUTTON, active );
-#endif
+  if( ui_has_widget_menu )
+    ui_menu_activate( UI_MENU_ITEM_MACHINE_DISCIPLE_MAGIC_BUTTON, active );
 }
 
 static void

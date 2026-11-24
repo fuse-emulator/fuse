@@ -22,12 +22,14 @@
 
 if USE_WIDGET
 
-libfuselegacy_la_SOURCES += $(ui_widget_files)
+FUSE_UI_SOURCES += $(ui_widget_files)
 
 BUILT_SOURCES += $(ui_widget_built)
 
 pkgdata_DATA += ui/widget/fuse.font
 
+else
+FUSE_UI_SOURCES += ui/no_widget.c
 endif
 
 

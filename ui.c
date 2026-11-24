@@ -46,7 +46,6 @@
 #include "ui/ui_internals.h"
 #include "ui/uidisplay.h"
 #include "ui/uimedia.h"
-#include "ui/widget/widget.h"
 
 #define MESSAGE_MAX_LENGTH 256
 
@@ -889,39 +888,3 @@ ui_mdr_write( int which, int saveas )
 
   return err;
 }
-
-#ifdef USE_WIDGET
-int
-ui_widget_init( void )
-{
-  return widget_init();
-}
-
-int
-ui_widget_end( void )
-{
-  return widget_end();
-}
-#else
-int
-ui_widget_init( void )
-{
-  return 0;
-}
-
-int
-ui_widget_end( void )
-{
-  return 0;
-}
-
-void
-ui_popup_menu( int native_key )
-{
-}
-
-void
-ui_widget_keyhandler( int native_key )
-{
-}
-#endif				/* #ifndef USE_WIDGET */

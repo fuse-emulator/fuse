@@ -53,3 +53,15 @@ for mode in archive source; do
     grep -x 'worker host: UI received shutdown acknowledgement' worker.log
     printf 'Host consumer checks passed (%s)\n' "$mode"
 done
+
+# Use the very same SDL-configured core archive with a non-widget adapter.
+archive="$sdl/.libs/libfuse.a"
+before=$(cksum < "$archive")
+"${MAKE:-make}" -C "$sdl" -f Makefile -f "$src/hacking/host-consumer.mk" \
+    HOST_INPUT="$src/hacking/worker-loop-host.c" HOST_OUTPUT="$tmp/alternate" \
+    host-consumer-test-adapter
+"$tmp/alternate" > alternate.log 2>&1
+grep -x 'worker host: UI dispatched work while Quit was waiting' alternate.log
+grep -x 'worker host: UI received shutdown acknowledgement' alternate.log
+test "$before" = "$(cksum < "$archive")"
+printf 'Same configured archive passed with a second UI adapter\n'

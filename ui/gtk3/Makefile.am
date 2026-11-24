@@ -24,7 +24,7 @@
 
 if UI_GTK
 
-libfuselegacy_la_SOURCES += $(ui_gtk_files)
+FUSE_UI_SOURCES += $(ui_gtk_files)
 
 BUILT_SOURCES += $(ui_gtk_built)
 

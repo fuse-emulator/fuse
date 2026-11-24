@@ -504,12 +504,12 @@ get_fire_button_key( int which, input_key button )
 static int
 do_menu_key( int which, int press, input_dispatch_context context GCC_UNUSED )
 {
-#ifdef USE_WIDGET
 #ifndef GEKKO /* Home button opens the menu on Wii */
-  if( press ) return popup_menu( INPUT_KEY_F1, context );
-  return INPUT_DISPATCH_APPLIED;
-#endif  /* #ifndef GEKKO */
-#endif				/* #ifdef USE_WIDGET */
+  if( ui_has_widget_menu ) {
+    if( press ) return popup_menu( INPUT_KEY_F1, context );
+    return INPUT_DISPATCH_APPLIED;
+  }
+#endif
 
   joystick_press( which, JOYSTICK_BUTTON_FIRE, press );
   return INPUT_DISPATCH_APPLIED;
@@ -521,12 +521,10 @@ do_joystick( const input_event_joystick_t *joystick_event, int press,
 {
   int which;
 
-#ifdef USE_WIDGET
-  if( ui_widget_level >= 0 ) {
+  if( ui_has_widget_menu && ui_widget_level >= 0 ) {
     if( press ) ui_widget_keyhandler( joystick_event->button );
     return 0;
   }
-#endif				/* #ifdef USE_WIDGET */
 
   which = joystick_event->which;
 

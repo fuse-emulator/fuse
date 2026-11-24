@@ -22,7 +22,7 @@
 
 if UI_FB
 
-libfuselegacy_la_SOURCES += $(ui_fb_files)
+FUSE_UI_SOURCES += $(ui_fb_files)
 
 BUILT_SOURCES += $(ui_fb_built)
 

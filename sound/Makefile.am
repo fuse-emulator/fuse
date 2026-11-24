@@ -20,11 +20,11 @@
 ##
 ## E-mail: philip-fuse@shadowmagic.org.uk
 
-libfuselegacy_la_SOURCES += sound/ay_engine.c sound/blipbuffer.c sound/dc_filter.c \
+libfuse_la_SOURCES += sound/ay_engine.c sound/blipbuffer.c sound/dc_filter.c \
                 sound/output_mixer.c sound/source_synths.c \
                 sound/speaker_filter.c sound/tv_filter.c sound/ula_filter.c
 
-EXTRA_libfuselegacy_la_SOURCES += \
+EXTRA_libfuse_la_SOURCES += \
                       sound/alsasound.c sound/alsa_config.c \
                       sound/aosound.c \
                       sound/coreaudiosound.c \
@@ -58,4 +58,4 @@ noinst_HEADERS += \
                   sound/tv_filter.h \
                   sound/ula_filter.h
 
-FUSE_LEGACY_LIBS += $(SOUND_LIBS)
+FUSE_CORE_LIBS += $(SOUND_LIBS)

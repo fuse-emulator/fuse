@@ -21,7 +21,7 @@
 
 if UI_NULL
 
-libfuselegacy_la_SOURCES += $(ui_null_files)
+FUSE_UI_SOURCES += $(ui_null_files)
 
 BUILT_SOURCES += $(ui_null_built)
 

@@ -28,15 +28,23 @@ $(HOST_HEADER_DIR)/%.h: $(srcdir)/%.h
 	$(MKDIR_P) "$(HOST_HEADER_DIR)"
 	cp "$<" "$@"
 
-.PHONY: host-consumer-archive host-consumer-source host-consumer-object
+# Alternate adapter for the SDL-configured same-archive check.
+FUSE_TEST_UI_OBJECTS = ui.$(OBJEXT) menu.$(OBJEXT) ui/no_widget.$(OBJEXT) \
+                       ui/null/null_ui.$(OBJEXT) ui/null/options.$(OBJEXT)
+
+.PHONY: host-consumer-archive host-consumer-source host-consumer-object host-consumer-test-adapter
+host-consumer-test-adapter: host-consumer-object libfuse.la $(FUSE_TEST_UI_OBJECTS)
+	$(LINK) -o "$(HOST_OUTPUT)" "$(HOST_OUTPUT).o" $(FUSE_TEST_UI_OBJECTS) \
+	  libfuse.la $(FUSE_CORE_LIBS) $(FUSE_APP_LIBS) $(LIBS)
+
 host-consumer-object: $(HOST_HEADERS)
 	$(CC) $(CFLAGS) -I"$(HOST_HEADER_DIR)" $(LIBSPECTRUM_CFLAGS) \
 	  $(HOST_CPPFLAGS) -c "$(HOST_INPUT)" -o "$(HOST_OUTPUT).o"
 
-host-consumer-archive: host-consumer-object libfuselegacy.la
+host-consumer-archive: host-consumer-object libfuse.la $(FUSE_UI_OBJECTS)
 	$(LINK) -o "$(HOST_OUTPUT)" "$(HOST_OUTPUT).o" \
-	  libfuselegacy.la $(FUSE_LEGACY_LIBS) $(FUSE_APP_LIBS) $(LIBS)
+	  libfuse.la $(FUSE_UI_LINK) $(FUSE_CORE_LIBS) $(FUSE_APP_LIBS) $(LIBS)
 
-host-consumer-source: host-consumer-object $(libfuselegacy_la_OBJECTS) $(LEGACY_ENGINE_OBJECTS)
+host-consumer-source: host-consumer-object $(libfuse_la_OBJECTS) $(FUSE_UI_OBJECTS) $(LEGACY_ENGINE_OBJECTS)
 	$(LINK) -o "$(HOST_OUTPUT)" "$(HOST_OUTPUT).o" \
-	  $(libfuselegacy_la_OBJECTS) $(libfuselegacy_la_LIBADD) $(FUSE_APP_LIBS) $(LIBS)
+	  $(libfuse_la_OBJECTS) $(FUSE_UI_OBJECTS) $(libfuse_la_LIBADD) $(FUSE_UI_LIBS) $(FUSE_APP_LIBS) $(LIBS)

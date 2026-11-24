@@ -296,12 +296,7 @@ char *ui_get_save_filename( const char *title );
 /* Ask the user an OK/Cancel question. Returns non-zero when confirmed. */
 int ui_query( const char *format, ... ) GCC_PRINTF( 1, 2 );
 
-#ifdef USE_WIDGET
-#include "ui/widget/widget.h"
-#define ui_widget_finish() widget_finish()
-#else				/* #ifdef USE_WIDGET */
-#define ui_widget_finish()
-#endif				/* #ifdef USE_WIDGET */
+void ui_widget_finish( void );
 
 /* Code called at start and end of emulation if widget system is used */
 int ui_widget_init( void );
@@ -309,6 +304,7 @@ int ui_widget_end( void );
 
 /* How many levels deep have we recursed through widgets; -1 => none */
 extern int ui_widget_level;
+extern const int ui_has_widget_menu;
 
 /* widget system popup the apropriate menu */
 void ui_popup_menu( int native_key );
