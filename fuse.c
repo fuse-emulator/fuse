@@ -101,7 +101,7 @@
 #include "timer/timer.h"
 #include "ui/scaler/scaler.h"
 #include "ui/ui.h"
-#include "ui/uimedia.h"
+#include "peripherals/disk/drive.h"
 #ifdef ENABLE_INTERNAL_TESTS
 #include "unittests/unittests.h"
 #endif
@@ -1443,7 +1443,7 @@ static int fuse_end(void)
   periph_end();
   fuse_ui_end();
   display_end();
-  ui_media_drive_end();
+  disk_drive_end();
   module_end();
   svg_capture_end();
 #ifdef ENABLE_AUTOMATION

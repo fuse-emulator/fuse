@@ -29,7 +29,7 @@ check_PROGRAMS =
 
 # Configured common engine; the final executable supplies UI hooks.
 noinst_LTLIBRARIES = libfuse.la
-FUSE_UI_SOURCES = ui.c menu.c
+FUSE_UI_SOURCES = ui.c menu.c uimedia.c
 EXTRA_fuse_SOURCES =
 FUSE_UI_LIBS = $(GTK_LIBS) $(X_LIBS)
 FUSE_UI_LINK = $(FUSE_UI_OBJECTS) $(FUSE_UI_LIBS)
@@ -86,7 +86,6 @@ libfuse_la_SOURCES = display.c \
 	tape_traps.c \
 	unittests/tape.c \
 	uidisplay.c \
-	uimedia.c \
 	utils.c \
 	utils_string.c
 

@@ -203,10 +203,10 @@ static fdd_t specplus3_drives[ SPECPLUS3_NUM_DRIVES ];
 static int ui_drive_is_available( void );
 static const fdd_params_t *ui_drive_get_params_a( void );
 static const fdd_params_t *ui_drive_get_params_b( void );
-static int ui_drive_inserted( const ui_media_drive_info_t *drive, int new );
+static int ui_drive_inserted( const disk_drive_info_t *drive, int new );
 static int ui_drive_autoload( void );
 
-static ui_media_drive_info_t ui_drives[ SPECPLUS3_NUM_DRIVES ] = {
+static disk_drive_info_t ui_drives[ SPECPLUS3_NUM_DRIVES ] = {
   {
     /* .name = */ "+3 Disk A:",
     /* .controller_index = */ FUSE_DISK_CONTROLLER_PLUS3,
@@ -304,7 +304,7 @@ specplus3_765_init( void )
 
   for( i = 0; i < SPECPLUS3_NUM_DRIVES; i++ ) {
     ui_drives[ i ].fdd = &specplus3_drives[ i ];
-    ui_media_drive_register( &ui_drives[ i ] );
+    disk_drive_register( &ui_drives[ i ] );
   }
 }
 
@@ -542,7 +542,7 @@ specplus3_disk_insert( specplus3_drive_number which, const char *filename,
     fuse_abort();
   }
 
-  return ui_media_drive_insert( &ui_drives[ which ], filename, autoload );
+  return disk_drive_insert( &ui_drives[ which ], filename, autoload );
 }
 
 fdd_t *
@@ -572,7 +572,7 @@ ui_drive_get_params_b( void )
 }
 
 static int
-ui_drive_inserted( const ui_media_drive_info_t *drive, int new )
+ui_drive_inserted( const disk_drive_info_t *drive, int new )
 {
   /* Did real +3 hardware also have problems formatting disks unformatted
      disks? */

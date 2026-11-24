@@ -455,7 +455,7 @@ MENU_CALLBACK_WITH_ACTION( menu_media_insert_new )
 {
   int which, type;
   fuse_disk_controller controller;
-  ui_media_drive_info_t *drive;
+  disk_drive_info_t *drive;
   
   ui_widget_finish();
 
@@ -469,10 +469,10 @@ MENU_CALLBACK_WITH_ACTION( menu_media_insert_new )
     break;
   default:
     if( !menu_disk_controller( type, &controller ) ) return;
-    drive = ui_media_drive_find( controller, which );
+    drive = disk_drive_find( controller, which );
     if( !drive )
       return;
-    ui_media_drive_insert( drive, NULL, 0 );
+    disk_drive_insert( drive, NULL, 0 );
     break;
   }
 }
@@ -483,7 +483,7 @@ MENU_CALLBACK_WITH_ACTION( menu_media_insert )
   char title[80];
   int which, type;
   fuse_disk_controller controller;
-  ui_media_drive_info_t *drive = NULL;
+  disk_drive_info_t *drive = NULL;
   
   action--;
   which = action & 0x0f;
@@ -497,7 +497,7 @@ MENU_CALLBACK_WITH_ACTION( menu_media_insert )
     break;
   default:
     if( !menu_disk_controller( type, &controller ) ||
-        !( drive = ui_media_drive_find( controller, which ) ) ) {
+        !( drive = disk_drive_find( controller, which ) ) ) {
       fuse_emulation_unpause();
       return;
     }
@@ -512,7 +512,7 @@ MENU_CALLBACK_WITH_ACTION( menu_media_insert )
     if1_mdr_insert( which, filename );
     break;
   default:
-    ui_media_drive_insert( drive, filename, 0 );
+    disk_drive_insert( drive, filename, 0 );
     break;
   }
 
@@ -538,7 +538,7 @@ MENU_CALLBACK_WITH_ACTION( menu_media_eject )
     break;
   default:
     if( menu_disk_controller( type, &controller ) )
-      ui_media_drive_eject( controller, which );
+      disk_drive_eject( controller, which );
     break;
   }
 }
@@ -561,7 +561,7 @@ MENU_CALLBACK_WITH_ACTION( menu_media_save )
     break;
   default:
     if( menu_disk_controller( type, &controller ) )
-      ui_media_drive_save( controller, which, saveas );
+      disk_drive_save( controller, which, saveas );
     break;
   }
 }
@@ -582,7 +582,7 @@ MENU_CALLBACK_WITH_ACTION( menu_media_flip )
   /* No flip option for IF1 */
   default:
     if( menu_disk_controller( type, &controller ) )
-      ui_media_drive_flip( controller, which, flip );
+      disk_drive_flip( controller, which, flip );
     break;
   }
 }
@@ -605,7 +605,7 @@ MENU_CALLBACK_WITH_ACTION( menu_media_writeprotect )
     break;
   default:
     if( menu_disk_controller( type, &controller ) )
-      ui_media_drive_writeprotect( controller, which, wrprot );
+      disk_drive_writeprotect( controller, which, wrprot );
     break;
   }
 
@@ -1025,7 +1025,7 @@ menu_check_media_changed( void )
 
   confirm = ui_tape_close(); if( confirm ) return 1;
 
-  confirm = ui_media_drive_eject_all();
+  confirm = disk_drive_eject_all();
   if( confirm ) return 1;
 
   for( i = 0; i < 8; i++ ) {

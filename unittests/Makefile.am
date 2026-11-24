@@ -317,10 +317,13 @@ check-tape-recording: unittests/taperecordtest
 check_PROGRAMS += unittests/floppysaveuitest unittests/floppysavelegacytest
 unittests_floppysaveuitest_SOURCES = unittests/floppysaveuitest.c unittests/floppysaveui.c
 unittests_floppysaveuitest_CPPFLAGS = $(AM_CPPFLAGS)
-unittests_floppysaveuitest_LDADD = libfuse.la $(FUSE_UI_LINK)
+FLOPPY_TEST_UI_OBJECTS = $(filter-out uimedia.$(OBJEXT),$(FUSE_UI_OBJECTS))
+unittests_floppysaveuitest_LDADD = libfuse.la $(FLOPPY_TEST_UI_OBJECTS) $(FUSE_UI_LIBS)
+unittests_floppysaveuitest_DEPENDENCIES = libfuse.la $(FLOPPY_TEST_UI_OBJECTS)
 unittests_floppysavelegacytest_SOURCES = $(unittests_floppysaveuitest_SOURCES)
 unittests_floppysavelegacytest_CPPFLAGS = $(AM_CPPFLAGS) -DFUSE_MEDIA_SAVE_BASELINE
-unittests_floppysavelegacytest_LDADD = libfuse.la $(FUSE_UI_LINK)
+unittests_floppysavelegacytest_LDADD = $(unittests_floppysaveuitest_LDADD)
+unittests_floppysavelegacytest_DEPENDENCIES = $(unittests_floppysaveuitest_DEPENDENCIES)
 LIFECYCLE_CHECK_TARGETS += check-floppy-save-ui
 .PHONY: check-floppy-save-ui
 check-floppy-save-ui: unittests/floppysaveuitest unittests/floppysavelegacytest

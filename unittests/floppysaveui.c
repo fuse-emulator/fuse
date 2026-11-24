@@ -21,3 +21,4 @@
 #define ui_get_save_filename test_floppy_save_filename
 #define ui_confirm_save test_floppy_save_confirm
 #include "../uimedia.c"
+#include "../peripherals/disk/drive.c"

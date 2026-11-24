@@ -24,7 +24,7 @@
 #include "menu.h"
 #include "peripherals/disk/fdd.h"
 #include "ui/ui.h"
-#include "ui/uimedia.h"
+#include "peripherals/disk/drive.h"
 #include "utils.h"
 /* menu.h re-includes generated config.h; enable assertions after all headers. */
 #undef NDEBUG
@@ -48,7 +48,7 @@ static ui_confirm_save_t eject_choice = UI_CONFIRM_SAVE_SAVE;
 
 static const fdd_params_t *get_params( void ) { return &params; }
 static int is_available( void ) { return drive_available; }
-static ui_media_drive_info_t drive = {
+static disk_drive_info_t drive = {
   drive_name, TEST_CONTROLLER, TEST_SLOT,
   UI_MENU_ITEM_INVALID, UI_MENU_ITEM_INVALID, UI_MENU_ITEM_INVALID,
   UI_MENU_ITEM_INVALID, UI_MENU_ITEM_INVALID,
@@ -134,7 +134,7 @@ static int
 new_disk( void )
 {
 #ifdef FUSE_MEDIA_SAVE_BASELINE
-  return ui_media_drive_insert( &drive, NULL, 0 );
+  return disk_drive_insert( &drive, NULL, 0 );
 #else
   fuse_media_decision_id request;
   fuse_host_operation_result result = fuse_host_new_disk( TEST_CONTROLLER, TEST_SLOT, &request );
@@ -157,7 +157,7 @@ static int
 eject_disk( void )
 {
 #ifdef FUSE_MEDIA_SAVE_BASELINE
-  return ui_media_drive_eject( TEST_CONTROLLER, TEST_SLOT );
+  return disk_drive_eject( TEST_CONTROLLER, TEST_SLOT );
 #else
   fuse_media_decision_id request;
   fuse_host_operation_result result = fuse_host_eject_disk( TEST_CONTROLLER, TEST_SLOT, &request );
@@ -177,7 +177,7 @@ static int
 set_flipped( int flipped )
 {
 #ifdef FUSE_MEDIA_SAVE_BASELINE
-  return ui_media_drive_flip( TEST_CONTROLLER, TEST_SLOT, flipped );
+  return disk_drive_flip( TEST_CONTROLLER, TEST_SLOT, flipped );
 #else
   return legacy_result( fuse_host_set_disk_flipped( TEST_CONTROLLER, TEST_SLOT, flipped ) );
 #endif
@@ -187,7 +187,7 @@ static int
 set_write_protected( int write_protected )
 {
 #ifdef FUSE_MEDIA_SAVE_BASELINE
-  return ui_media_drive_writeprotect( TEST_CONTROLLER, TEST_SLOT, write_protected );
+  return disk_drive_writeprotect( TEST_CONTROLLER, TEST_SLOT, write_protected );
 #else
   return legacy_result( fuse_host_set_disk_write_protected( TEST_CONTROLLER, TEST_SLOT, write_protected ) );
 #endif
@@ -199,7 +199,7 @@ save_to( const char *filename )
 #ifdef FUSE_MEDIA_SAVE_BASELINE
   /* Exercise the chooser path; also used against the committed old workflow. */
   selected_filename = filename;
-  return ui_media_drive_save( TEST_CONTROLLER, TEST_SLOT, filename != NULL );
+  return disk_drive_save( TEST_CONTROLLER, TEST_SLOT, filename != NULL );
 #else
   return legacy_result( fuse_host_save_disk_file( TEST_CONTROLLER, TEST_SLOT, filename ) );
 #endif
@@ -415,7 +415,7 @@ main( int argc, char **argv )
   assert( fuse_host_prepare( config, &resources ) == FUSE_INIT_READY );
   fuse_host_config_free( config );
   assert( fdd_init( &fdd, FDD_SHUGART, &params, 0 ) == FDD_OK );
-  assert( !ui_media_drive_register( &drive ) );
+  assert( !disk_drive_register( &drive ) );
   if( nested ) assert( !fuse_emulation_pause() && !fuse_emulation_pause() );
   caller_pauses = fuse_emulation_paused;
   if( lifecycle ) { check_lifecycle(); goto done; }
@@ -425,7 +425,7 @@ main( int argc, char **argv )
 
   reset_counts(); fail_read = 37;
   data = fdd.disk.data;
-  assert( ui_media_drive_insert( &drive, "failed-input.udi", 0 ) == 1 );
+  assert( disk_drive_insert( &drive, "failed-input.udi", 0 ) == 1 );
   assert( file_frees == 1 && !eject_questions && !writes );
   assert( fdd.loaded && fdd.disk.dirty && fdd.disk.data == data && !fdd.disk.filename );
   fail_read = 0;
@@ -434,7 +434,7 @@ main( int argc, char **argv )
   result = save_to( NULL ); assert( result == 1 && writes == 0 );
   check_target_chooser( 1 ); report( "unnamed-no-target", result );
   reset_counts();
-  result = ui_media_drive_save( TEST_CONTROLLER, TEST_SLOT, 1 );
+  result = disk_drive_save( TEST_CONTROLLER, TEST_SLOT, 1 );
   assert( result == 1 && filenames == 1 && writes == 0 );
   report( "chooser-cancel", result );
 
@@ -456,14 +456,14 @@ main( int argc, char **argv )
   modify( 0x7c );
   reset_counts(); overwrite_choice = UI_CONFIRM_SAVE_DONTSAVE;
   selected_filename = "other.udi";
-  result = ui_media_drive_save( TEST_CONTROLLER, TEST_SLOT, 1 );
+  result = disk_drive_save( TEST_CONTROLLER, TEST_SLOT, 1 );
   assert( result == 1 && writes == 0 && overwrites == 1 && filenames == 1 );
   check_retained( data, "first.udi", 0x7c );
   assert( fdd.disk.type == DISK_TYPE_NONE ); /* Existing pre-question mutation. */
   report( "overwrite-decline", result );
   reset_counts(); overwrite_choice = UI_CONFIRM_SAVE_CANCEL;
   selected_filename = "other.udi";
-  result = ui_media_drive_save( TEST_CONTROLLER, TEST_SLOT, 1 );
+  result = disk_drive_save( TEST_CONTROLLER, TEST_SLOT, 1 );
   assert( result == 1 && writes == 0 && overwrites == 1 && filenames == 1 );
   check_retained( data, "first.udi", 0x7c );
   file = fopen( "other.udi", "rb" ); assert( file );
@@ -508,7 +508,7 @@ main( int argc, char **argv )
   assert( !fdd.loaded && !fdd.disk.data && !fdd.disk.filename );
   check_written( "other.udi", 0x8d ); report( "eject-save", result );
 
-  assert( !ui_media_drive_insert( &drive, "other.udi", 0 ) );
+  assert( !disk_drive_insert( &drive, "other.udi", 0 ) );
   modify( 0x9e ); reset_counts(); eject_choice = UI_CONFIRM_SAVE_DONTSAVE;
   result = eject_disk();
   assert( !result && writes == 0 && filenames == 0 && eject_questions == eject_prompt_count() );

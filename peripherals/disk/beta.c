@@ -73,7 +73,7 @@ libspectrum_word beta_pc_value;
 
 static wd_fdc *beta_fdc;
 static fdd_t beta_drives[ BETA_NUM_DRIVES ];
-static ui_media_drive_info_t beta_ui_drives[ BETA_NUM_DRIVES ];
+static disk_drive_info_t beta_ui_drives[ BETA_NUM_DRIVES ];
 
 static const periph_port_t beta_ports[] = {
   { 0x00ff, 0x001f, beta_sr_read, beta_cr_write },
@@ -187,7 +187,7 @@ beta_init( void *context )
 
   for( i = 0; i < BETA_NUM_DRIVES; i++ ) {
     beta_ui_drives[ i ].fdd = &beta_drives[ i ];
-    ui_media_drive_register( &beta_ui_drives[ i ] );
+    disk_drive_register( &beta_ui_drives[ i ] );
   }
 
   periph_register_paging_events( event_type_string, &page_event,
@@ -402,7 +402,7 @@ beta_disk_insert( beta_drive_number which, const char *filename,
     fuse_abort();
   }
 
-  return ui_media_drive_insert( &beta_ui_drives[ which ], filename, autoload );
+  return disk_drive_insert( &beta_ui_drives[ which ], filename, autoload );
 }
 
 static int
@@ -648,7 +648,7 @@ ui_drive_get_params_d( void )
   return &fdd_params[ option_enumerate_diskoptions_drive_beta128d_type() ];
 }
 
-static ui_media_drive_info_t beta_ui_drives[ BETA_NUM_DRIVES ] = {
+static disk_drive_info_t beta_ui_drives[ BETA_NUM_DRIVES ] = {
   {
     /* .name = */ "Beta Disk A:",
     /* .controller_index = */ FUSE_DISK_CONTROLLER_BETA,

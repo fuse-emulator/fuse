@@ -29,7 +29,8 @@ $(HOST_HEADER_DIR)/%.h: $(srcdir)/%.h
 	cp "$<" "$@"
 
 # Alternate adapter for the SDL-configured same-archive check.
-FUSE_TEST_UI_OBJECTS = ui.$(OBJEXT) menu.$(OBJEXT) ui/no_widget.$(OBJEXT) \
+FUSE_TEST_UI_OBJECTS = ui.$(OBJEXT) menu.$(OBJEXT) uimedia.$(OBJEXT) \
+                       ui/no_widget.$(OBJEXT) \
                        ui/null/null_ui.$(OBJEXT) ui/null/options.$(OBJEXT)
 
 .PHONY: host-consumer-archive host-consumer-source host-consumer-object host-consumer-test-adapter

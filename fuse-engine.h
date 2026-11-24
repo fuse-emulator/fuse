@@ -84,10 +84,6 @@ void rzx_cancel_pending_recording( void );
 /* General File Open with host decisions. */
 int utils_open_file_with_decision( const char *filename, int autoload,
                                    fuse_open_request *request );
-struct ui_media_drive_info_t;
-int ui_media_drive_request_open( const struct ui_media_drive_info_t *drive,
-                                 libspectrum_file *file, int autoload,
-                                 fuse_open_request *request );
 
 /* Only continuous legacy execution pumps the linked UI at frame completion. */
 int fuse_engine_pumps_frame_ui( void );

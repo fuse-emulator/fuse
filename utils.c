@@ -62,7 +62,7 @@
 #include "tape.h"
 #include "tape_internals.h"
 #include "utils.h"
-#include "ui/uimedia.h"
+#include "peripherals/disk/drive.h"
 
 static void init_path_context( path_context *ctx, utils_aux_type type );
 
@@ -96,7 +96,7 @@ static int
 utils_insert_disk( fuse_disk_controller controller, utils_file *file,
                    int autoload, fuse_open_request *request )
 {
-  ui_media_drive_info_t *drive = ui_media_drive_find( controller, 0 );
+  disk_drive_info_t *drive = disk_drive_find( controller, 0 );
 #ifdef ENABLE_AUTOMATION
   /* Disk insertion may normalise the loaded image in place, so retain the
      source identity before handing the buffer to the drive. */
@@ -105,8 +105,8 @@ utils_insert_disk( fuse_disk_controller controller, utils_file *file,
                             automation_disk_controller_name( controller ), 0 );
 #endif
   if( !drive ) return 1;
-  return request ? ui_media_drive_request_open( drive, file, autoload, request ) :
-                   ui_media_drive_insert_file( drive, file, autoload );
+  return request ? disk_drive_request_open( drive, file, autoload, request ) :
+                   disk_drive_insert_file( drive, file, autoload );
 }
 
 /* Open `filename' and do something sensible with it; autoload tapes

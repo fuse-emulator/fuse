@@ -25,40 +25,8 @@
 #ifndef FUSE_UIMEDIA_H
 #define FUSE_UIMEDIA_H
 
-#include "fuse-disk.h"
-#include "utils.h"
-
-struct fdd_t;
-struct fdd_params_t;
-struct disk_t;
-struct ui_media_drive_info_t;
-
-typedef int (*ui_media_drive_is_available_fn)( void );
-typedef const struct fdd_params_t* (*ui_media_drive_get_params_fn) ( void );
-typedef int (*ui_media_drive_insert_hook_fn)(
-  const struct ui_media_drive_info_t *drive, int new );
-typedef int (*ui_media_drive_autoload_hook_fn)( void );
-
-typedef struct ui_media_drive_info_t
-{
-  const char *name;
-  fuse_disk_controller controller_index;
-  int drive_index;
-  int menu_item_parent;
-  int menu_item_top;
-  int menu_item_eject;
-  int menu_item_flip;
-  int menu_item_wp;
-  ui_media_drive_is_available_fn is_available;
-  ui_media_drive_get_params_fn get_params;
-  ui_media_drive_insert_hook_fn insert_hook;
-  ui_media_drive_autoload_hook_fn autoload_hook;
-  struct fdd_t *fdd;
-} ui_media_drive_info_t;
-
-int ui_media_drive_register( ui_media_drive_info_t *drive );
-void ui_media_drive_end( void );
-ui_media_drive_info_t *ui_media_drive_find( fuse_disk_controller controller, int drive );
+#include "peripherals/disk/drive.h"
+#include "ui/ui.h"
 
 #define UI_MEDIA_DRIVE_UPDATE_ALL	(~0)
 #define UI_MEDIA_DRIVE_UPDATE_TOP	(1 << 0)
@@ -66,19 +34,11 @@ ui_media_drive_info_t *ui_media_drive_find( fuse_disk_controller controller, int
 #define UI_MEDIA_DRIVE_UPDATE_FLIP	(1 << 2)
 #define UI_MEDIA_DRIVE_UPDATE_WP	(1 << 3)
 
-int ui_media_drive_any_available( void );
 void ui_media_drive_update_parent_menus( void );
-void ui_media_drive_update_menus( const ui_media_drive_info_t *drive,
+void ui_media_drive_update_menus( const disk_drive_info_t *drive,
                                   unsigned flags );
-int ui_media_drive_eject_all( void );
+char *ui_media_choose_save_path( const char *name );
+int ui_media_confirm_overwrite( const char *filename );
+ui_confirm_save_t ui_media_confirm_dirty( const char *name );
 
-int ui_media_drive_insert( const ui_media_drive_info_t *drive,
-                           const char *filename, int autoload );
-int ui_media_drive_insert_file( const ui_media_drive_info_t *drive,
-                                const utils_file *file, int autoload );
-int ui_media_drive_save( fuse_disk_controller controller, int which, int saveas );
-int ui_media_drive_eject( fuse_disk_controller controller, int which );
-int ui_media_drive_flip( fuse_disk_controller controller, int which, int flip );
-int ui_media_drive_writeprotect( fuse_disk_controller controller, int which, int wrprot );
-
-#endif			/* #ifndef FUSE_UIMEDIA_H */
+#endif

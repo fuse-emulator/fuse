@@ -64,7 +64,7 @@ int opus_active = 0;
 
 static wd_fdc *opus_fdc;
 static fdd_t opus_drives[ OPUS_NUM_DRIVES ];
-static ui_media_drive_info_t opus_ui_drives[ OPUS_NUM_DRIVES ];
+static disk_drive_info_t opus_ui_drives[ OPUS_NUM_DRIVES ];
 
 static libspectrum_byte *opus_ram;
 static int opus_ram_allocated;
@@ -173,7 +173,7 @@ opus_init( void *context )
   periph_register( PERIPH_TYPE_OPUS, &opus_periph );
   for( i = 0; i < OPUS_NUM_DRIVES; i++ ) {
     opus_ui_drives[ i ].fdd = &opus_drives[ i ];
-    ui_media_drive_register( &opus_ui_drives[ i ] );
+    disk_drive_register( &opus_ui_drives[ i ] );
   }
 
   periph_register_paging_events( event_type_string, &page_event,
@@ -387,7 +387,7 @@ opus_disk_insert( opus_drive_number which, const char *filename,
     fuse_abort();
   }
 
-  return ui_media_drive_insert( &opus_ui_drives[ which ], filename, autoload );
+  return disk_drive_insert( &opus_ui_drives[ which ], filename, autoload );
 }
 
 fdd_t *
@@ -669,7 +669,7 @@ ui_drive_get_params_2( void )
   return &fdd_params[ option_enumerate_diskoptions_drive_opus2_type() ];
 }
 
-static ui_media_drive_info_t opus_ui_drives[ OPUS_NUM_DRIVES ] = {
+static disk_drive_info_t opus_ui_drives[ OPUS_NUM_DRIVES ] = {
   {
     /* .name = */ "Opus Disk 1",
     /* .controller_index = */ FUSE_DISK_CONTROLLER_OPUS,

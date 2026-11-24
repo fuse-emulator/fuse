@@ -794,7 +794,7 @@ ui_menu_disk_update( void )
 {
   int drives_avail;
 
-  drives_avail = ui_media_drive_any_available();
+  drives_avail = disk_drive_any_available();
 
   /* Set the disk menu items and statusbar appropriately */
 

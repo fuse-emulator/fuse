@@ -61,7 +61,7 @@ int plusd_active = 0;
 
 static wd_fdc *plusd_fdc;
 static fdd_t plusd_drives[ PLUSD_NUM_DRIVES ];
-static ui_media_drive_info_t plusd_ui_drives[ PLUSD_NUM_DRIVES ];
+static disk_drive_info_t plusd_ui_drives[ PLUSD_NUM_DRIVES ];
 
 static libspectrum_byte *plusd_ram;
 static int memory_allocated = 0;
@@ -201,7 +201,7 @@ plusd_init( void *context )
 
   for( i = 0; i < PLUSD_NUM_DRIVES; i++ ) {
     plusd_ui_drives[ i ].fdd = &plusd_drives[ i ];
-    ui_media_drive_register( &plusd_ui_drives[ i ] );
+    disk_drive_register( &plusd_ui_drives[ i ] );
   }
 
   periph_register_paging_events( event_type_string, &page_event,
@@ -414,7 +414,7 @@ plusd_disk_insert( plusd_drive_number which, const char *filename,
     fuse_abort();
   }
 
-  return ui_media_drive_insert( &plusd_ui_drives[ which ], filename, autoload );
+  return disk_drive_insert( &plusd_ui_drives[ which ], filename, autoload );
 }
 
 fdd_t *
@@ -630,7 +630,7 @@ ui_drive_get_params_2( void )
   return &fdd_params[ option_enumerate_diskoptions_drive_plusd2_type() ];
 }
 
-static ui_media_drive_info_t plusd_ui_drives[ PLUSD_NUM_DRIVES ] = {
+static disk_drive_info_t plusd_ui_drives[ PLUSD_NUM_DRIVES ] = {
   {
     /* .name = */ "+D Disk 1",
     /* .controller_index = */ FUSE_DISK_CONTROLLER_PLUSD,

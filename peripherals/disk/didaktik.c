@@ -67,7 +67,7 @@ int didaktik80_snap = 0;
 
 static wd_fdc *didaktik_fdc;
 static fdd_t didaktik_drives[ DIDAKTIK80_NUM_DRIVES ];
-static ui_media_drive_info_t didaktik_ui_drives[ DIDAKTIK80_NUM_DRIVES ];
+static disk_drive_info_t didaktik_ui_drives[ DIDAKTIK80_NUM_DRIVES ];
 
 static libspectrum_byte *ram;
 static int ram_allocated;
@@ -223,7 +223,7 @@ didaktik80_init( void *context )
   periph_register( PERIPH_TYPE_DIDAKTIK80, &didaktik_periph );
   for( i = 0; i < DIDAKTIK80_NUM_DRIVES; i++ ) {
     didaktik_ui_drives[ i ].fdd = &didaktik_drives[ i ];
-    ui_media_drive_register( &didaktik_ui_drives[ i ] );
+    disk_drive_register( &didaktik_ui_drives[ i ] );
   }
 
   periph_register_paging_events( event_type_string, &page_event,
@@ -407,7 +407,7 @@ didaktik80_disk_insert( didaktik80_drive_number which, const char *filename,
     fuse_abort();
   }
 
-  return ui_media_drive_insert( &didaktik_ui_drives[ which ], filename, autoload );
+  return disk_drive_insert( &didaktik_ui_drives[ which ], filename, autoload );
 }
 
 fdd_t *
@@ -532,7 +532,7 @@ ui_drive_get_params_b( void )
   return &fdd_params[ option_enumerate_diskoptions_drive_didaktik80b_type() ];
 }
 
-static ui_media_drive_info_t didaktik_ui_drives[ DIDAKTIK80_NUM_DRIVES ] = {
+static disk_drive_info_t didaktik_ui_drives[ DIDAKTIK80_NUM_DRIVES ] = {
   {
     /* .name = */ "Didaktik Disk A",
     /* .controller_index = */ FUSE_DISK_CONTROLLER_DIDAKTIK,

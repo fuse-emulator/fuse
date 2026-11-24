@@ -23,7 +23,7 @@
 #include "peripherals/multiface.h"
 #include "peripherals/joystick.h"
 #include "peripherals/ula.h"
-#include "ui/uimedia.h"
+#include "peripherals/disk/drive.h"
 #include "settings.h"
 #include "snapshot.h"
 #include "screenshot.h"
@@ -1486,7 +1486,7 @@ static int open_disk_autoloads;
 static int
 count_open_disk_autoload( void )
 {
-  const ui_media_drive_info_t *drive = ui_media_drive_find( FUSE_DISK_CONTROLLER_PLUS3, 0 );
+  const disk_drive_info_t *drive = disk_drive_find( FUSE_DISK_CONTROLLER_PLUS3, 0 );
   assert( drive && drive->fdd->loaded );
   open_disk_autoloads++;
   return 0;
@@ -1498,7 +1498,7 @@ static void
 check_floppy_merge( void )
 {
   const fuse_disk_controller controller = FUSE_DISK_CONTROLLER_PLUS3;
-  const ui_media_drive_info_t *drive = ui_media_drive_find( controller, 0 );
+  const disk_drive_info_t *drive = disk_drive_find( controller, 0 );
   const char *side_a = "merge Side A.udi", *side_b = "merge Side B.udi";
   fuse_open_request request;
   fuse_media_decision_id old;
@@ -1544,7 +1544,7 @@ check_floppy_merge( void )
   assert( fuse_host_answer_disk_merge( request.id, 1 ) == OK );
   assert( drive->fdd->loaded && drive->fdd->disk.sides == 1 );
   assert( !null_ui_query_calls );
-  assert( !ui_media_drive_insert( drive, side_a, 0 ) );
+  assert( !disk_drive_insert( drive, side_a, 0 ) );
   assert( null_ui_query_calls == 1 && !remove( side_a ) );
 }
 
@@ -1552,9 +1552,9 @@ static void
 check_open_floppy( void )
 {
   const fuse_disk_controller controller = FUSE_DISK_CONTROLLER_PLUS3;
-  ui_media_drive_info_t *drive = ui_media_drive_find( controller, 0 );
-  ui_media_drive_info_t *other = ui_media_drive_find( controller, 1 );
-  ui_media_drive_autoload_hook_fn original_autoload = drive->autoload_hook;
+  disk_drive_info_t *drive = disk_drive_find( controller, 0 );
+  disk_drive_info_t *other = disk_drive_find( controller, 1 );
+  disk_drive_autoload_hook_fn original_autoload = drive->autoload_hook;
   fuse_open_request request;
   int rom_requests;
   int autoload = tape_can_autoload();
@@ -1695,8 +1695,8 @@ check_host_quit( int shutdown_pending )
   const fuse_disk_controller controller = FUSE_DISK_CONTROLLER_PLUS3;
   fuse_quit_request request;
   fuse_media_decision_id id, tape_id;
-  ui_media_drive_info_t *a = ui_media_drive_find( controller, 0 );
-  ui_media_drive_info_t *b = ui_media_drive_find( controller, 1 );
+  disk_drive_info_t *a = disk_drive_find( controller, 0 );
+  disk_drive_info_t *b = disk_drive_find( controller, 1 );
   static const unsigned char tap[] = { 2, 0, 0xff, 0xff };
 
   assert( fuse_host_new_microdrive( 3, &id ) == OK && !id );
@@ -1772,19 +1772,19 @@ static void
 check_lifecycle_disk_file( void )
 {
   disk_t disk = { 0 };
-  ui_media_drive_info_t *drive = ui_media_drive_find( FUSE_DISK_CONTROLLER_PLUS3, 0 );
+  disk_drive_info_t *drive = disk_drive_find( FUSE_DISK_CONTROLLER_PLUS3, 0 );
   FILE *actual_file, *expected_file;
   int actual_byte, expected_byte;
   /* Reference the full workflow, including the +3 insertion hook's preformat.
      The chosen-target Save path already has independent chooser equivalence. */
   assert( drive && !drive->fdd->loaded );
-  assert( !ui_media_drive_insert( drive, NULL, 0 ) );
-  assert( !ui_media_drive_flip( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) );
-  assert( !ui_media_drive_flip( FUSE_DISK_CONTROLLER_PLUS3, 0, 0 ) );
-  assert( !ui_media_drive_writeprotect( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) );
-  assert( !ui_media_drive_writeprotect( FUSE_DISK_CONTROLLER_PLUS3, 0, 0 ) );
+  assert( !disk_drive_insert( drive, NULL, 0 ) );
+  assert( !disk_drive_flip( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) );
+  assert( !disk_drive_flip( FUSE_DISK_CONTROLLER_PLUS3, 0, 0 ) );
+  assert( !disk_drive_writeprotect( FUSE_DISK_CONTROLLER_PLUS3, 0, 1 ) );
+  assert( !disk_drive_writeprotect( FUSE_DISK_CONTROLLER_PLUS3, 0, 0 ) );
   assert( fuse_host_save_disk_file( FUSE_DISK_CONTROLLER_PLUS3, 0, "expected-lifecycle.udi" ) == OK );
-  assert( !ui_media_drive_eject( FUSE_DISK_CONTROLLER_PLUS3, 0 ) );
+  assert( !disk_drive_eject( FUSE_DISK_CONTROLLER_PLUS3, 0 ) );
   assert( disk_open( &disk, "lifecycle.udi", 0, 0 ) == DISK_OK );
   assert( disk.type == DISK_UDI && disk.sides == drive->get_params()->heads &&
           disk.cylinders == drive->get_params()->cylinders );
@@ -1823,7 +1823,7 @@ check_disk_available( void )
 static void
 check_disk_save( fuse_disk_controller controller )
 {
-  ui_media_drive_info_t *drive = ui_media_drive_find( controller, 0 );
+  disk_drive_info_t *drive = disk_drive_find( controller, 0 );
   disk_t check = { 0 };
   char output[] = "api-copy.udi";
   int selected, ready, loadhead, length;

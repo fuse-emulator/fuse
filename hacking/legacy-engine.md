@@ -53,9 +53,9 @@ are in `fuse-legacy.h`; `fuse-engine.h` is implementation-only.
 `fuse-operations.c` implements routine-backed machine/input/File Open and tape
 insertion/deck/save/eject/recording entries, including admission, eligibility and
 completion. Tape modules retain the existing mechanics; `tape.c` also owns tape
-observation copying/freeing alongside the live tape state. `uimedia.c` keeps disk
-entries that depend on its private registry/save helpers; no extra delegates or
-private interfaces are introduced merely to centralize names. These are engine
+observation copying/freeing alongside the live tape state.
+`peripherals/disk/drive.c` owns the floppy registry, shared save logic and
+pending decisions; `uimedia.c` supplies legacy prompts and menu updates. These are engine
 implementations, not caller-side wrappers. `fuse.c` owns preparation,
 lifecycle state and execution. `fuse-engine.h` declares private implementation
 hooks without exposing lifecycle state; it is not a second operation API.
@@ -570,7 +570,7 @@ from dirty/playing/recording flags. It is not a complete emulator status API.
 
 ## Shared floppy save implementation
 
-`ui_media_drive_save` retains the selected-UI filename chooser and overwrite
+`disk_drive_save` retains the selected-UI filename chooser and overwrite
 confirmation. The host save path borrows an already authorized destination
 through return and does not prompt. NULL uses the retained target and fails if
 unnamed. Direct host Save and a Save reply to a media decision share the same

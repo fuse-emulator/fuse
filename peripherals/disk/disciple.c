@@ -72,7 +72,7 @@ int disciple_active = 0;
 
 static wd_fdc *disciple_fdc;
 static fdd_t disciple_drives[ DISCIPLE_NUM_DRIVES ];
-static ui_media_drive_info_t disciple_ui_drives[ DISCIPLE_NUM_DRIVES ];
+static disk_drive_info_t disciple_ui_drives[ DISCIPLE_NUM_DRIVES ];
 
 static libspectrum_byte *disciple_ram;
 static int memory_allocated = 0;
@@ -312,7 +312,7 @@ disciple_init( void *context )
 
   for( i = 0; i < DISCIPLE_NUM_DRIVES; i++ ) {
     disciple_ui_drives[ i ].fdd = &disciple_drives[ i ];
-    ui_media_drive_register( &disciple_ui_drives[ i ] );
+    disk_drive_register( &disciple_ui_drives[ i ] );
   }
 
   periph_register_paging_events( event_type_string, &page_event,
@@ -591,7 +591,7 @@ disciple_disk_insert( disciple_drive_number which, const char *filename,
     fuse_abort();
   }
 
-  return ui_media_drive_insert( &disciple_ui_drives[ which ], filename, autoload );
+  return disk_drive_insert( &disciple_ui_drives[ which ], filename, autoload );
 }
 
 fdd_t *
@@ -854,7 +854,7 @@ ui_drive_get_params_2( void )
   return &fdd_params[ option_enumerate_diskoptions_drive_disciple2_type() ];
 }
 
-static ui_media_drive_info_t disciple_ui_drives[ DISCIPLE_NUM_DRIVES ] = {
+static disk_drive_info_t disciple_ui_drives[ DISCIPLE_NUM_DRIVES ] = {
   {
     /* .name = */ "DISCiPLE Disk 1",
     /* .controller_index = */ FUSE_DISK_CONTROLLER_DISCIPLE,

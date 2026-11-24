@@ -46,6 +46,7 @@ libfuse_la_SOURCES += \
                 peripherals/disk/didaktik.c \
                 peripherals/disk/disciple.c \
                 peripherals/disk/disk.c \
+                peripherals/disk/drive.c \
                 peripherals/disk/fdd.c \
                 peripherals/disk/opus.c \
                 peripherals/disk/plusd.c \
@@ -98,6 +99,7 @@ noinst_HEADERS += \
                   peripherals/disk/didaktik.h \
                   peripherals/disk/disciple.h \
                   peripherals/disk/disk.h \
+                  peripherals/disk/drive.h \
                   peripherals/disk/fdd.h \
                   peripherals/disk/opus.h \
                   peripherals/disk/plusd.h \
