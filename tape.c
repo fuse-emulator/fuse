@@ -838,3 +838,92 @@ fuse_host_copy_tape_info( fuse_tape_info **info )
   *info = copy;
   return FUSE_HOST_OPERATION_OK;
 }
+
+fuse_host_operation_result
+fuse_host_toggle_tape_play( void )
+{
+  int error;
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  fuse_engine_begin_operation();
+  error = tape_toggle_play( 0 );
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_stop_tape( void )
+{
+  int error;
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  fuse_engine_begin_operation();
+  error = tape_stop();
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_rewind_tape( void )
+{
+  int error;
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  fuse_engine_begin_operation();
+  error = tape_rewind();
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_select_tape_block( int block )
+{
+  int error;
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( block < 0 ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  fuse_engine_begin_operation();
+  error = tape_select_block( block );
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_save_tape_file( const char *filename )
+{
+  int error;
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !filename || !*filename ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  fuse_engine_begin_operation();
+  error = tape_write( filename );
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_start_tape_recording( void )
+{
+  int error;
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  /* Explicit pulse capture is the traps-disabled workflow. With traps on,
+     ROM SAVE appends decoded blocks automatically, without this command. */
+  if( settings_current.tape_traps ) return FUSE_HOST_OPERATION_MEDIA_ERROR;
+  fuse_engine_begin_operation();
+  error = tape_record_start();
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_stop_tape_recording( void )
+{
+  int error;
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  fuse_engine_begin_operation();
+  error = tape_record_stop();
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}

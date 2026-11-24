@@ -760,3 +760,120 @@ rzx_sentinel( libspectrum_dword ts GCC_UNUSED, int type GCC_UNUSED,
      this */
   event_add( RZX_SENTINEL_TIME, sentinel_event );
 }
+
+static fuse_host_operation_result
+check_rzx_operation( void )
+{
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result == FUSE_HOST_OPERATION_OK &&
+      fuse_engine_pending_decision() != FUSE_DECISION_NONE )
+    return FUSE_HOST_OPERATION_BUSY;
+  return result;
+}
+
+static fuse_host_operation_result
+host_play_rzx( const char *filename, const char *movie_target,
+               fuse_open_request *request )
+{
+  utils_file file;
+  int error;
+  fuse_host_operation_result result;
+  if( !request ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *request = (fuse_open_request){ 0 };
+  result = check_rzx_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !filename || !*filename || ( movie_target && !*movie_target ) )
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( rzx_recording || rzx_playback || tape_recording ||
+      ( movie_target && movie_is_active() ) )
+    return FUSE_HOST_OPERATION_BUSY;
+
+  fuse_engine_begin_operation();
+  fuse_emulation_pause();
+  error = utils_read_file( filename, &file );
+  if( !error ) error = rzx_request_open( &file, movie_target, request );
+  utils_close_file( &file );
+  if( !request->id ) display_refresh_all();
+  fuse_emulation_unpause();
+  fuse_engine_end_operation();
+  if( error ) return FUSE_HOST_OPERATION_MEDIA_ERROR;
+  return request->id ? FUSE_HOST_OPERATION_NEEDS_DECISION :
+         FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_play_rzx( const char *filename, fuse_open_request *request )
+{
+  return host_play_rzx( filename, NULL, request );
+}
+
+fuse_host_operation_result
+fuse_host_record_movie_from_rzx( const char *filename, const char *movie_target,
+                                 fuse_open_request *request )
+{
+  if( !movie_target ) {
+    if( request ) *request = (fuse_open_request){ 0 };
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  }
+  return host_play_rzx( filename, movie_target, request );
+}
+
+fuse_host_operation_result
+fuse_host_start_rzx_recording( const char *filename, int embed_snapshot )
+{
+  int error;
+  fuse_host_operation_result result = check_rzx_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !filename || !*filename ||
+      ( embed_snapshot != 0 && embed_snapshot != 1 ) )
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( rzx_playback || rzx_recording || tape_recording )
+    return FUSE_HOST_OPERATION_BUSY;
+  fuse_engine_begin_operation();
+  fuse_emulation_pause();
+  error = rzx_start_recording( filename, embed_snapshot );
+  fuse_emulation_unpause();
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_insert_rzx_snapshot( void )
+{
+  int error;
+  fuse_host_operation_result result = check_rzx_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  fuse_engine_begin_operation();
+  error = rzx_insert_snapshot();
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_stop_rzx( void )
+{
+  int error = 0;
+  fuse_host_operation_result result = check_rzx_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  fuse_engine_begin_operation();
+  if( rzx_recording ) error = rzx_stop_recording();
+  else if( rzx_playback ) error = rzx_stop_playback( 1 );
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_finalise_rzx( const char *filename )
+{
+  int error;
+  fuse_host_operation_result result = check_rzx_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( !filename || !*filename ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( rzx_recording || rzx_playback ) return FUSE_HOST_OPERATION_BUSY;
+  fuse_engine_begin_operation();
+  fuse_emulation_pause();
+  error = rzx_finalise_recording( filename );
+  fuse_emulation_unpause();
+  fuse_engine_end_operation();
+  return error ? FUSE_HOST_OPERATION_MEDIA_ERROR : FUSE_HOST_OPERATION_OK;
+}

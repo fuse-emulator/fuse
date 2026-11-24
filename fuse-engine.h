@@ -54,6 +54,7 @@ void fuse_mass_storage_cancel_pending( void );
 int fuse_mass_storage_request_open( periph_type controller,
                                     const char *filename,
                                     fuse_open_request *request );
+fuse_host_operation_result fuse_mass_storage_quit_next( fuse_quit_request *request );
 fuse_host_operation_result fuse_disk_quit_next( fuse_quit_request *request );
 fuse_host_operation_result fuse_microdrive_quit_next(
   fuse_quit_request *request );

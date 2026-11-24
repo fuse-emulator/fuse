@@ -57,6 +57,7 @@ libfuse_la_SOURCES += \
                 peripherals/ide/divmmc.c \
                 peripherals/ide/divxxx.c \
                 peripherals/ide/ide.c \
+                peripherals/ide/media.c \
                 peripherals/ide/simpleide.c \
                 peripherals/ide/zxatasp.c \
                 peripherals/ide/zxcf.c \

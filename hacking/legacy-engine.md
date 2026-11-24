@@ -50,10 +50,11 @@ new consumers should include the domain headers they use. CLI adapter entries
 are in `fuse-legacy.h`; `fuse-engine.h` is implementation-only.
 `fuse-host.c` retains only host ROM-provider callback storage/routing.
 `fuse-config.c` owns the opaque configuration, engine defaults and application.
-`fuse-operations.c` implements routine-backed machine/input/File Open and tape
-insertion/deck/save/eject/recording entries, including admission, eligibility and
-completion. Tape modules retain the existing mechanics; `tape.c` also owns tape
-observation copying/freeing alongside the live tape state.
+`fuse-operations.c` coordinates File Open and Quit and implements the remaining
+machine, input and related operations. Tape deck/save/recording entries live in
+`tape.c`, RZX entries alongside replay and recording in `rzx.c` and
+`rzx_recording.c`, and IDE/MMC operations and pending decisions in
+`peripherals/ide/media.c`.
 `peripherals/disk/drive.c` owns the floppy registry, shared save logic and
 pending decisions; `uimedia.c` supplies legacy prompts and menu updates. These are engine
 implementations, not caller-side wrappers. `fuse.c` owns preparation,
