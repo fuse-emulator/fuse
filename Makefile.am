@@ -141,7 +141,6 @@ options.h: $(srcdir)/perl/cpp-perl.pl config.h $(srcdir)/ui/null/options-header.
 
 AM_CPPFLAGS = \
               $(GLIB_CFLAGS) \
-              $(GTK_CFLAGS) \
               $(LIBSPECTRUM_CFLAGS) \
               $(XML_CFLAGS) \
               -DFUSEDATADIR="\"${pkgdatadir}\"" \
@@ -234,14 +233,14 @@ DISTCLEANFILES =
 
 pkgdata_DATA =
 
-if UI_NULL
+if ENABLE_INTERNAL_TESTS
 test: z80/coretest unittests/displaytest
 	z80/coretest $(srcdir)/z80/tests/tests.in > z80/tests.actual
 	cmp z80/tests.actual $(srcdir)/z80/tests/tests.expected
 	./unittests/displaytest
 else
 test:
-	@echo "SKIP: internal unit tests require a null-UI build"
+	@echo "SKIP: internal unit tests are disabled in this build"
 endif
 
 metrics:
@@ -307,7 +306,7 @@ include ui/xlib/Makefile.am
 include unittests/Makefile.am
 include z80/Makefile.am
 
-if UI_NULL
+if ENABLE_INTERNAL_TESTS
 check-local: $(LIFECYCLE_CHECK_TARGETS) $(INPUT_CHECK_TARGETS) check-widget-utf8 $(AUDIO_CHECK_TARGETS) fuse unittests/displaytest unittests/sdl2displaytest unittests/sdl2scalerstatetest unittests/sdl2joysticktest unittests/sdl2mousetest unittests/palcompositetest unittests/scalerexpandtest z80/coretest
 	@test -e $(top_builddir)/roms || ln -sf "$(abs_top_srcdir)/roms" $(top_builddir)/roms
 	FUSE_TEST_SRCDIR="$(abs_top_srcdir)" $(top_builddir)/fuse --unittests
@@ -325,5 +324,5 @@ endif
 	cmp $(top_builddir)/z80/tests.actual $(srcdir)/z80/tests/tests.expected
 else
 check-local: $(LIFECYCLE_CHECK_TARGETS) $(INPUT_CHECK_TARGETS) check-widget-utf8 $(AUDIO_CHECK_TARGETS)
-	@echo "SKIP: internal unit tests require a null-UI build"
+	@echo "SKIP: internal unit tests are disabled in this build"
 endif

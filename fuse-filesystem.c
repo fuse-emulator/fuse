@@ -95,7 +95,7 @@ compat_file_writable( const char *name )
   return !libspectrum_fs.writable( name, &result ) && result;
 }
 
-#ifdef UI_NULL
+#ifdef ENABLE_INTERNAL_TESTS
 /* Legacy unit-test interception at the Fuse call site. This does not select,
    replace, or forward a libspectrum backend. */
 static const compat_file_test_hooks defaults = {
@@ -181,7 +181,7 @@ compat_file_unlink( const char *name )
 int
 compat_file_read( compat_fd file, unsigned char *buffer, size_t length )
 {
-#ifdef UI_NULL
+#ifdef ENABLE_INTERNAL_TESTS
   if( intercept ) {
     while( length ) {
       size_t got = 0;
@@ -198,7 +198,7 @@ compat_file_read( compat_fd file, unsigned char *buffer, size_t length )
 int
 compat_file_write( compat_fd file, unsigned char const *buffer, size_t length )
 {
-#ifdef UI_NULL
+#ifdef ENABLE_INTERNAL_TESTS
   if( intercept ) {
     while( length ) {
       size_t put = 0;

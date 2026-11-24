@@ -250,10 +250,13 @@ check-coreaudio: unittests/coreaudiofilltest
 AUDIO_CHECK_TARGETS += check-coreaudio
 endif
 
-if UI_NULL
-
+if ENABLE_INTERNAL_TESTS
 libfuse_la_SOURCES += unittests/unittests.c
+endif
 noinst_HEADERS += unittests/unittests.h
+
+if UI_NULL
+if ENABLE_INTERNAL_TESTS
 
 ## Standalone internal test programs
 
@@ -788,6 +791,8 @@ check-legacy-engine-link: unittests/legacyenginelinktest unittests/legacyengines
 	$(top_builddir)/unittests/legacyenginelinktest --version > /dev/null
 	$(top_builddir)/unittests/legacyenginesourcetest --help > /dev/null
 	$(top_builddir)/unittests/legacyenginesourcetest --version > /dev/null
+
+endif # ENABLE_INTERNAL_TESTS
 
 noinst_PROGRAMS += unittests/displaytest
 noinst_PROGRAMS += unittests/sdl2displaytest

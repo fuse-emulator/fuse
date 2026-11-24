@@ -117,15 +117,15 @@ sound_init_buffer( Blip_Buffer **buf )
   return 1;
 }
 
-#ifndef UI_WIN32
+#ifndef SOUND_DIRECTSOUND
 #define MIN_SPEED_PERCENTAGE 2
 #define MAX_SPEED_PERCENTAGE 500
-#else                        /* #ifndef UI_WIN32 */
+#else                        /* #ifndef SOUND_DIRECTSOUND */
 /* We are limiting speed until bugs in the DirectSound driver are resolved, see
    [bugs:#364] for more details */
 #define MIN_SPEED_PERCENTAGE 50
 #define MAX_SPEED_PERCENTAGE 300
-#endif                       /* #ifndef UI_WIN32 */
+#endif                       /* #ifndef SOUND_DIRECTSOUND */
 
 static int
 is_in_sound_enabled_range( void )

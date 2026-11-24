@@ -26,6 +26,8 @@ if UI_GTK
 
 FUSE_UI_SOURCES += $(ui_gtk_files)
 
+$(FUSE_UI_OBJECTS) fuse-main.$(OBJEXT): AM_CPPFLAGS += $(GTK_CFLAGS)
+
 BUILT_SOURCES += $(ui_gtk_built)
 
 endif

@@ -102,7 +102,7 @@
 #include "ui/scaler/scaler.h"
 #include "ui/ui.h"
 #include "ui/uimedia.h"
-#ifdef UI_NULL
+#ifdef ENABLE_INTERNAL_TESTS
 #include "unittests/unittests.h"
 #endif
 #include "utils.h"
@@ -532,7 +532,7 @@ fuse_legacy_execute( int *exit_status )
   fuse_startup_test_running();
 #endif
 
-#ifdef UI_NULL
+#ifdef ENABLE_INTERNAL_TESTS
   if( settings_current.unittests ) {
     r = unittests_run();
   } else
@@ -780,9 +780,9 @@ fuse_init( int argc, char **argv, const fuse_host_config *config )
     legacy_ownership.xml_owned = 1;
     if( settings_init( &first_arg, argc, argv ) ) return 1;
   }
-#ifndef UI_NULL
+#ifndef ENABLE_INTERNAL_TESTS
   if( settings_current.unittests ) {
-    fprintf( stderr, "--unittests is available only with the null UI\n" );
+    fprintf( stderr, "--unittests is not enabled in this build\n" );
     return 1;
   }
 #endif

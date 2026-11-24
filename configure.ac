@@ -474,13 +474,14 @@ AM_CONDITIONAL(UI_X, test "$UI" = xlib)
 AM_CONDITIONAL(USE_WIDGET, test x$WIDGET != x)
 AC_SUBST(UI)
 
-dnl Locate common options for widget UIs
-if test -n "$WIDGET"; then
-  OPTIONS_DIR="$WIDGET"
-else
-  OPTIONS_DIR="$UI"
-fi
-AC_SUBST(OPTIONS_DIR)
+dnl Preserve the null frontend's historical default, independently of the
+dnl configured engine capability used by the C sources.
+AC_ARG_ENABLE([internal-tests],
+  AS_HELP_STRING([--enable-internal-tests], [build --unittests support (default: yes for null UI)]),
+  [], [if test "$UI" = null; then enable_internal_tests=yes; else enable_internal_tests=no; fi])
+AS_IF([test "$enable_internal_tests" = yes],
+  [AC_DEFINE([ENABLE_INTERNAL_TESTS], [1], [Build internal unit test support])])
+AM_CONDITIONAL([ENABLE_INTERNAL_TESTS], [test "$enable_internal_tests" = yes])
 
 dnl Check whether to use zlib (the UNIX version is called z, Win32 zdll)
 AC_MSG_CHECKING(whether to use zlib)
@@ -682,6 +683,7 @@ case $audio_driver in
     use_sdl=$sdl_available
     ;;
   directsound)
+    AC_DEFINE([SOUND_DIRECTSOUND], [1], [Use the DirectSound audio backend])
     SOUND_LIBADD='sound/dxsound.lo' SOUND_LIBS='-ldsound -lole32 -ldxguid'
     AC_DEFINE([DIRECTSOUND_VERSION], 0x0700, [DirectX 7 or higher is required])
     ;;

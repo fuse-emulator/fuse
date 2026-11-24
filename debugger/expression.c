@@ -853,7 +853,7 @@ debugger_expression_unittest( void )
   r += eval_binary_test( '/', 12, 4,  3, "div" );
 
 /* Only run on null UI as it creates a popup */
-#ifdef UI_NULL
+#ifdef ENABLE_INTERNAL_TESTS
   /* Division by zero returns 0 without crashing */
   r += eval_binary_test( '/',  5, 0,  0, "div-by-zero" );
 #endif
@@ -863,7 +863,7 @@ debugger_expression_unittest( void )
   r += eval_binary_test( '%',  9, 3,  0, "mod-exact" );
 
 /* Only run on null UI as it creates a popup */
-#ifdef UI_NULL
+#ifdef ENABLE_INTERNAL_TESTS
   /* Modulo by zero returns 0 without crashing */
   r += eval_binary_test( '%', 10, 0,  0, "mod-by-zero" );
 #endif

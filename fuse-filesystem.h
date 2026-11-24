@@ -34,7 +34,7 @@ extern const compat_fd COMPAT_FILE_OPEN_FAILED;
 #define COMPAT_SEEK_END LIBSPECTRUM_FS_END
 
 /* Null-build legacy fault interception; not a filesystem backend. */
-#ifdef UI_NULL
+#ifdef ENABLE_INTERNAL_TESTS
 typedef struct compat_file_test_hooks {
   compat_fd (*open)( const char *name, int mode );
   int64_t (*get_length)( compat_fd file );

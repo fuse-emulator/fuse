@@ -8,7 +8,9 @@ executable links the selected UI objects directly; they are not in the archive.
 An alternative adapter must satisfy the same configured hook contract. This is
 not an installed SDK, stable binary ABI or guarantee of toolkit-free backend
 dependencies. Consumers must use coherent sources, generated files and build
-configuration.
+configuration. Internal `--unittests` support is a build capability, enabled
+by default for the null UI and overridable with `--enable-internal-tests` or
+`--disable-internal-tests`.
 
 `fuse-main.c` owns normal/SDL entry and platform bootstrap. Win32 also uses
 `ui/win32/win32main.c` and its executable resources. Platform entry points and
