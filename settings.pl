@@ -101,6 +101,7 @@ print hashline( __LINE__ ), << 'CODE';
 #include "ui/ui.h"
 #include "utils.h"
 
+#ifdef FUSE_LEGACY_PREFERENCES
 /* The name of our configuration file */
 #ifdef WIN32
 #define CONFIG_FILE_NAME "fuse.cfg"
@@ -110,6 +111,7 @@ print hashline( __LINE__ ), << 'CODE';
 #define FALLBACK_CONFIG_FILE_NAME ".fuserc"
 #endif				/* #ifdef WIN32 */
 
+#else
 /* The current settings of options, etc */
 settings_info settings_current;
 
@@ -134,6 +136,9 @@ print hashline( __LINE__ ), << 'CODE';
   /* show_version */ 0,
 };
 
+#endif /* FUSE_LEGACY_PREFERENCES */
+
+#ifdef FUSE_LEGACY_PREFERENCES
 static int read_config_file( settings_info *settings );
 
 #ifdef HAVE_LIB_XML2
@@ -145,7 +150,8 @@ static int parse_ini( utils_file *file, settings_info *settings );
 static int settings_command_line( settings_info *settings, int *first_arg,
 				  int argc, char **argv );
 
-static void settings_copy_internal( settings_info *dest, settings_info *src );
+#else
+/* Core-owned settings lifetime, independent of preference loading. */
 
 /* Called on emulator startup */
 /* Acquire owned values without application configuration/CLI policy. */
@@ -156,6 +162,14 @@ settings_init_defaults( void )
   settings_defaults( &settings_current );
 }
 
+/* Fill the settings structure with sensible defaults */
+void settings_defaults( settings_info *settings )
+{
+  settings_replace( settings, &settings_default );
+}
+#endif /* FUSE_LEGACY_PREFERENCES */
+
+#ifdef FUSE_LEGACY_PREFERENCES
 int
 settings_init( int *first_arg, int argc, char **argv )
 {
@@ -185,12 +199,6 @@ settings_init( int *first_arg, int argc, char **argv )
 failed:
   settings_end( 0 );
   return error;
-}
-
-/* Fill the settings structure with sensible defaults */
-void settings_defaults( settings_info *settings )
-{
-  settings_copy_internal( settings, &settings_default );
 }
 
 /* Only an open failure selects the fallback; malformed config does not. */
@@ -228,7 +236,7 @@ read_config_file( settings_info *settings )
   if( fd == COMPAT_FILE_OPEN_FAILED ) return 0;
 
   memset( &new_settings, 0, sizeof( new_settings ) );
-  settings_copy_internal( &new_settings, settings );
+  settings_replace( &new_settings, settings );
 
   utils_file_init( &file, path );
   read_error = utils_read_fd( fd, path, &file );
@@ -252,7 +260,7 @@ read_config_file( settings_info *settings )
 
   xmlFreeDoc( doc );
 
-  settings_copy_internal( settings, &new_settings );
+  settings_replace( settings, &new_settings );
   settings_free( &new_settings );
 
   return 0;
@@ -470,7 +478,7 @@ read_config_file( settings_info *settings )
   if( fd == COMPAT_FILE_OPEN_FAILED ) return 0;
 
   memset( &new_settings, 0, sizeof( new_settings ) );
-  settings_copy_internal( &new_settings, settings );
+  settings_replace( &new_settings, settings );
 
   utils_file_init( &file, path );
   error = utils_read_fd( fd, path, &file );
@@ -492,7 +500,7 @@ read_config_file( settings_info *settings )
 
   utils_close_file( &file );
 
-  settings_copy_internal( settings, &new_settings );
+  settings_replace( settings, &new_settings );
   settings_free( &new_settings );
 
   return 0;
@@ -943,9 +951,10 @@ print hashline( __LINE__ ), << 'CODE';
   return 0;
 }
 
-/* Copy one settings object to another */
-static void
-settings_copy_internal( settings_info *dest, settings_info *src )
+#else
+/* Replace an initialized settings object with an owned copy. */
+void
+settings_replace( settings_info *dest, settings_info *src )
 {
   settings_free( dest );
 
@@ -974,7 +983,7 @@ print hashline( __LINE__ ), << 'CODE';
 void settings_copy( settings_info *dest, settings_info *src )
 {
   settings_defaults( dest );
-  settings_copy_internal( dest, src );
+  settings_replace( dest, src );
 }
 
 char **
@@ -1101,5 +1110,6 @@ settings_register_startup( void (*end_fn)( void ) )
                             ARRAY_SIZE( dependencies ), NULL, NULL,
                             end_fn );
 }
+#endif /* FUSE_LEGACY_PREFERENCES */
 
 CODE

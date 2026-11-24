@@ -29,7 +29,8 @@ check_PROGRAMS =
 
 # Configured common engine; the final executable supplies UI hooks.
 noinst_LTLIBRARIES = libfuse.la
-FUSE_UI_SOURCES = ui.c menu.c uimedia.c
+FUSE_UI_SOURCES = ui.c menu.c uimedia.c settings-legacy.c
+settings-legacy.$(OBJEXT): settings.c settings.h
 EXTRA_fuse_SOURCES =
 FUSE_UI_LIBS = $(GTK_LIBS) $(X_LIBS)
 FUSE_UI_LINK = $(FUSE_UI_OBJECTS) $(FUSE_UI_LIBS)
