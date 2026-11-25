@@ -173,7 +173,14 @@ policy are not host runtime edits. Applying settings does not persist them.
 
 The null host's `--runtime-settings` mode copies, edits, applies and reads
 back a batch before running a frame. `make check-null-host` exercises it in
-both link modes without the legacy settings store.
+both link modes without the legacy settings store. A third null-host build
+links only the optional `settings-file` codec and verifies a file round trip.
+
+To reuse the configured Fuse settings format, link `settings-file.o` and use
+`settings_file_load()` and `settings_file_save()` from `settings-file.h` with
+explicit paths and an owned `settings_info`. Loading overlays the record and
+does not apply it to the engine. The standalone app still owns default and
+fallback path lookup, CLI precedence, and autosave.
 
 A batch requiring a hard reset returns `FUSE_HOST_OPERATION_NEEDS_RESET`
 without applying any changes. To authorize the reset, resubmit with

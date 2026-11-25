@@ -12,6 +12,9 @@
 #include "fuse-host-media.h"
 #include "fuse-host-memory.h"
 #include "fuse-host-settings.h"
+#ifdef NULL_HOST_SETTINGS_CODEC
+#include "settings-file.h"
+#endif
 #include "debugger/debugger.h"
 #include "keyboard_refresh.h"
 
@@ -894,6 +897,22 @@ runtime_settings_session( unsigned int *frame_turns )
   if( operation( "copy settings", fuse_host_copy_settings( &candidate ) ) ) return 1;
   traps = candidate->tape_traps = !candidate->tape_traps;
   autoload = candidate->auto_load = !candidate->auto_load;
+#ifdef NULL_HOST_SETTINGS_CODEC
+  if( settings_file_save( "host-settings.cfg", candidate ) ||
+      operation( "copy settings for load", fuse_host_copy_settings( &observed ) ) ) {
+    fuse_host_free_settings( candidate );
+    return 1;
+  }
+  if( settings_file_load( "host-settings.cfg", observed ) ||
+      observed->tape_traps != traps || observed->auto_load != autoload ) {
+    fuse_host_free_settings( candidate );
+    fuse_host_free_settings( observed );
+    return 1;
+  }
+  fuse_host_free_settings( candidate );
+  candidate = observed;
+  puts( "host: settings file round trip passed" );
+#endif
   result = fuse_host_apply_settings( candidate, 0 );
   fuse_host_free_settings( candidate );
   if( operation( "apply settings", result ) ||

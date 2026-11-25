@@ -98,6 +98,9 @@ print hashline( __LINE__ ), << 'CODE';
 #include "infrastructure/startup_manager.h"
 #include "machine.h"
 #include "settings.h"
+#if defined FUSE_SETTINGS_CODEC || defined FUSE_LEGACY_SETTINGS
+#include "settings-file-internal.h"
+#endif
 #include "spectrum.h"
 #include "ui/ui.h"
 #include "utils.h"
@@ -112,7 +115,7 @@ print hashline( __LINE__ ), << 'CODE';
 #define FALLBACK_CONFIG_FILE_NAME ".fuserc"
 #endif				/* #ifdef WIN32 */
 
-#else
+#elif !defined FUSE_SETTINGS_CODEC
 /* The current settings of options, etc */
 settings_info settings_current;
 
@@ -142,16 +145,10 @@ print hashline( __LINE__ ), << 'CODE';
 #ifdef FUSE_LEGACY_SETTINGS
 static int read_config_file( settings_info *settings );
 
-#ifdef HAVE_LIB_XML2
-static int parse_xml( xmlDocPtr doc, settings_info *settings );
-#else				/* #ifdef HAVE_LIB_XML2 */
-static int parse_ini( utils_file *file, settings_info *settings );
-#endif				/* #ifdef HAVE_LIB_XML2 */
-
 static int settings_command_line( settings_info *settings, int *first_arg,
 				  int argc, char **argv );
 
-#else
+#elif !defined FUSE_SETTINGS_CODEC
 /* Core-owned settings lifetime, independent of preference loading. */
 
 /* Called on emulator startup */
@@ -218,23 +215,60 @@ open_config_file( const char *cfgdir, char *path )
   return compat_file_open( path, COMPAT_FILE_READ );
 }
 
-#ifdef HAVE_LIB_XML2
-
-/* Read options from the config file (if libxml2 is available) */
-
 static int
 read_config_file( settings_info *settings )
 {
-  const char *cfgdir; char path[ PATH_MAX ];
+  const char *cfgdir = compat_get_config_path();
+  char path[ PATH_MAX ];
+  compat_fd fd;
+
+  if( !cfgdir ) return 1;
+  fd = open_config_file( cfgdir, path );
+  if( fd == COMPAT_FILE_OPEN_FAILED ) return 0;
+  if( settings_file_load_fd( path, fd, settings ) )
+    ui_error( UI_ERROR_WARNING,
+              "ignoring unrecognised config file '%s'; using defaults", path );
+  return 0;
+}
+
+int
+settings_write_config( settings_info *settings )
+{
+  const char *cfgdir = compat_get_config_path();
+  char path[ PATH_MAX ];
+  if( !cfgdir ) return 1;
+  snprintf( path, sizeof( path ), "%s/%s", cfgdir, CONFIG_FILE_NAME );
+#ifdef HAVE_LIB_XML2
+  /* Preserve the legacy XML writer's ignored write-result convention. */
+  (void)settings_file_save( path, settings );
+  return 0;
+#else
+  return settings_file_save( path, settings );
+#endif
+}
+#endif /* FUSE_LEGACY_SETTINGS */
+
+#ifdef FUSE_SETTINGS_CODEC
+int
+settings_file_load( const char *path, settings_info *settings )
+{
+  compat_fd fd;
+  if( !path || !*path || !settings ) return 1;
+  fd = compat_file_open( path, COMPAT_FILE_READ );
+  if( fd == COMPAT_FILE_OPEN_FAILED ) return 1;
+  return settings_file_load_fd( path, fd, settings );
+}
+
+#ifdef HAVE_LIB_XML2
+static int parse_xml( xmlDocPtr doc, settings_info *settings );
+
+int
+settings_file_load_fd( const char *path, compat_fd fd, settings_info *settings )
+{
   settings_info new_settings;
   utils_file file;
   int read_error;
-  compat_fd fd;
   xmlDocPtr doc;
-
-  cfgdir = compat_get_config_path(); if( !cfgdir ) return 1;
-  fd = open_config_file( cfgdir, path );
-  if( fd == COMPAT_FILE_OPEN_FAILED ) return 0;
 
   memset( &new_settings, 0, sizeof( new_settings ) );
   settings_replace( &new_settings, settings );
@@ -244,19 +278,10 @@ read_config_file( settings_info *settings )
   doc = read_error || file.length > INT_MAX ? NULL :
     xmlReadMemory( (const char *)file.buffer, (int)file.length, path, NULL, 0 );
   utils_close_file( &file );
-  if( !doc ) {
+  if( !doc || parse_xml( doc, &new_settings ) ) {
+    if( doc ) xmlFreeDoc( doc );
     settings_free( &new_settings );
-    ui_error( UI_ERROR_WARNING,
-              "ignoring unrecognised config file '%s'; using defaults", path );
-    return 0;
-  }
-
-  if( parse_xml( doc, &new_settings ) ) {
-    xmlFreeDoc( doc );
-    settings_free( &new_settings );
-    ui_error( UI_ERROR_WARNING,
-              "ignoring unrecognised config file '%s'; using defaults", path );
-    return 0;
+    return 1;
   }
 
   xmlFreeDoc( doc );
@@ -401,17 +426,16 @@ print hashline( __LINE__ ), << 'CODE';
 }
 
 int
-settings_write_config( settings_info *settings )
+settings_file_save( const char *path, const settings_info *settings )
 {
-  const char *cfgdir; char path[ PATH_MAX ], buffer[80];
+  char buffer[80];
+  int error = 1;
 
   xmlDocPtr doc; xmlNodePtr root;
   xmlChar *output = NULL;
   int output_length = 0;
 
-  cfgdir = compat_get_config_path(); if( !cfgdir ) return 1;
-
-  snprintf( path, PATH_MAX, "%s/%s", cfgdir, CONFIG_FILE_NAME );
+  if( !path || !*path || !settings ) return 1;
 
   /* Create the XML document */
   doc = xmlNewDoc( (const xmlChar*)"1.0" );
@@ -449,54 +473,37 @@ CODE
 
   xmlDocDumpFormatMemory( doc, &output, &output_length, 1 );
   if( output ) {
-    /* Retain the legacy ignored write-result convention, but use the effective
-       filesystem instead of letting libxml reopen a native pathname. */
-    (void)utils_write_file( path, output, (size_t)output_length );
+    error = utils_write_file( path, output, (size_t)output_length );
     xmlFree( output );
   }
 
   xmlFreeDoc( doc );
 
-  return 0;
+  return error;
 }
 
 #else				/* #ifdef HAVE_LIB_XML2 */
 
 /* Read options from the config file as ini file (if libxml2 is not available) */
 
-static int
-read_config_file( settings_info *settings )
+static int parse_ini( utils_file *file, settings_info *settings );
+
+int
+settings_file_load_fd( const char *path, compat_fd fd, settings_info *settings )
 {
-  const char *cfgdir; char path[ PATH_MAX ];
   int error;
   settings_info new_settings;
-
   utils_file file;
-  compat_fd fd;
-
-  cfgdir = compat_get_config_path(); if( !cfgdir ) return 1;
-  fd = open_config_file( cfgdir, path );
-  if( fd == COMPAT_FILE_OPEN_FAILED ) return 0;
 
   memset( &new_settings, 0, sizeof( new_settings ) );
   settings_replace( &new_settings, settings );
 
   utils_file_init( &file, path );
   error = utils_read_fd( fd, path, &file );
-  if( error ) {
+  if( error || parse_ini( &file, &new_settings ) ) {
     utils_close_file( &file );
     settings_free( &new_settings );
-    ui_error( UI_ERROR_WARNING,
-              "ignoring unrecognised config file '%s'; using defaults", path );
-    return 0;
-  }
-
-  if( parse_ini( &file, &new_settings ) ) {
-    utils_close_file( &file );
-    settings_free( &new_settings );
-    ui_error( UI_ERROR_WARNING,
-              "ignoring unrecognised config file '%s'; using defaults", path );
-    return 0;
+    return 1;
   }
 
   utils_close_file( &file );
@@ -649,17 +656,12 @@ settings_numeric_write( compat_fd doc, const char* name, int config )
 }
 
 int
-settings_write_config( settings_info *settings )
+settings_file_save( const char *path, const settings_info *settings )
 {
-  const char *cfgdir; char path[ PATH_MAX ];
-
   compat_fd doc;
 
-  cfgdir = compat_get_config_path(); if( !cfgdir ) return 1;
-
-  snprintf( path, PATH_MAX, "%s/%s", cfgdir, CONFIG_FILE_NAME );
-
-  doc = compat_file_open( path, 1 );
+  if( !path || !*path || !settings ) return 1;
+  doc = compat_file_open( path, COMPAT_FILE_WRITE );
   if( doc == COMPAT_FILE_OPEN_FAILED ) {
     ui_error( UI_ERROR_ERROR, "couldn't open `%s' for writing: %s\n",
 	      path, strerror( errno ) );
@@ -704,9 +706,7 @@ CODE
 
   print hashline( __LINE__ ), << 'CODE';
 
-  compat_file_close( doc );
-
-  return 0;
+  return compat_file_close( doc ) ? 1 : 0;
 error:
   compat_file_close( doc );
 
@@ -715,6 +715,9 @@ error:
 
 #endif				/* #ifdef HAVE_LIB_XML2 */
 
+#endif /* FUSE_SETTINGS_CODEC */
+
+#ifdef FUSE_LEGACY_SETTINGS
 /* Read options from the command line */
 static int
 settings_command_line( settings_info *settings, int *first_arg,
@@ -952,7 +955,7 @@ print hashline( __LINE__ ), << 'CODE';
   return 0;
 }
 
-#else
+#elif !defined FUSE_SETTINGS_CODEC
 /* Replace an initialized settings object with an owned copy. */
 void
 settings_replace( settings_info *dest, const settings_info *src )

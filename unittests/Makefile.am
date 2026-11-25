@@ -360,9 +360,13 @@ check-floppy-save-ui: unittests/floppysaveuitest unittests/floppysavelegacytest
 noinst_HEADERS += unittests/integration/memory-filesystem.h
 
 # A separate own-main consumer: no legacy CLI/test dispatcher or core globals.
-check_PROGRAMS += unittests/nullhostlink unittests/nullhostsource
+check_PROGRAMS += unittests/nullhostlink unittests/nullhostsource unittests/nullhostcodec
+unittests_nullhostcodec_SOURCES = unittests/integration/null-host.c
+unittests_nullhostcodec_CPPFLAGS = $(AM_CPPFLAGS) -DNULL_HOST_SETTINGS_CODEC
+unittests_nullhostcodec_LDADD = libfuse.la $(NULL_HOST_UI_OBJECTS) settings-file.$(OBJEXT) $(FUSE_UI_LIBS)
+unittests_nullhostcodec_DEPENDENCIES = libfuse.la $(NULL_HOST_UI_OBJECTS) settings-file.$(OBJEXT)
 unittests_nullhostlink_SOURCES = unittests/integration/null-host.c
-NULL_HOST_UI_OBJECTS = $(filter-out settings-legacy.$(OBJEXT),$(FUSE_UI_OBJECTS))
+NULL_HOST_UI_OBJECTS = $(filter-out settings-legacy.$(OBJEXT) settings-file.$(OBJEXT),$(FUSE_UI_OBJECTS))
 unittests_nullhostlink_LDADD = libfuse.la $(NULL_HOST_UI_OBJECTS) $(FUSE_UI_LIBS)
 unittests_nullhostlink_DEPENDENCIES = libfuse.la $(NULL_HOST_UI_OBJECTS)
 unittests_nullhostsource_SOURCES = unittests/integration/null-host.c $(libfuse_la_SOURCES)
@@ -373,7 +377,7 @@ $(unittests_nullhostsource_OBJECTS): config.h
 LIFECYCLE_CHECK_TARGETS += check-null-host
 .PHONY: check-null-host
 
-check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legacyenginelinktest
+check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/nullhostcodec unittests/legacyenginelinktest
 	@set -e; root="$(abs_top_builddir)/unittests"; roms="$(abs_top_srcdir)/roms"; \
 	  tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' 0 1 2 3 15; \
 	  cd "$$tmp"; export HOME=. XDG_CONFIG_HOME=config-blocker USERPROFILE=. WINDIR=. APPDATA=.; \
@@ -460,6 +464,9 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    'host: retained copy after shutdown; controller=0; slot=0; name=+3 Disk A:; available=1; enabled=1; loaded=1; flipped=0; protected=0; target=lifecycle.udi' \
 	    'host: shutdown; frame turns=0; budget turns=0; ROM requests=4; releases=4' > expected-lifecycle; \
 	  before=$$(find . -type f -exec cksum {} \; | sort); directories=$$(find . -type d | sort); \
+	  "$$root/nullhostcodec$(EXEEXT)" "$$roms" --runtime-settings > settings.out; \
+	  grep -qx 'host: settings file round trip passed' settings.out; \
+	  rm settings.out host-settings.cfg; \
 	  for consumer in nullhostlink nullhostsource; do \
 	    "$$root/$$consumer$(EXEEXT)" "$$roms" --runtime-settings > settings.out; \
 	    grep -qx 'host: applied runtime settings and completed a frame' settings.out; \
