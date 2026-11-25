@@ -175,7 +175,7 @@ fuse_budget_interrupt( void )
 
 static void fuse_settings_end( void );
 static int fuse_init( int argc, char **argv, const fuse_host_config *config,
-                      int (*load_settings)( int *, int, char ** ) );
+                      const settings_info *settings, int (*load_settings)( int *, int, char ** ) );
 
 static void creator_register_startup( void );
 
@@ -214,7 +214,7 @@ fuse_engine_prepare_legacy( int argc, char **argv,
   legacy_ownership.callback_owned = 1;
 
   legacy_ownership.write_settings = write;
-  if( fuse_init( argc, argv, NULL, load ) ) {
+  if( fuse_init( argc, argv, NULL, NULL, load ) ) {
     fprintf(stderr,"%s: error initialising -- giving up!\n", fuse_progname);
     fuse_end();
     return FUSE_INIT_FAILED;
@@ -232,13 +232,33 @@ fuse_engine_prepare_legacy( int argc, char **argv,
   return FUSE_INIT_READY;
 }
 
-fuse_init_result
-fuse_host_prepare( const fuse_host_config *config,
-                   const fuse_host_resources *resources )
+/* These fields request startup actions, not machine configuration. Some
+   devices consume them during reset, even without legacy argument parsing. */
+static int
+settings_request_startup_actions( const settings_info *s )
+{
+  return s->snapshot || s->tape_file || s->record_file || s->playback_file ||
+         s->opusdisk_file || s->plus3disk_file || s->plusddisk_file ||
+         s->didaktik80disk_file || s->discipledisk_file || s->betadisk_file ||
+         s->dck_file || s->if2_file || s->mdr_file || s->mdr_file2 ||
+         s->mdr_file3 || s->mdr_file4 || s->mdr_file5 || s->mdr_file6 ||
+         s->mdr_file7 || s->mdr_file8 || s->simpleide_master_file ||
+         s->simpleide_slave_file || s->zxatasp_master_file ||
+         s->zxatasp_slave_file || s->zxcf_pri_file || s->divide_master_file ||
+         s->divide_slave_file || s->divmmc_file || s->zxmmc_file ||
+         s->rs232_rx || s->rs232_tx || s->snet || s->debugger_command;
+}
+
+static fuse_init_result
+prepare_host( const fuse_host_config *config, const settings_info *settings,
+              const fuse_host_resources *resources )
 {
   if( legacy_ownership.phase == LEGACY_CLOSED ) return FUSE_INIT_CLOSED;
   if( legacy_ownership.phase != LEGACY_FRESH ) return FUSE_INIT_BUSY;
-  if( !config || !resources || !resources->acquire_rom )
+  if( ( !config && !settings ) || !resources || !resources->acquire_rom ||
+      ( settings && ( !settings->start_machine || !*settings->start_machine ||
+                      !settings->start_scaler_mode ||
+                      settings_request_startup_actions( settings ) ) ) )
     return FUSE_INIT_INVALID_ARGUMENT;
 
   legacy_ownership.phase = LEGACY_STARTING;
@@ -247,12 +267,26 @@ fuse_host_prepare( const fuse_host_config *config,
   fuse_host_begin_resources( resources );
   fuse_engine_set_host_diagnostics( config );
 
-  if( fuse_init( 0, NULL, config, NULL ) || legacy_ownership.resource_failed ) {
+  if( fuse_init( 0, NULL, config, settings, NULL ) || legacy_ownership.resource_failed ) {
     fuse_end();
     return FUSE_INIT_FAILED;
   }
   legacy_ownership.phase = LEGACY_READY;
   return FUSE_INIT_READY;
+}
+
+fuse_init_result
+fuse_host_prepare( const fuse_host_config *config,
+                   const fuse_host_resources *resources )
+{
+  return prepare_host( config, NULL, resources );
+}
+
+fuse_init_result
+fuse_host_prepare_settings( const settings_info *settings,
+                            const fuse_host_resources *resources )
+{
+  return prepare_host( NULL, settings, resources );
 }
 
 void
@@ -736,11 +770,11 @@ run_startup_manager( display_startup_context *ui GCC_UNUSED )
 
 static int
 fuse_init( int argc, char **argv, const fuse_host_config *config,
-           int (*load_settings)( int *, int, char ** ) )
+           const settings_info *settings, int (*load_settings)( int *, int, char ** ) )
 {
   int error, first_arg = 0;
   display_startup_context desktop = { &argc, &argv };
-  display_startup_context *ui = config ? NULL : &desktop;
+  display_startup_context *ui = load_settings ? &desktop : NULL;
   char *start_scaler;
   fuse_start_files start_files = { 0 };
 
@@ -763,9 +797,15 @@ fuse_init( int argc, char **argv, const fuse_host_config *config,
 #endif
 
   /* Config parsing can initialize XML before its manager registration runs. */
-  if( config ) {
+  if( !load_settings ) {
     settings_init_defaults();
-    fuse_engine_apply_config( config );
+    if( settings ) {
+      settings_replace( &settings_current, settings );
+      settings_current.show_help = settings_current.show_version = 0;
+      settings_current.unittests = 0;
+    } else {
+      fuse_engine_apply_config( config );
+    }
   } else {
     legacy_ownership.xml_owned = 1;
     if( load_settings( &first_arg, argc, argv ) ) return 1;
@@ -790,7 +830,7 @@ fuse_init( int argc, char **argv, const fuse_host_config *config,
 
   start_scaler = utils_safe_strdup( settings_current.start_scaler_mode );
 
-  if( !config ) fuse_show_copyright();
+  if( load_settings ) fuse_show_copyright();
 
   error = run_startup_manager( ui );
   if( error ) goto cleanup;
@@ -806,7 +846,7 @@ fuse_init( int argc, char **argv, const fuse_host_config *config,
   if( error ) goto cleanup;
 
   fuse_start_files_init( &start_files );
-  error = config ? 0 : parse_nonoption_args( argc, argv, first_arg, &start_files );
+  error = load_settings ? parse_nonoption_args( argc, argv, first_arg, &start_files ) : 0;
   if( !error ) error = do_start_files( &start_files );
   fuse_start_files_end( &start_files );
   if( error ) goto cleanup;
@@ -816,7 +856,7 @@ fuse_init( int argc, char **argv, const fuse_host_config *config,
   }
 
   /* Must do this after all subsytems are initialised */
-  if( !config ) debugger_command_evaluate( settings_current.debugger_command );
+  if( load_settings ) debugger_command_evaluate( settings_current.debugger_command );
 
   if( ui_mouse_present ) ui_mouse_grabbed = ui_mouse_grab( 1 );
 

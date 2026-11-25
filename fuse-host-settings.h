@@ -22,6 +22,15 @@
 #include "fuse-host.h"
 #include "settings.h"
 
+/* Prepare from an initialized record, copied before machine initialization.
+   No settings file, command line or legacy UI initialization is performed.
+   Startup media paths, communication endpoints and debugger commands are
+   rejected before consuming the preparation attempt. Attach media explicitly
+   after preparation. CLI help/version and internal-test flags are ignored.
+   The ROM provider receives the configured ROM names. */
+fuse_init_result fuse_host_prepare_settings(
+  const settings_info *settings, const fuse_host_resources *resources );
+
 /* Matching generated settings.h required. Free the owned copy with the
    function below. Runtime emulator options may change; startup fields and
    adapter-owned presentation and persistence fields must remain unchanged. */

@@ -467,6 +467,17 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/nullh
 	  "$$root/nullhostcodec$(EXEEXT)" "$$roms" --runtime-settings > settings.out; \
 	  grep -qx 'host: settings file round trip passed' settings.out; \
 	  rm settings.out host-settings.cfg; \
+	  mkdir startup-roms; \
+	  cp "$$roms/128-0.rom" startup-roms/host-128.rom; \
+	  cp "$$roms/128-1.rom" startup-roms/; \
+	  if grep -q '^#define HAVE_LIB_XML2 1' "$(abs_top_builddir)/config.h"; then \
+	    printf '%s\n' '<settings><machine>128</machine><rom1280>host-128.rom</rom1280><sound>0</sound><divmmc>1</divmmc><divmmcfile>unapproved.hdf</divmmcfile></settings>' > startup.cfg; \
+	  else \
+	    printf '%s\n' 'machine=128' 'rom1280=host-128.rom' 'sound=0' 'divmmc=1' 'divmmcfile=unapproved.hdf' > startup.cfg; \
+	  fi; \
+	  "$$root/nullhostcodec$(EXEEXT)" startup-roms --startup-settings startup.cfg > settings.out; \
+	  grep -qx 'host: prepared directly with configured machine and ROMs' settings.out; \
+	  rm -r startup-roms startup.cfg settings.out; \
 	  for consumer in nullhostlink nullhostsource; do \
 	    "$$root/$$consumer$(EXEEXT)" "$$roms" --runtime-settings > settings.out; \
 	    grep -qx 'host: applied runtime settings and completed a frame' settings.out; \

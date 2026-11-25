@@ -970,6 +970,11 @@ main( int argc, char **argv )
   int open_over_tape = argc >= 3 && !strcmp( argv[2], "--open-over-tape" );
   int open_over_floppy = argc >= 3 && !strcmp( argv[2], "--open-over-floppy" );
   int plus3 = disk_save || disk_lifecycle || open_over_floppy;
+#ifdef NULL_HOST_SETTINGS_CODEC
+  int startup_settings = argc == 4 && !strcmp( argv[2], "--startup-settings" );
+#else
+  int startup_settings = 0;
+#endif
 
   if( ( argc != 2 && argc != 3 && argc != 4 && argc != 5 ) ||
       ( ( microdrive || rzx_record || open_over_tape || open_over_floppy ||
@@ -984,7 +989,7 @@ main( int argc, char **argv )
         !tape_record &&
         !rzx_record &&
         !parked_eject &&
-        !snapshot_save && !filesystem && !divmmc ) ||
+        !snapshot_save && !filesystem && !divmmc && !startup_settings ) ||
       ( ( rzx_movie || binary || rs232 || machine_button || save_screen || capture_svg ) && argc != 5 ) ||
       ( argc == 5 && !disk_save && !tape_lifecycle && !tape_replacement && !rzx_movie && !binary && !rs232 && !machine_button && !save_screen && !capture_svg ) ||
       ( argc == 3 && ( !strcmp( argv[2], "--open" ) || !strcmp( argv[2], "--save-disk" ) ||
@@ -1005,6 +1010,44 @@ main( int argc, char **argv )
   provider.debugger_step = debugger_step;
   provider.debugger_watchpoint = debugger_watchpoint;
   provider.directory = argv[1]; /* Borrowed through shutdown, not passed as engine CLI. */
+#ifdef NULL_HOST_SETTINGS_CODEC
+  if( startup_settings ) {
+    settings_info loaded = { 0 };
+    settings_info *observed;
+    settings_defaults( &loaded );
+    if( settings_file_load( argv[3], &loaded ) ) {
+      settings_free( &loaded );
+      goto cleanup;
+    }
+    if( !loaded.divmmc_enabled || !loaded.divmmc_file ) {
+      settings_free( &loaded );
+      goto cleanup;
+    }
+    init = fuse_host_prepare_settings( &loaded, &resources );
+    if( init != FUSE_INIT_INVALID_ARGUMENT || provider.requests ) {
+      prepared = init == FUSE_INIT_READY;
+      settings_free( &loaded );
+      goto cleanup;
+    }
+    settings_set_string( &loaded.divmmc_file, NULL );
+    init = fuse_host_prepare_settings( &loaded, &resources );
+    settings_free( &loaded );
+    if( init != FUSE_INIT_READY ) goto cleanup;
+    prepared = 1;
+    if( operation( "copy startup settings", fuse_host_copy_settings( &observed ) ) )
+      goto cleanup;
+    int matches = !strcmp( observed->start_machine, "128" ) &&
+                  !strcmp( observed->rom_128_0, "host-128.rom" ) &&
+                  observed->divmmc_enabled && !observed->divmmc_file &&
+                  provider.requests == 2 && provider.releases == 2;
+    fuse_host_free_settings( observed );
+    if( !matches || fuse_run_frame() != FUSE_RUN_COMPLETED ) goto cleanup;
+    ++frame_turns;
+    puts( "host: prepared directly with configured machine and ROMs" );
+    status = EXIT_SUCCESS;
+    goto cleanup;
+  }
+#endif
   config = fuse_host_config_alloc();
   if( fuse_host_config_set_machine( config,
                                     plus3 ? "plus3" : record_psg ? "128" :

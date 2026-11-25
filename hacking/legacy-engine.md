@@ -160,6 +160,20 @@ snapshot loading and synchronous decisions retain their existing internal paths.
 In particular, legacy snapshot machine fallback can abort. There is no general
 host-services or deterministic-checkpoint contract.
 
+## Bulk startup settings
+
+A host with an initialized `settings_info` can call
+`fuse_host_prepare_settings()` from `fuse-host-settings.h`. Fuse copies the
+record before initializing the selected machine, so the caller can free it
+when preparation returns. This path does not read a settings store, parse CLI
+arguments, or initialize the legacy UI. It uses the supplied ROM provider for
+the configured ROM names. Startup media paths, communication endpoints, and
+debugger commands are rejected without consuming the preparation attempt.
+Clear those fields before preparing and attach approved media explicitly
+through the host API. Standalone Fuse retains its existing startup behavior.
+The codec-enabled null host exercises rejection and same-process retry with
+`--startup-settings FILE`.
+
 ## Runtime settings
 
 `fuse-host-settings.h` uses the matching build's generated `settings.h`.
