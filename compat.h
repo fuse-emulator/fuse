@@ -26,6 +26,7 @@
 #ifndef FUSE_COMPAT_H
 #define FUSE_COMPAT_H
 
+#include <limits.h>
 #include <stdio.h>
 #include <dirent.h>
 #include <stdlib.h>

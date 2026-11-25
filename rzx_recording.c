@@ -26,6 +26,7 @@
 #include "config.h"
 
 #include <math.h>
+#include <stdint.h>
 
 #include "fuse.h"
 #include "fuse-engine.h"
@@ -649,7 +650,7 @@ get_rollback_list( libspectrum_rzx *from_rzx, int include_end )
 
     case LIBSPECTRUM_RZX_SNAPSHOT_BLOCK:
       rollback_points = g_slist_append( rollback_points,
-                                        GSIZE_TO_POINTER( frames ) );
+                                        (void *)(uintptr_t)frames );
       break;
 
     default:
@@ -662,7 +663,7 @@ get_rollback_list( libspectrum_rzx *from_rzx, int include_end )
   /* Add the final IRB in, if any */
   if( include_end && frames )
     rollback_points = g_slist_append( rollback_points,
-                                      GSIZE_TO_POINTER( frames ) );
+                                      (void *)(uintptr_t)frames );
 
   return rollback_points;
 }
@@ -736,7 +737,7 @@ fuse_host_copy_rzx_rollback_points( size_t **frames, size_t *count )
   *count = g_slist_length( points );
   if( *count ) *frames = libspectrum_new( size_t, *count );
   for( item = points; item; item = item->next )
-    (*frames )[i++] = GPOINTER_TO_SIZE( item->data );
+    (*frames )[i++] = (size_t)(uintptr_t)item->data;
   g_slist_free( points );
   return FUSE_HOST_OPERATION_OK;
 }

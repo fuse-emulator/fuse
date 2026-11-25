@@ -250,6 +250,7 @@ floatingbus_performance_fixtures( void )
   return error;
 }
 
+#ifdef USE_LIBPNG
 #define VISUAL_FRAMES 256
 
 static unsigned long program_samples;
@@ -307,6 +308,8 @@ display_colours( unsigned int rows[ DISPLAY_SCREEN_HEIGHT ],
     }
   }
 }
+
+#endif /* USE_LIBPNG */
 
 /* Create directory and all parent components. Returns 0 on success. */
 static int
@@ -486,6 +489,7 @@ floatingbus_original_unittest( void )
   return r;
 }
 
+#ifdef USE_LIBPNG
 static int
 run_visual( const char *path, const char *directory, int woody,
             libspectrum_machine machine )
@@ -636,3 +640,11 @@ floatingbus_visual_unittest( void )
   if( machine_select( saved ) ) error++;
   return error;
 }
+#else
+int
+floatingbus_visual_unittest( void )
+{
+  puts( "SKIP: floating-bus visual tests require PNG support" );
+  return 0;
+}
+#endif /* USE_LIBPNG */

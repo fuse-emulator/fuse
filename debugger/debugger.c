@@ -22,6 +22,7 @@
 */
 
 #include "config.h"
+
 #include "keyboard_refresh.h"
 
 #include "debugger.h"
@@ -322,15 +323,24 @@ copy_breakpoint_info( fuse_debugger_breakpoint_info *info,
 }
 
 static void
+count_event_info( gpointer data, gpointer user_data )
+{
+  const event_t *event = data;
+  size_t *count = user_data;
+
+  if( event->type != event_type_null ) ++*count;
+}
+
+static void
 copy_event_info( gpointer data, gpointer user_data )
 {
   const event_t *event = data;
-  GArray *events = user_data;
-  fuse_debugger_event_info info;
+  fuse_debugger_event_info **next = user_data;
+
   if( event->type == event_type_null ) return;
-  info.tstates = event->tstates;
-  info.name = utils_safe_strdup( event_name( event->type ) );
-  g_array_append_val( events, info );
+  (*next)->tstates = event->tstates;
+  (*next)->name = utils_safe_strdup( event_name( event->type ) );
+  ++*next;
 }
 
 fuse_host_operation_result
@@ -338,7 +348,7 @@ fuse_host_debugger_copy_views( fuse_debugger_views **views )
 {
   fuse_debugger_views *copy;
   const GSList *item;
-  GArray *events;
+  fuse_debugger_event_info *next_event;
   size_t i;
   fuse_host_operation_result result;
   if( !views ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
@@ -369,10 +379,12 @@ fuse_host_debugger_copy_views( fuse_debugger_views **views )
     info->contended = page->contended;
   }
 
-  events = g_array_new( FALSE, FALSE, sizeof( fuse_debugger_event_info ) );
-  event_foreach( copy_event_info, events );
-  copy->event_count = events->len;
-  copy->events = (fuse_debugger_event_info *)g_array_free( events, FALSE );
+  event_foreach( count_event_info, &copy->event_count );
+  if( copy->event_count ) {
+    copy->events = libspectrum_new( fuse_debugger_event_info, copy->event_count );
+    next_event = copy->events;
+    event_foreach( copy_event_info, &next_event );
+  }
   *views = copy;
   return FUSE_HOST_OPERATION_OK;
 }
@@ -404,7 +416,7 @@ fuse_debugger_views_free( fuse_debugger_views *views )
        i++ ) libspectrum_free( views->events[i].name );
   libspectrum_free( views->breakpoints );
   libspectrum_free( views->pages );
-  g_free( views->events );
+  libspectrum_free( views->events );
   libspectrum_free( views );
 }
 

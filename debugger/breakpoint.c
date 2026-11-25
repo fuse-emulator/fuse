@@ -427,7 +427,10 @@ debugger_breakpoint_remove( size_t id )
     event_foreach( remove_time, &remove );
   }
 
-  unlink_breakpoint( g_slist_find( debugger_breakpoints, bp ) );
+  GSList *link;
+  for( link = debugger_breakpoints; link && link->data != bp; link = link->next )
+    ;
+  unlink_breakpoint( link );
   if( debugger_mode == DEBUGGER_MODE_ACTIVE && !debugger_breakpoints )
     debugger_mode = DEBUGGER_MODE_INACTIVE;
 

@@ -25,8 +25,6 @@
 #ifndef FUSE_DEBUGGER_BREAKPOINT_H
 #define FUSE_DEBUGGER_BREAKPOINT_H
 
-#include <glib.h>
-
 #include "memory_pages.h"
 
 /* Types of breakpoint */
@@ -114,7 +112,9 @@ typedef struct debugger_breakpoint {
 } debugger_breakpoint;
 
 /* The current breakpoints */
-extern GSList *debugger_breakpoints;
+/* GLib and libspectrum's replacement use the same list tag. */
+struct _GSList;
+extern struct _GSList *debugger_breakpoints;
 
 int debugger_check( debugger_breakpoint_type type, libspectrum_dword value );
 
