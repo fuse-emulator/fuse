@@ -19,7 +19,13 @@
 
 #include "config.h"
 
+#include <string.h>
+
 #include "fuse-engine.h"
+#include "fuse-host-settings.h"
+#include "fuse.h"
+#include "machine.h"
+#include "periph.h"
 #include "settings.h"
 #include "utils.h"
 
@@ -173,4 +179,83 @@ fuse_engine_apply_config( const fuse_host_config *config )
   settings_current.joystick_2_output = config->joystick_output[1];
   settings_current.joystick_keyboard_output = config->joystick_output[2];
   settings_current.mouse_swap_buttons = config->mouse_swap_buttons;
+}
+
+fuse_host_operation_result
+fuse_settings_apply( const settings_info *candidate, int allow_reset,
+                     int legacy, int *error )
+{
+  int update_peripherals, rom_only, needs_reset = 0, i;
+  const char *target = NULL;
+  settings_info previous;
+  *error = 0;
+  if( !candidate || ( allow_reset != 0 && allow_reset != 1 ) ||
+      !settings_check_runtime( candidate, legacy, &update_peripherals, &rom_only ) )
+    return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( settings_equal( candidate, &settings_current ) )
+    return FUSE_HOST_OPERATION_OK;
+
+  if( !candidate->start_machine ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  if( strcmp( candidate->start_machine, machine_current->id ) ) {
+    for( i = 0; i < machine_count; i++ ) {
+      if( !strcmp( candidate->start_machine, machine_types[i]->id ) ) {
+        target = machine_types[i]->id;
+        break;
+      }
+    }
+    if( !target ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  }
+
+  if( update_peripherals && !target ) {
+    /* The existing precheck reads the candidate without activating devices. */
+    previous = settings_current;
+    settings_current = *candidate;
+    needs_reset = periph_postcheck();
+    settings_current = previous;
+    if( needs_reset && !allow_reset ) return FUSE_HOST_OPERATION_NEEDS_RESET;
+  }
+
+  if( !rom_only ) fuse_emulation_pause();
+  settings_replace( &settings_current, candidate );
+  if( target ) *error = machine_select_id( target );
+  else if( update_peripherals && periph_update() ) *error = machine_reset( 1 );
+  if( !rom_only && fuse_emulation_unpause() ) *error = 1;
+  return *error ? FUSE_HOST_OPERATION_FAILED : FUSE_HOST_OPERATION_OK;
+}
+
+fuse_host_operation_result
+fuse_host_copy_settings( settings_info **copy )
+{
+  fuse_host_operation_result result;
+  if( !copy ) return FUSE_HOST_OPERATION_INVALID_ARGUMENT;
+  *copy = NULL;
+  result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  *copy = libspectrum_new0( settings_info, 1 );
+  settings_copy( *copy, &settings_current );
+  return FUSE_HOST_OPERATION_OK;
+}
+
+void
+fuse_host_free_settings( settings_info *copy )
+{
+  if( !copy ) return;
+  settings_free( copy );
+  libspectrum_free( copy );
+}
+
+fuse_host_operation_result
+fuse_host_apply_settings( const settings_info *candidate, int allow_reset )
+{
+  int error;
+  fuse_host_operation_result result = fuse_engine_check_operation();
+  if( result != FUSE_HOST_OPERATION_OK ) return result;
+  if( fuse_engine_pending_decision() != FUSE_DECISION_NONE )
+    return FUSE_HOST_OPERATION_BUSY;
+  fuse_engine_begin_operation();
+  result = fuse_settings_apply( candidate, allow_reset, 0, &error );
+  if( error || result == FUSE_HOST_OPERATION_OK )
+    return fuse_engine_end_machine_operation( error );
+  fuse_engine_end_operation();
+  return result;
 }

@@ -17,6 +17,7 @@
 */
 
 #include "host-operations.h"
+#include "fuse-host-settings.h"
 
 struct host_test_rom_provider provider;
 
@@ -144,6 +145,8 @@ acquire_rom( void *context, const char *name, fuse_host_rom *rom )
   long length;
   FILE *file;
   const char *filename = name;
+  if( !strcmp( name, "settings-test-48.rom" ) ) filename = "48.rom";
+  if( !strcmp( name, "settings-test-128.rom" ) ) filename = "128-0.rom";
   assert( context == &provider );
   assert( provider.acquired == provider.released );
   provider.acquired++;
@@ -381,6 +384,52 @@ active_callback( libspectrum_dword ts, int type, void *data )
   assert( insert_tape_without_decision( "not-opened.tap" ) == FUSE_HOST_OPERATION_BUSY );
 }
 
+static void
+check_runtime_settings( void )
+{
+  settings_info *candidate;
+  int traps = settings_current.tape_traps;
+  int divmmc = settings_current.divmmc_enabled;
+  assert( fuse_host_copy_settings( &candidate ) == OK );
+  assert( fuse_host_apply_settings( candidate, 0 ) == OK );
+  candidate->tape_traps = !traps;
+  candidate->divmmc_enabled = 2;
+  assert( fuse_host_apply_settings( candidate, 0 ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  candidate->divmmc_enabled = !divmmc;
+  candidate->auto_load = !settings_current.auto_load;
+  candidate->frame_rate = 0;
+  assert( fuse_host_apply_settings( candidate, 1 ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  candidate->frame_rate = settings_current.frame_rate + 1;
+  assert( fuse_host_set_paused( 1 ) == OK );
+  assert( fuse_host_apply_settings( candidate, 0 ) == FUSE_HOST_OPERATION_NEEDS_RESET );
+  assert( settings_current.tape_traps == traps );
+  assert( settings_current.divmmc_enabled == divmmc );
+  assert( periph_is_active( PERIPH_TYPE_DIVMMC ) == divmmc );
+  assert( fuse_host_apply_settings( candidate, 1 ) == OK );
+  assert( settings_current.tape_traps == !traps );
+  assert( settings_current.auto_load == candidate->auto_load );
+  assert( settings_current.frame_rate == candidate->frame_rate );
+  assert( periph_is_active( PERIPH_TYPE_DIVMMC ) == !divmmc );
+  assert( fuse_run_frame() == FUSE_RUN_PAUSED );
+  assert( fuse_host_set_paused( 0 ) == OK );
+  fuse_host_free_settings( candidate );
+
+  assert( fuse_host_copy_settings( &candidate ) == OK );
+  settings_set_string( &candidate->rom_48, "settings-test-48.rom" );
+  int requests = provider.acquired;
+  assert( fuse_host_apply_settings( candidate, 0 ) == OK );
+  assert( provider.acquired == requests );
+  assert( fuse_host_reset( FUSE_HOST_RESET_HARD ) == OK );
+  assert( provider.acquired > requests );
+  settings_set_string( &candidate->start_machine, "invalid-machine" );
+  assert( fuse_host_apply_settings( candidate, 0 ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  settings_set_string( &candidate->start_machine, "128" );
+  settings_set_string( &candidate->rom_128_0, "settings-test-128.rom" );
+  assert( fuse_host_apply_settings( candidate, 0 ) == OK );
+  assert( machine_current->machine == LIBSPECTRUM_MACHINE_128 );
+  fuse_host_free_settings( candidate );
+}
+
 int
 host_operations_test( int argc, char **argv )
 {
@@ -441,6 +490,8 @@ host_operations_test( int argc, char **argv )
             strcmp( argv[1], "tape-info" ) ? 1 : 0 ) );
   if( !strcmp( argv[1], "filesystem" ) ) {
     filesystem_tests();
+  } else if( !strcmp( argv[1], "runtime-settings" ) ) {
+    check_runtime_settings();
   } else if( !strcmp( argv[1], "filesystem-oracle" ) ) {
     filesystem_write_oracle();
   } else if( !strcmp( argv[1], "tape-info" ) ) {

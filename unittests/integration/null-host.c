@@ -11,6 +11,7 @@
 #include "fuse-host-input.h"
 #include "fuse-host-media.h"
 #include "fuse-host-memory.h"
+#include "fuse-host-settings.h"
 #include "debugger/debugger.h"
 #include "keyboard_refresh.h"
 
@@ -883,6 +884,28 @@ rs232_session( const char *rx, const char *tx )
   return 0;
 }
 
+static int
+runtime_settings_session( unsigned int *frame_turns )
+{
+  settings_info *candidate, *observed;
+  int traps, autoload;
+  fuse_host_operation_result result;
+
+  if( operation( "copy settings", fuse_host_copy_settings( &candidate ) ) ) return 1;
+  traps = candidate->tape_traps = !candidate->tape_traps;
+  autoload = candidate->auto_load = !candidate->auto_load;
+  result = fuse_host_apply_settings( candidate, 0 );
+  fuse_host_free_settings( candidate );
+  if( operation( "apply settings", result ) ||
+      operation( "read back settings", fuse_host_copy_settings( &observed ) ) ) return 1;
+  int matches = observed->tape_traps == traps && observed->auto_load == autoload;
+  fuse_host_free_settings( observed );
+  if( !matches || fuse_run_frame() != FUSE_RUN_COMPLETED ) return 1;
+  ++*frame_turns;
+  puts( "host: applied runtime settings and completed a frame" );
+  return 0;
+}
+
 int
 main( int argc, char **argv )
 {
@@ -991,6 +1014,10 @@ main( int argc, char **argv )
   prepared = 1;
   puts( plus3 ? "host: prepared plus3" : record_psg ? "host: prepared 128" :
         "host: prepared 48" );
+  if( argc == 3 && !strcmp( argv[2], "--runtime-settings" ) ) {
+    if( !runtime_settings_session( &frame_turns ) ) status = EXIT_SUCCESS;
+    goto cleanup;
+  }
   if( profile ) {
     if( !profile_session( argv[3], &frame_turns ) ) status = EXIT_SUCCESS;
     goto cleanup;

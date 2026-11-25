@@ -362,11 +362,13 @@ noinst_HEADERS += unittests/integration/memory-filesystem.h
 # A separate own-main consumer: no legacy CLI/test dispatcher or core globals.
 check_PROGRAMS += unittests/nullhostlink unittests/nullhostsource
 unittests_nullhostlink_SOURCES = unittests/integration/null-host.c
-unittests_nullhostlink_LDADD = libfuse.la $(FUSE_UI_LINK)
+NULL_HOST_UI_OBJECTS = $(filter-out settings-legacy.$(OBJEXT),$(FUSE_UI_OBJECTS))
+unittests_nullhostlink_LDADD = libfuse.la $(NULL_HOST_UI_OBJECTS) $(FUSE_UI_LIBS)
+unittests_nullhostlink_DEPENDENCIES = libfuse.la $(NULL_HOST_UI_OBJECTS)
 unittests_nullhostsource_SOURCES = unittests/integration/null-host.c $(libfuse_la_SOURCES)
 unittests_nullhostsource_CPPFLAGS = $(AM_CPPFLAGS)
-unittests_nullhostsource_LDADD = $(libfuse_la_LIBADD) $(FUSE_UI_LINK)
-unittests_nullhostsource_DEPENDENCIES = $(libfuse_la_DEPENDENCIES) $(FUSE_UI_OBJECTS)
+unittests_nullhostsource_LDADD = $(libfuse_la_LIBADD) $(NULL_HOST_UI_OBJECTS) $(FUSE_UI_LIBS)
+unittests_nullhostsource_DEPENDENCIES = $(libfuse_la_DEPENDENCIES) $(NULL_HOST_UI_OBJECTS)
 $(unittests_nullhostsource_OBJECTS): config.h
 LIFECYCLE_CHECK_TARGETS += check-null-host
 .PHONY: check-null-host
@@ -459,6 +461,9 @@ check-null-host: unittests/nullhostlink unittests/nullhostsource unittests/legac
 	    'host: shutdown; frame turns=0; budget turns=0; ROM requests=4; releases=4' > expected-lifecycle; \
 	  before=$$(find . -type f -exec cksum {} \; | sort); directories=$$(find . -type d | sort); \
 	  for consumer in nullhostlink nullhostsource; do \
+	    "$$root/$$consumer$(EXEEXT)" "$$roms" --runtime-settings > settings.out; \
+	    grep -qx 'host: applied runtime settings and completed a frame' settings.out; \
+	    rm settings.out; \
 	    program="$$root/$$consumer$(EXEEXT)"; \
 	    "$$program" "$$roms" > "$$consumer-valid.out" 2> "$$consumer-valid.err"; \
 	    cmp expected "$$consumer-valid.out"; \
@@ -661,7 +666,7 @@ check-host-operations: unittests/legacyenginelinktest unittests/legacyenginesour
 	  tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' 0 1 2 3 15; \
 	  cd "$$tmp"; export HOME=. XDG_CONFIG_HOME=. USERPROFILE=. WINDIR=. APPDATA=.; \
 	  for consumer in legacyenginelinktest legacyenginesourcetest; do \
-	    for mode in success filesystem-oracle filesystem tape-contract tape-info trapped-recording snapshot-roundtrip autoload-success autoload-failure \
+	    for mode in success runtime-settings filesystem-oracle filesystem tape-contract tape-info trapped-recording snapshot-roundtrip autoload-success autoload-failure \
 	      open-auto open-noauto open-custom open-reset-failure open-snapshot open-snapshot-joystick open-fallback open-rzx-stop open-rzx-embedded open-rzx-external record-rzx record-rzx-restore record-rzx-rollback record-rzx-movie open-pok host-binary host-poke-finder open-floppy floppy-merge cartridge-lifecycle \
 	      disk-save disk-save-beta microdrive rs232 machine-buttons screenshots svg-capture live-movie psg-logging profile host-quit host-quit-shutdown \
 	      reset-failure select-failure peripheral-reset-failure peripheral-select-failure; do \

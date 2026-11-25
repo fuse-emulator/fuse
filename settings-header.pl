@@ -102,8 +102,11 @@ int settings_init( int *first_arg, int argc, char **argv );
 void settings_init_defaults( void );
 void settings_defaults( settings_info *settings );
 void settings_copy( settings_info *dest, settings_info *src );
+int settings_check_runtime( const settings_info *candidate, int legacy,
+                            int *update_peripherals, int *rom_only );
+int settings_equal( const settings_info *a, const settings_info *b );
 /* Replace an initialized, owned destination. */
-void settings_replace( settings_info *dest, settings_info *src );
+void settings_replace( settings_info *dest, const settings_info *src );
 
 #define SETTINGS_ROM_COUNT 30
 char **settings_get_rom_setting( settings_info *settings, size_t which,

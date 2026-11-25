@@ -130,8 +130,8 @@ BUILT_SOURCES = options.h settings.c settings.h
 # Rebuild even sources without config.h when the assertion policy changes.
 $(fuse_OBJECTS) $(libfuse_la_OBJECTS) $(FUSE_UI_OBJECTS) $(SOUND_LIBADD) $(TIMER_LIBADD): config.h
 
-settings.c: settings.pl settings.dat
-	$(AM_V_GEN)$(PERL) -I$(srcdir)/perl $(srcdir)/settings.pl $(srcdir)/settings.dat > $@.tmp && mv $@.tmp $@
+settings.c: settings.pl settings.dat ui/options.dat
+	$(AM_V_GEN)$(PERL) -I$(srcdir)/perl $(srcdir)/settings.pl $(srcdir)/settings.dat $(srcdir)/ui/options.dat > $@.tmp && mv $@.tmp $@
 
 settings.h: settings-header.pl settings.dat
 	$(AM_V_GEN)$(PERL) -I$(srcdir)/perl $(srcdir)/settings-header.pl $(srcdir)/settings.dat > $@.tmp && mv $@.tmp $@
@@ -160,6 +160,7 @@ noinst_HEADERS = bitmap.h \
 	fuse-host.h \
 	fuse-host-debugger.h \
 	fuse-host-input.h \
+	fuse-host-settings.h \
 	fuse-host-media.h \
 	fuse-host-memory.h \
 	fuse-peripheral.h \

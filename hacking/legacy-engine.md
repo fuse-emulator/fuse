@@ -160,6 +160,26 @@ snapshot loading and synchronous decisions retain their existing internal paths.
 In particular, legacy snapshot machine fallback can abort. There is no general
 host-services or deterministic-checkpoint contract.
 
+## Runtime settings
+
+`fuse-host-settings.h` uses the matching build's generated `settings.h`.
+Copy the running `settings_info`, edit runtime options, apply between turns,
+and free the copy with `fuse_host_free_settings()`. The runtime field list is
+shared with the legacy options dialogs. Selecting a different `start_machine`
+explicitly switches machine and loads its configured ROMs. ROM-only edits
+change the names passed to the ROM provider on the next load; they do not
+reset the machine. Startup media inputs, fullscreen, status bar and autosave
+policy are not host runtime edits. Applying settings does not persist them.
+
+The null host's `--runtime-settings` mode copies, edits, applies and reads
+back a batch before running a frame. `make check-null-host` exercises it in
+both link modes without the legacy settings store.
+
+A batch requiring a hard reset returns `FUSE_HOST_OPERATION_NEEDS_RESET`
+without applying any changes. To authorize the reset, resubmit with
+`allow_reset = 1`. Invalid batches likewise leave the running settings
+unchanged. A failure during reconfiguration is not a rollback guarantee.
+
 ## Effective filesystem
 
 Libspectrum owns the effective regular-file filesystem. Platforms select their

@@ -128,7 +128,8 @@ typedef enum fuse_host_operation_result {
   FUSE_HOST_OPERATION_NEEDS_DECISION,
   FUSE_HOST_OPERATION_CANCELLED,
   FUSE_HOST_OPERATION_STALE,
-  FUSE_HOST_OPERATION_READY_TO_SHUT_DOWN
+  FUSE_HOST_OPERATION_READY_TO_SHUT_DOWN,
+  FUSE_HOST_OPERATION_NEEDS_RESET
 } fuse_host_operation_result;
 
 /* Nonzero, single-use decision IDs are shared across media operations. */

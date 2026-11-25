@@ -22,6 +22,8 @@
 #include "fuse-host-media.h"
 
 struct settings_info;
+fuse_host_operation_result fuse_settings_apply(
+  const struct settings_info *candidate, int allow_reset, int legacy, int *error );
 fuse_init_result fuse_engine_prepare_legacy(
   int argc, char **argv, int (*load)( int *, int, char ** ),
   int (*write)( struct settings_info * ), int autosave );

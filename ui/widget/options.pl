@@ -49,6 +49,7 @@ print Fuse::GPL( 'options.c: options dialog boxes',
 
 #include "display.h"
 #include "fuse.h"
+#include "fuse-engine.h"
 #include "options.h"
 #include "options_internals.h"
 #include "periph.h"
@@ -361,36 +362,14 @@ widget_options_print_combo( int left_edge, int width, int number, const char *pr
 int
 widget_options_finish( widget_finish_state finished )
 {
-  int error;
-  int needs_hard_reset;
-
-  /* If we exited normally, actually set the options */
   if( finished == WIDGET_FINISHED_OK ) {
-    /* Get a copy of current settings */
-    settings_info original_settings;
-    memset( &original_settings, 0, sizeof( settings_info ) );
-    settings_copy( &original_settings, &settings_current );
-
-    /* Apply new options */
-    settings_copy( &settings_current, &widget_options_settings );
-
-    needs_hard_reset = periph_postcheck();
-
-    if( needs_hard_reset ) {
-      error = widget_do_query( "Some options need to reset the machine. Reset?" );
-      if( !error && !widget_query.confirm )
-        settings_copy( &settings_current, &original_settings );
-      else
-        periph_posthook();
-    }
-    else {
-      /* Bring the peripherals list into sync with the new options */
-      periph_posthook();
-    }
-
-    settings_free( &original_settings );
-
-    /* make the needed UI changes */
+    int apply_error;
+    fuse_host_operation_result result =
+      fuse_settings_apply( &widget_options_settings, 0, 1, &apply_error );
+    if( result == FUSE_HOST_OPERATION_NEEDS_RESET &&
+        ( widget_do_query( "Some options need to reset the machine. Reset?" ) ||
+          widget_query.confirm ) )
+      fuse_settings_apply( &widget_options_settings, 1, 1, &apply_error );
     uidisplay_hotswap_gfx_mode();
   }
   settings_free( &widget_options_settings );

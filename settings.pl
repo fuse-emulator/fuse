@@ -28,6 +28,7 @@ use Fuse;
 sub hashline ($) { '#line ', $_[0] + 1, '"', __FILE__, "\"\n" }
 
 my %options;
+my $runtime_options_path = splice @ARGV, 1, 1;
 
 while(<>) {
 
@@ -954,7 +955,7 @@ print hashline( __LINE__ ), << 'CODE';
 #else
 /* Replace an initialized settings object with an owned copy. */
 void
-settings_replace( settings_info *dest, settings_info *src )
+settings_replace( settings_info *dest, const settings_info *src )
 {
   settings_free( dest );
 
@@ -980,6 +981,93 @@ print hashline( __LINE__ ), << 'CODE';
 }
 
 /* Copy one settings object to another */
+int
+settings_equal( const settings_info *a, const settings_info *b )
+{
+  if( a->show_help != b->show_help || a->show_version != b->show_version )
+    return 0;
+CODE
+
+foreach my $name ( sort keys %options ) {
+  my $type = $options{$name}->{type};
+  if( $type eq 'string' ) {
+    print "  if( a->$name != b->$name &&\n";
+    print "      ( !a->$name || !b->$name || strcmp( a->$name, b->$name ) ) ) return 0;\n";
+  } elsif( $type ne 'null' ) {
+    print "  if( a->$name != b->$name ) return 0;\n";
+  }
+}
+
+print hashline( __LINE__ ), << 'CODE';
+  return 1;
+}
+
+CODE
+
+# Runtime settings are the fields edited by the legacy options dialogs.
+# Read the union across frontends; presentation fields remain adapter-owned.
+open my $runtime_options, '<', $runtime_options_path or die "Cannot read runtime options: $!";
+my ( %runtime, %peripheral, @dialog_fields );
+while( <$runtime_options> ) {
+  @dialog_fields = () if /^\s*$/;
+  if( /^Postcheck,\s*periph_postcheck/ ) {
+    $peripheral{$_} = 1 for @dialog_fields;
+  }
+  next unless /^(Checkbox|Entry|Combo),[^,]*,\s*(\w+)\s*,[^,]*(?:,\s*([^,\r\n]*))?/;
+  my ( $kind, $field, $values ) = ( $1, $2, $3 );
+  push @dialog_fields, $field;
+  $runtime{$field}{kind} = $kind;
+  if( $kind eq 'Combo' ) {
+    for my $value ( split /\|/, $values ) {
+      $value =~ s/^\*//;
+      $runtime{$field}{values}{$value} = 1;
+    }
+  }
+}
+close $runtime_options;
+
+print << 'CODE';
+int
+settings_check_runtime( const settings_info *candidate, int legacy,
+                        int *update_peripherals, int *rom_only )
+{
+  settings_info comparison = *candidate;
+  *update_peripherals = 0;
+CODE
+for my $field ( sort grep { /^rom_/ } keys %options ) {
+  print "  if( ( !candidate->$field || !*candidate->$field ) &&\n";
+  print "      candidate->$field != settings_current.$field ) return 0;\n";
+  print "  comparison.$field = settings_current.$field;\n";
+}
+print << 'CODE';
+  *rom_only = settings_equal( &comparison, &settings_current );
+  comparison.start_machine = settings_current.start_machine;
+CODE
+for my $field ( sort keys %runtime ) {
+  my $kind = $runtime{$field}{kind};
+  my $adapter = $field =~ /^(full_screen|statusbar|autosave_settings)$/;
+  print "  if( legacy ) {\n" if $adapter;
+  if( $kind eq 'Checkbox' ) {
+    print "  if( candidate->$field != settings_current.$field &&\n";
+    print "      candidate->$field != 0 && candidate->$field != 1 ) return 0;\n";
+  } elsif( $kind eq 'Combo' ) {
+    my @values = sort keys %{ $runtime{$field}{values} };
+    my $valid = join ' && ', map { "strcmp( candidate->$field, \"$_\" )" } @values;
+    print "  if( !legacy && candidate->$field && ( $valid ) &&\n";
+    print "      ( !settings_current.$field || strcmp( candidate->$field, settings_current.$field ) ) ) return 0;\n";
+  } elsif( $field eq 'frame_rate' || $field eq 'emulation_speed' ) {
+    print "  if( !legacy && candidate->$field != settings_current.$field && candidate->$field < 1 ) return 0;\n";
+  }
+  if( $peripheral{$field} ) {
+    print "  if( candidate->$field != settings_current.$field ) *update_peripherals = 1;\n";
+  }
+  print "  comparison.$field = settings_current.$field;\n";
+  print "  }\n" if $adapter;
+}
+print << 'CODE';
+  return settings_equal( &comparison, &settings_current );
+}
+
 void settings_copy( settings_info *dest, settings_info *src )
 {
   settings_defaults( dest );
