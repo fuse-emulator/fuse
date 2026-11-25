@@ -32,7 +32,7 @@ EXTRA_DIST += \
               hacking/input.txt \
               examples/host-consumer.mk \
               hacking/host-migration.md \
-              hacking/legacy-engine.md \
+              hacking/embedding-reference.md \
               hacking/libspectrum-filesystem.md \
               hacking/metrics.txt \
               hacking/peripheral_tests.txt \

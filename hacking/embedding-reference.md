@@ -1,14 +1,14 @@
-# Internal legacy-engine build
+# Fuse embedding reference
 
 ## Scope and build inputs
 
-`libfuse.la` is a non-installed Libtool convenience library containing the
-configured engine: machine emulation, debugger, pacing and audio backend. The
-executable links the selected UI objects directly; they are not in the archive.
-An alternative adapter must satisfy the same configured hook contract. This is
-not an installed SDK, stable binary ABI or guarantee of toolkit-free backend
-dependencies. Consumers must use coherent sources, generated files and build
-configuration. Internal `--unittests` support is a build capability, enabled
+`libfuse.la` is a Libtool convenience library. It contains the configured
+engine: machine emulation, the debugger, pacing, and the audio backend. It
+does not contain the selected UI objects. Link these objects separately or
+supply an adapter that implements the hooks for the same configuration.
+Use sources, generated files, and objects from the same build. Fuse does not
+supply an installed SDK or a stable binary ABI. The configured backends can
+require toolkit libraries. Internal `--unittests` support is a build capability, enabled
 by default for the null UI and overridable with `--enable-internal-tests` or
 `--disable-internal-tests`.
 
@@ -41,14 +41,17 @@ compile alternative UI/audio adapters together or omit the special scaler rules.
 
 ## Lifecycle
 
-Start with `fuse-host.h` for the narrow source interface. Opt into
-`fuse-host-media.h`, `fuse-host-input.h` or `fuse-host-memory.h` for more
-workflows without private build headers. `fuse-host-debugger.h` requires
-matching build headers (include `config.h` first for the CPU register layout).
-`fuse-internal.h` is a compatibility umbrella for configured consumers;
-new consumers should include the domain headers they use. CLI adapter entries
-are in `fuse-legacy.h`; `fuse-engine.h` is implementation-only.
-`fuse-host.c` retains only host ROM-provider callback storage/routing.
+Include `fuse-host.h` for the basic host interface. Include
+`fuse-host-media.h`, `fuse-host-input.h`, or `fuse-host-memory.h` if you need
+its operations. To use `fuse-host-settings.h`, supply the generated `settings.h`
+from the same build. To use `fuse-host-debugger.h`, include the matching
+`config.h` first for the CPU register layout.
+
+`fuse-internal.h` includes several host headers for compatibility. In new
+code, include the headers for the operations you use. Use `fuse-legacy.h`
+for the standalone application adapter. Do not include `fuse-engine.h` in
+host code.
+`fuse-host.c` stores the host ROM provider and forwards ROM requests.
 `fuse-config.c` owns the opaque configuration, engine defaults and application.
 `fuse-operations.c` coordinates File Open and Quit and implements the remaining
 machine, input and related operations. Tape deck/save/recording entries live in

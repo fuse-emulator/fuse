@@ -65,7 +65,7 @@ artifact.
 ## Examples and checks
 
 [`memory-filesystem.h`](../unittests/integration/memory-filesystem.h) implements a RAM namespace with
-non-stdio handles. The [direct null host](legacy-engine.md#direct-null-backed-example)
+non-stdio handles. The [direct null host](embedding-reference.md#direct-null-backed-example)
 uses it for `--filesystem` (tape, snapshot and ZXCF) and `--divmmc` (MMC).
 `check-null-host` runs both the archive-linked and source-linked consumers.
 `check-host-operations` exercises short transfers, failure cleanup, readable

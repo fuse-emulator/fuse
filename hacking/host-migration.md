@@ -1,24 +1,32 @@
-# Migrating to host-owned execution
+# Build a host for Fuse
 
-This guide explains how to build a host that drives Fuse through its C source interface. It does not describe a stable shared ABI or an installed SDK.
+Use this guide to build an application that controls Fuse through its C source interface. Fuse does not supply an installed SDK or a stable binary ABI.
 
-## Keep the legacy application if you only need the emulator executable
+If you only need the standalone emulator, use the normal `configure` and `make` procedure. The standalone application controls its command line, settings file, dialogs, and event loop. See the [embedding reference](embedding-reference.md) for the standalone application adapter.
 
-Keep the normal `configure` and `make` workflow and the existing frontend. Its command line, preferences, modal interaction, and event loop remain application-owned. Code embedding a legacy CLI-shaped entry can consult [the legacy-engine guide](legacy-engine.md) for the application adapter; it is separate from the host-owned source interface.
+## Build the engine and host
 
-## Build a consumer from the same sources as the engine
+1. Configure Fuse with output services that the host can use. Use the matching libspectrum build. If you supply a filesystem backend, select it before the first filesystem operation. Fuse and libspectrum use the same backend. See [filesystem requirements](libspectrum-filesystem.md).
+2. Build Fuse. Use the configured Makefile with `examples/host-consumer.mk`. The `host-consumer-archive` target links `libfuse.la`. The `host-consumer-source` target links the configured engine objects, including the scaler, timer, and audio objects. Both example targets link the selected adapter objects. Do not mix objects or generated headers from different builds.
+3. Include `fuse-host.h`. Include the input, media, or memory header if you need its operations. The example targets stage these headers in `host-include/`. To use the settings or debugger interface, supply the matching build headers separately. The example targets do not stage these headers.
 
-1. Extract the release source and configure an engine with output hooks appropriate to the host. Use the matching libspectrum dependency; see [filesystem requirements and backend lifetime](libspectrum-filesystem.md). If you provide a filesystem backend, select it once before the first filesystem operation; it applies to both Fuse and libspectrum. It does not make file calls asynchronous.
-2. Build the engine normally so its configured and generated sources and special objects agree. Use the supplied `examples/host-consumer.mk` recipes with the configured Makefile. `host-consumer-archive` uses the configured archive; `host-consumer-source` links the canonical configured objects directly, including the special scaler, timer, and audio recipes. Do not maintain a parallel copy of the engine source list or mix build directories.
-3. Include `fuse-host.h`. The recipes stage the source-facing Fuse headers in `host-include/` and supply the matching dependency flags, without adding private Fuse headers or `config.h` to the consumer's include path. The source subset covers the demonstrated workflows, not every legacy menu operation. For additional workflows, opt into `fuse-host-media.h`, `fuse-host-input.h`, or `fuse-host-memory.h`. The configured debugger interface in `fuse-host-debugger.h` is not staged in `host-include/`. Private engine symbols and headers are not part of the staged subset.
+See the [SDL example](embedding-reference.md#sdl-owned-event-loop-probe) for build commands and checks.
 
-See the [SDL probe build instructions](legacy-engine.md#sdl-owned-event-loop-probe) for commands and the repeatable archive/source check.
+## Start the engine and manage settings
 
-## Move event collection and command scheduling to the host
+1. Start the frontend and output services that Fuse will use. Keep these services and the ROM provider context available until `fuse_shutdown()` returns.
+2. Use `fuse_host_prepare()` with a `fuse_host_config`, or use `fuse_host_prepare_settings()` with an initialized `settings_info`. For the second function, include `fuse-host-settings.h` and use the `settings.h` from the same build. Fuse copies the startup settings and copies ROM bytes before it releases the provider's result.
+3. Keep settings storage in the host. Fuse does not load or save settings during host preparation. To use the Fuse settings-file format, link the optional `settings-file.o`. To use a different store or no store, omit it. Do not link `settings-legacy.o` unless you need the standalone application adapter.
+4. Keep startup media paths, communication endpoints, and debugger commands out of the startup settings record. Attach media and configure endpoints with host operations after preparation.
 
-- **Start:** Bring up the selected UI and output services first. Create a `fuse_host_config` and pass a ROM byte provider to `fuse_host_prepare()`. The host retains its provider context and keeps output services alive through shutdown. Fuse copies ROM bytes before releasing the provider's result. The host preparation route does not read or save application preferences.
-- **Drive:** Call `fuse_run_frame()` or `fuse_run_tstates()` between host events. A T-state budget measures emulated time, not a wall-clock deadline, and can overshoot for instructions and due events. Host turns do not pump the legacy event loop. The linked renderer and audio hooks still apply; turns may wait for pacing, audio delivery, or synchronous device or file I/O. Nonblocking execution is not part of this interface.
-- **Input and pause:** Translate native keys or controls in the host. The demonstrated Spectrum-key entry maps directly to the emulated matrix, not native shortcuts. Use `fuse_host_set_paused(1)` to Pause and `fuse_host_set_paused(0)` to Resume between turns. Repeating either request is safe. Unlike withholding turns, Pause can stop audio and finalize competition RZX recording. Inspect via copies such as mapped memory or tape observations, not by holding pointers into engine state.
-- **Media and Quit:** Supply the chosen tape path to `fuse_host_insert_tape_file()` for explicit insertion without autoload. A dirty replacement returns an ID; reply through `fuse_host_answer_tape_eject()`. Quit can return multiple decisions in sequence; drive them on the host loop until ready to shut down or cancelled. A parked turn does not consume the question, and a copy of attached media does not authorize a reply. Call `fuse_shutdown()` after ready, before tearing down any service Fuse still uses. Do not assume a failed save or replacement rolls back all effects.
+To change settings during a session, copy the current record, edit it, and submit it between turns. If Fuse returns `FUSE_HOST_OPERATION_NEEDS_RESET`, no changes take effect. Ask for permission if necessary. Submit the record again with reset permission only if the user accepts. A ROM-only edit takes effect at the next ROM load. A change to the selected machine loads the ROMs for that machine. See [runtime settings](embedding-reference.md#runtime-settings).
 
-Same-thread hosts can dispatch UI events between turns. For a separate-thread host, all engine calls (including shutdown) belong to one owner worker; the UI sends messages and consumes copied values. Keep toolkit calls on the thread permitted by that toolkit. The null-backed worker probe deliberately holds the worker while the UI continues, then acknowledges shutdown before the UI joins it. This pattern does not interrupt a blocked turn or establish that a toolkit renderer can run on the worker.
+## Run the engine
+
+- Call `fuse_run_frame()` or `fuse_run_tstates()` between host events. A T-state budget measures emulated time. An instruction or due event can cause the turn to exceed the budget. A turn does not process legacy UI events. It can wait for pacing, audio, or synchronous I/O.
+- Translate native input in the host. The Spectrum-key operation sends matrix input, not native shortcuts. Use `fuse_host_set_paused(1)` to pause and `fuse_host_set_paused(0)` to resume. Withholding turns does not have the same effect: Pause can stop audio and finalize competition RZX recording.
+- Supply the user-selected tape path to `fuse_host_insert_tape_file()` to insert a tape without autoload. If replacement of a modified tape returns a decision ID, reply with `fuse_host_answer_tape_eject()`.
+- If Quit returns a decision, answer it before shutdown. Fuse can return more than one decision in sequence. A parked turn does not answer a decision. A failed save or replacement can leave some changes in effect.
+- Call `fuse_shutdown()` before you stop services that Fuse uses.
+
+Make all engine calls from one owner thread. If the UI uses a different thread, send requests to the owner thread and return copied values to the UI. Follow the toolkit's thread rules. The worker example does not interrupt a blocked turn or show that a toolkit renderer can run on a worker thread.

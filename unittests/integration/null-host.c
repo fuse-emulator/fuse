@@ -1,6 +1,6 @@
 /* Bounded direct consumer of the private, selected-null-UI worker API.
    Not a toolkit-free core, command server or replacement for the legacy CLI.
-   Build/run instructions and limits: hacking/legacy-engine.md. */
+   Build/run instructions and limits: hacking/embedding-reference.md. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
