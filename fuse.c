@@ -141,7 +141,8 @@ static struct {
   legacy_phase phase;
   int manager_started;
   int ui_owned;
-  int save_settings;
+  int (*write_settings)( settings_info *settings );
+  int autosave_settings;
   int execution_started;
   int xml_owned;
   int libspectrum_owned;
@@ -173,7 +174,8 @@ fuse_budget_interrupt( void )
 }
 
 static void fuse_settings_end( void );
-static int fuse_init( int argc, char **argv, const fuse_host_config *config );
+static int fuse_init( int argc, char **argv, const fuse_host_config *config,
+                      int (*load_settings)( int *, int, char ** ) );
 
 static void creator_register_startup( void );
 
@@ -189,7 +191,9 @@ static int do_start_files( fuse_start_files *start_files );
 static int fuse_end(void);
 
 fuse_init_result
-fuse_legacy_prepare( int argc, char **argv )
+fuse_engine_prepare_legacy( int argc, char **argv,
+                            int (*load)( int *, int, char ** ),
+                            int (*write)( settings_info * ), int autosave )
 {
   int i;
   fuse_init_result result;
@@ -209,7 +213,8 @@ fuse_legacy_prepare( int argc, char **argv )
   legacy_ownership.previous_error_function = libspectrum_error_function;
   legacy_ownership.callback_owned = 1;
 
-  if(fuse_init(argc,argv,NULL)) {
+  legacy_ownership.write_settings = write;
+  if( fuse_init( argc, argv, NULL, load ) ) {
     fprintf(stderr,"%s: error initialising -- giving up!\n", fuse_progname);
     fuse_end();
     return FUSE_INIT_FAILED;
@@ -222,6 +227,7 @@ fuse_legacy_prepare( int argc, char **argv )
     return result;
   }
 
+  legacy_ownership.autosave_settings = autosave;
   legacy_ownership.phase = LEGACY_READY;
   return FUSE_INIT_READY;
 }
@@ -241,7 +247,7 @@ fuse_host_prepare( const fuse_host_config *config,
   fuse_host_begin_resources( resources );
   fuse_engine_set_host_diagnostics( config );
 
-  if( fuse_init( 0, NULL, config ) || legacy_ownership.resource_failed ) {
+  if( fuse_init( 0, NULL, config, NULL ) || legacy_ownership.resource_failed ) {
     fuse_end();
     return FUSE_INIT_FAILED;
   }
@@ -301,32 +307,11 @@ fuse_engine_end_operation( void )
   legacy_ownership.phase = LEGACY_READY;
 }
 
-int
-fuse_legacy_main( int argc, char **argv )
+void
+fuse_engine_write_settings( void )
 {
-  int r = 1;
-  switch( fuse_legacy_prepare( argc, argv ) ) {
-  case FUSE_INIT_READY:
-    /* Automatic preference persistence belongs to the application wrapper,
-       not to core preparation or ordinary resource disposal. */
-    legacy_ownership.save_settings = 1;
-    if( fuse_legacy_execute( &r ) ) r = 1;
-    fuse_shutdown();
-    return r;
-  case FUSE_INIT_HELP:
-  case FUSE_INIT_VERSION:
-    return 0;
-  case FUSE_INIT_BUSY:
-  case FUSE_INIT_CLOSED:
-    fprintf( stderr, "Fuse legacy runner supports only one session attempt\n" );
-    return 1;
-  case FUSE_INIT_INVALID_ARGUMENT:
-    fprintf( stderr, "Invalid Fuse legacy startup arguments\n" );
-    return 1;
-  case FUSE_INIT_FAILED:
-    return 1;
-  }
-  return 1;
+  if( legacy_ownership.write_settings )
+    legacy_ownership.write_settings( &settings_current );
 }
 
 /* Only the continuous runner opts in, for the duration of a dispatch. */
@@ -588,7 +573,11 @@ libspectrum_register_startup( void )
 static void
 fuse_settings_end( void )
 {
-  settings_end( legacy_ownership.save_settings );
+  if( legacy_ownership.autosave_settings && settings_current.autosave_settings ) {
+    legacy_ownership.autosave_settings = 0;
+    fuse_engine_write_settings();
+  }
+  settings_dispose_current();
 }
 
 static int
@@ -746,7 +735,8 @@ run_startup_manager( display_startup_context *ui GCC_UNUSED )
 }
 
 static int
-fuse_init( int argc, char **argv, const fuse_host_config *config )
+fuse_init( int argc, char **argv, const fuse_host_config *config,
+           int (*load_settings)( int *, int, char ** ) )
 {
   int error, first_arg = 0;
   display_startup_context desktop = { &argc, &argv };
@@ -778,7 +768,7 @@ fuse_init( int argc, char **argv, const fuse_host_config *config )
     fuse_engine_apply_config( config );
   } else {
     legacy_ownership.xml_owned = 1;
-    if( settings_init( &first_arg, argc, argv ) ) return 1;
+    if( load_settings( &first_arg, argc, argv ) ) return 1;
   }
 #ifndef ENABLE_INTERNAL_TESTS
   if( settings_current.unittests ) {
@@ -1460,7 +1450,8 @@ static int fuse_end(void)
     legacy_ownership.libspectrum_owned = 0;
     libspectrum_end();
   }
-  legacy_ownership.save_settings = 0;
+  legacy_ownership.autosave_settings = 0;
+  legacy_ownership.write_settings = NULL;
   if( legacy_ownership.callback_owned ) {
     legacy_ownership.callback_owned = 0;
     libspectrum_error_function = legacy_ownership.previous_error_function;

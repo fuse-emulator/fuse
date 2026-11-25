@@ -117,6 +117,8 @@ int settings_free( settings_info *settings );
 /* End current settings once. Saving requires explicit caller authorization;
    global XML lifetime belongs to the application, not the settings object. */
 void settings_end( int save );
+int settings_current_is_owned( void );
+void settings_dispose_current( void );
 
 int settings_write_config( settings_info *settings );
 

@@ -30,7 +30,6 @@ $(HOST_HEADER_DIR)/%.h: $(srcdir)/%.h
 
 # Alternate adapter for the SDL-configured same-archive check.
 FUSE_TEST_UI_OBJECTS = ui.$(OBJEXT) menu.$(OBJEXT) uimedia.$(OBJEXT) \
-                       settings-legacy.$(OBJEXT) \
                        ui/no_widget.$(OBJEXT) \
                        ui/null/null_ui.$(OBJEXT) ui/null/options.$(OBJEXT)
 

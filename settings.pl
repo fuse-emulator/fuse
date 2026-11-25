@@ -101,7 +101,7 @@ print hashline( __LINE__ ), << 'CODE';
 #include "ui/ui.h"
 #include "utils.h"
 
-#ifdef FUSE_LEGACY_PREFERENCES
+#ifdef FUSE_LEGACY_SETTINGS
 /* The name of our configuration file */
 #ifdef WIN32
 #define CONFIG_FILE_NAME "fuse.cfg"
@@ -136,9 +136,9 @@ print hashline( __LINE__ ), << 'CODE';
   /* show_version */ 0,
 };
 
-#endif /* FUSE_LEGACY_PREFERENCES */
+#endif /* FUSE_LEGACY_SETTINGS */
 
-#ifdef FUSE_LEGACY_PREFERENCES
+#ifdef FUSE_LEGACY_SETTINGS
 static int read_config_file( settings_info *settings );
 
 #ifdef HAVE_LIB_XML2
@@ -167,9 +167,9 @@ void settings_defaults( settings_info *settings )
 {
   settings_replace( settings, &settings_default );
 }
-#endif /* FUSE_LEGACY_PREFERENCES */
+#endif /* FUSE_LEGACY_SETTINGS */
 
-#ifdef FUSE_LEGACY_PREFERENCES
+#ifdef FUSE_LEGACY_SETTINGS
 int
 settings_init( int *first_arg, int argc, char **argv )
 {
@@ -1083,15 +1083,17 @@ print hashline( __LINE__ ), << 'CODE';
   return 0;
 }
 
+int
+settings_current_is_owned( void )
+{
+  return settings_current_owned;
+}
+
 void
-settings_end( int save )
+settings_dispose_current( void )
 {
   if( !settings_current_owned ) return;
   settings_current_owned = 0;
-
-  if( save && settings_current.autosave_settings )
-    settings_write_config( &settings_current );
-
   settings_free( &settings_current );
 }
 
@@ -1110,6 +1112,6 @@ settings_register_startup( void (*end_fn)( void ) )
                             ARRAY_SIZE( dependencies ), NULL, NULL,
                             end_fn );
 }
-#endif /* FUSE_LEGACY_PREFERENCES */
+#endif /* FUSE_LEGACY_SETTINGS */
 
 CODE

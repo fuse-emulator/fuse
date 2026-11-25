@@ -27,6 +27,7 @@
 
 #include "event.h"
 #include "fuse.h"
+#include "fuse-engine.h"
 #include "menu.h"
 #include "movie.h"
 #include "machines/specplus3.h"
@@ -319,7 +320,7 @@ MENU_CALLBACK( menu_options_fullscreen )
 MENU_CALLBACK( menu_options_save )
 {
   ui_widget_finish();
-  settings_write_config( &settings_current );
+  fuse_engine_write_settings();
 }
 
 MENU_CALLBACK( menu_machine_profiler_start )

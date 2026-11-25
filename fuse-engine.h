@@ -21,6 +21,12 @@
 
 #include "fuse-host-media.h"
 
+struct settings_info;
+fuse_init_result fuse_engine_prepare_legacy(
+  int argc, char **argv, int (*load)( int *, int, char ** ),
+  int (*write)( struct settings_info * ), int autosave );
+void fuse_engine_write_settings( void );
+
 /* Engine-owned lifecycle/admission. No lifecycle state is shared with callers.
    Machine failures can invalidate the session; ordinary tape-open failure does
    not. These are synchronous implementation hooks, not additional host API. */
