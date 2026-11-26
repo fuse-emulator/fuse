@@ -456,11 +456,16 @@ host_operations_test( int argc, char **argv )
   fuse_host_config *config;
   fuse_host_resources resources = { &provider, acquire_rom };
   libspectrum_dword clock;
-  int callback, memory_tape;
+  int callback, memory_tape, traps_disabled;
   assert( argc == 3 ); provider.directory = argv[2];
   memory_tape = !strcmp( argv[1], "tape-navigation" ) ||
                 !strcmp( argv[1], "rom-tape-roundtrip" ) ||
-                !strcmp( argv[1], "tape-deck" );
+                !strcmp( argv[1], "tape-deck" ) ||
+                !strcmp( argv[1], "tape-recording" );
+  traps_disabled = !strcmp( argv[1], "tape-recording" ) ||
+                   !strcmp( argv[1], "tape-recording-internal" ) ||
+                   !strcmp( argv[1], "legacy-tape-recording-internal" ) ||
+                   !strcmp( argv[1], "tape-info" );
   provider.custom = !strcmp( argv[1], "open-custom" );
   provider.synthetic_beta = !strcmp( argv[1], "disk-save-beta" );
   provider.synthetic_buttons = !strcmp( argv[1], "machine-buttons" ) ||
@@ -489,9 +494,7 @@ host_operations_test( int argc, char **argv )
   assert( !fuse_host_config_set_tape_traps( config, 1 ) );
   assert( fuse_host_config_set_tape_traps( config, -1 ) );
   assert( fuse_host_config_set_tape_traps( config, 2 ) );
-  if( !strcmp( argv[1], "tape-recording" ) || !strcmp( argv[1], "legacy-tape-recording" ) ||
-      !strcmp( argv[1], "tape-info" ) )
-    assert( !fuse_host_config_set_tape_traps( config, 0 ) );
+  if( traps_disabled ) assert( !fuse_host_config_set_tape_traps( config, 0 ) );
   if( !strncmp( argv[1], "open-", 5 ) )
     assert( !fuse_host_config_set_auto_load( config, strcmp( argv[1], "open-noauto" ) != 0 ) );
   if( !strcmp( argv[1], "filesystem" ) || !strcmp( argv[1], "filesystem-oracle" ) )
@@ -509,9 +512,7 @@ host_operations_test( int argc, char **argv )
   assert( settings_current.joystick_1_output == JOYSTICK_TYPE_KEMPSTON );
   assert( settings_current.joystick_2_output == JOYSTICK_TYPE_FULLER );
   assert( settings_current.mouse_swap_buttons == 1 );
-  assert( settings_current.tape_traps ==
-          ( strcmp( argv[1], "tape-recording" ) && strcmp( argv[1], "legacy-tape-recording" ) &&
-            strcmp( argv[1], "tape-info" ) ? 1 : 0 ) );
+  assert( settings_current.tape_traps == !traps_disabled );
   if( !strcmp( argv[1], "floatingbus-fixtures" ) ) {
     int errors = check_floatingbus_fixture( floatingbus_original_unittest );
     errors += check_floatingbus_fixture( floatingbus_visual_unittest );
@@ -534,8 +535,11 @@ host_operations_test( int argc, char **argv )
   } else if( !strcmp( argv[1], "tape-deck-internal" ) ||
              !strcmp( argv[1], "legacy-tape-deck-internal" ) ) {
     check_tape_deck_internal( !strcmp( argv[1], "tape-deck-internal" ) );
-  } else if( !strcmp( argv[1], "tape-recording" ) || !strcmp( argv[1], "legacy-tape-recording" ) ) {
-    check_tape_recording( !strcmp( argv[1], "tape-recording" ) );
+  } else if( !strcmp( argv[1], "tape-recording" ) ) {
+    check_tape_recording();
+  } else if( !strcmp( argv[1], "tape-recording-internal" ) ||
+             !strcmp( argv[1], "legacy-tape-recording-internal" ) ) {
+    check_tape_recording_internal( !strcmp( argv[1], "tape-recording-internal" ) );
   } else if( !strcmp( argv[1], "snapshot-roundtrip" ) ) {
     check_snapshot_roundtrip();
   } else if( !strcmp( argv[1], "trapped-recording" ) ) {
