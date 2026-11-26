@@ -296,9 +296,8 @@ floatingbus_performance_fixtures( void )
   return error;
 }
 
-#ifdef USE_LIBPNG
-#define VISUAL_FRAMES 256
-
+/* Shared opcode-level runner: visual fixtures count sampler instructions;
+   Hikaru uses the same frame deadline without enabling a sampler range. */
 static unsigned long program_samples;
 static libspectrum_word program_end;
 
@@ -316,6 +315,9 @@ run_frames( unsigned int count )
   }
   return spectrum_get_frame_count() - first != count;
 }
+
+#ifdef USE_LIBPNG
+#define VISUAL_FRAMES 256
 
 /* Full logical display, including borders. These tests run ordinary Spectrum
    modes, not Timex hires. Ignore brightness but honor the rendered FLASH bit. */
@@ -463,7 +465,6 @@ floatingbus_original_unittest( void )
   };
   libspectrum_machine saved = machine_current->machine;
   libspectrum_dword frame;
-  unsigned long steps;
   const char *directory;
   int found, n, m, stage, column, scan, r = 0;
   static const char photographed_row[] =
@@ -475,6 +476,7 @@ floatingbus_original_unittest( void )
   if( found <= 0 ) return found < 0;
   directory = output_directory();
   if( !directory ) return 1;
+  program_end = 0;
   if( fuse_host_copy_settings( &saved_options ) != FUSE_HOST_OPERATION_OK ) return 1;
   options = *saved_options;
   options.emulation_speed = 100000;
@@ -500,13 +502,8 @@ floatingbus_original_unittest( void )
       if( stage == 4 )
         r += fuse_host_spectrum_key_event( FUSE_HOST_KEY_M, 0 ) != FUSE_HOST_OPERATION_OK;
       frame = spectrum_get_frame_count();
-      for( steps = 0; steps < 20000000 &&
-           spectrum_get_frame_count() - frame <
-             ( stage == 0 ? 2400 : ( stage == 1 || stage == 3 ) ? 10 : 3000 ); steps++ ) {
-        z80_do_opcodes();
-        event_do_events();
-      }
-      if( steps == 20000000 ) r++;
+      r += run_frames( stage == 0 ? 2400 :
+                       ( stage == 1 || stage == 3 ) ? 10 : 3000 );
       if( stage == 2 ) {
         /* Photographed numeric row, including its printed timestamp; this
            timestamp is not the internal video-fetch timestamp. */
