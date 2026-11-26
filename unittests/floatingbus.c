@@ -38,9 +38,9 @@
 #endif
 
 #include "fuse-host-media.h"
+#include "fuse-host-settings.h"
 #include "display.h"
 #include "event.h"
-#include "keyboard.h"
 #include "machine.h"
 #include "memory_pages.h"
 #include "machines/specplus3.h"
@@ -216,6 +216,25 @@ static int
 fixture_select_machine( libspectrum_machine model )
 {
   return fuse_host_select_machine( machine_get_id( model ) ) != FUSE_HOST_OPERATION_OK;
+}
+
+/* Copy the current record before each apply: machine selection can change
+   other settings, which must not be rolled back by these fixture options. */
+static int
+fixture_apply_options( const settings_info *options )
+{
+  settings_info *candidate;
+  fuse_host_operation_result result;
+
+  if( fuse_host_copy_settings( &candidate ) != FUSE_HOST_OPERATION_OK ) return 1;
+  candidate->tape_traps = options->tape_traps;
+  candidate->accelerate_loader = options->accelerate_loader;
+  candidate->emulation_speed = options->emulation_speed;
+  candidate->late_timings = options->late_timings;
+  candidate->frame_rate = options->frame_rate;
+  result = fuse_host_apply_settings( candidate, 0 );
+  fuse_host_free_settings( candidate );
+  return result != FUSE_HOST_OPERATION_OK;
 }
 
 static int
@@ -449,34 +468,37 @@ floatingbus_original_unittest( void )
   int found, n, m, stage, column, scan, r = 0;
   static const char photographed_row[] =
     "14368:  83 03 85 05 05 05 05 05 ";
-  int traps = settings_current.tape_traps;
-  int acceleration = settings_current.accelerate_loader;
-  int speed = settings_current.emulation_speed;
-  int late = settings_current.late_timings;
+  settings_info *saved_options, options;
   char path[1024], filename[1024];
 
   found = find_fixture( "hikaru.tap", "b73dd642", path, sizeof(path) );
   if( found <= 0 ) return found < 0;
   directory = output_directory();
   if( !directory ) return 1;
-  settings_current.emulation_speed = 100000;
-  settings_current.late_timings = 0;
+  if( fuse_host_copy_settings( &saved_options ) != FUSE_HOST_OPERATION_OK ) return 1;
+  options = *saved_options;
+  options.emulation_speed = 100000;
+  options.late_timings = 0;
   for( m = 0; m < 3; m++ ) {
-    settings_current.tape_traps = traps;
-    settings_current.accelerate_loader = acceleration;
-    if( fixture_select_machine( models[m] ) || fixture_open_tape( path ) ) { r++; break; }
-    keyboard_release_all();
+    options.tape_traps = saved_options->tape_traps;
+    options.accelerate_loader = saved_options->accelerate_loader;
+    if( fixture_apply_options( &options ) ||
+        fixture_select_machine( models[m] ) || fixture_open_tape( path ) ) { r++; break; }
+    r += fuse_host_release_all() != FUSE_HOST_OPERATION_OK;
     for( stage = 0; stage < 5; stage++ ) {
       if( stage == 1 ) {
         if( readbyte_internal( 0x8000 ) != 0xf3 ||
             readbyte_internal( 0x8001 ) != 0x01 ) r++;
-        settings_current.tape_traps = 0;
-        settings_current.accelerate_loader = 0;
-        keyboard_press( KEYBOARD_space );
+        options.tape_traps = options.accelerate_loader = 0;
+        r += fixture_apply_options( &options );
+        r += fuse_host_spectrum_key_event( FUSE_HOST_KEY_SPACE, 1 ) != FUSE_HOST_OPERATION_OK;
       }
-      if( stage == 2 ) keyboard_release( KEYBOARD_space );
-      if( stage == 3 ) keyboard_press( KEYBOARD_m );
-      if( stage == 4 ) keyboard_release( KEYBOARD_m );
+      if( stage == 2 )
+        r += fuse_host_spectrum_key_event( FUSE_HOST_KEY_SPACE, 0 ) != FUSE_HOST_OPERATION_OK;
+      if( stage == 3 )
+        r += fuse_host_spectrum_key_event( FUSE_HOST_KEY_M, 1 ) != FUSE_HOST_OPERATION_OK;
+      if( stage == 4 )
+        r += fuse_host_spectrum_key_event( FUSE_HOST_KEY_M, 0 ) != FUSE_HOST_OPERATION_OK;
       frame = spectrum_get_frame_count();
       for( steps = 0; steps < 20000000 &&
            spectrum_get_frame_count() - frame <
@@ -507,13 +529,11 @@ floatingbus_original_unittest( void )
               models[m], stage, PC, IFF1, IFF2, IM, SP,
               spectrum_get_frame_count() - frame, filename );
     }
-    keyboard_release_all();
+    r += fuse_host_release_all() != FUSE_HOST_OPERATION_OK;
     r += fixture_eject_tape();
   }
-  settings_current.tape_traps = traps;
-  settings_current.accelerate_loader = acceleration;
-  settings_current.emulation_speed = speed;
-  settings_current.late_timings = late;
+  r += fixture_apply_options( saved_options );
+  fuse_host_free_settings( saved_options );
   if( fixture_select_machine( saved ) ) r++;
   return r;
 }
@@ -521,7 +541,7 @@ floatingbus_original_unittest( void )
 #ifdef USE_LIBPNG
 static int
 run_visual( const char *path, const char *directory, int woody,
-            libspectrum_machine machine )
+            libspectrum_machine machine, settings_info *options )
 {
   unsigned int rows[ DISPLAY_SCREEN_HEIGHT ], upper[8];
   unsigned int blue_border[ DISPLAY_SCREEN_HEIGHT ], blue_ground, blue_escape;
@@ -533,9 +553,10 @@ run_visual( const char *path, const char *directory, int woody,
 
   program_end = woody ? 0x9d61 : 0x9c66;
   if( fixture_select_machine( machine ) || fixture_open_tape( path ) ) return 1;
-  keyboard_release_all();
+  if( fuse_host_release_all() != FUSE_HOST_OPERATION_OK ) return 1;
   if( run_frames( 2400 ) ) return 1;
-  settings_current.tape_traps = settings_current.accelerate_loader = 0;
+  options->tape_traps = options->accelerate_loader = 0;
+  if( fixture_apply_options( options ) ) return 1;
 
   n = snprintf( filename, sizeof(filename), "%s/%s-%s-before.png", directory,
                 woody ? "woody" : "universal", machine_current->id );
@@ -546,9 +567,11 @@ run_visual( const char *path, const char *directory, int woody,
     display_colours( rows, upper, blue_border );
     /* The reference's striped upper field is a post-keypress effect. */
     if( upper[7] ) return 1;
-    keyboard_press( KEYBOARD_space );
+    if( fuse_host_spectrum_key_event( FUSE_HOST_KEY_SPACE, 1 ) !=
+        FUSE_HOST_OPERATION_OK ) return 1;
     error = run_frames( 10 );
-    keyboard_release( KEYBOARD_space );
+    error += fuse_host_spectrum_key_event( FUSE_HOST_KEY_SPACE, 0 ) !=
+             FUSE_HOST_OPERATION_OK;
     if( error ) return error;
   }
   if( run_frames( 50 ) ) return 1;
@@ -636,11 +659,7 @@ floatingbus_visual_unittest( void )
   const char *directory;
   int found[2];
   libspectrum_machine saved = machine_current->machine;
-  int traps = settings_current.tape_traps;
-  int acceleration = settings_current.accelerate_loader;
-  int speed = settings_current.emulation_speed;
-  int late = settings_current.late_timings;
-  int rate = settings_current.frame_rate;
+  settings_info *saved_options, options;
   int which, m, error = 0;
 
   for( which = 0; which < 2; which++ ) {
@@ -651,24 +670,24 @@ floatingbus_visual_unittest( void )
   if( found[0] <= 0 && found[1] <= 0 ) return error;
   directory = output_directory();
   if( !directory ) return error + 1;
-  settings_current.emulation_speed = 100000;
-  settings_current.late_timings = 0;
-  settings_current.frame_rate = 1;
+  if( fuse_host_copy_settings( &saved_options ) != FUSE_HOST_OPERATION_OK ) return error + 1;
+  options = *saved_options;
+  options.emulation_speed = 100000;
+  options.late_timings = 0;
+  options.frame_rate = 1;
   for( which = 0; which < 2; which++ ) {
     if( found[which] <= 0 ) continue;
     for( m = 0; m < 3; m++ ) {
-      settings_current.tape_traps = traps;
-      settings_current.accelerate_loader = acceleration;
-      error += run_visual( paths[which], directory, which, models[m] );
-      keyboard_release_all();
+      options.tape_traps = saved_options->tape_traps;
+      options.accelerate_loader = saved_options->accelerate_loader;
+      if( fixture_apply_options( &options ) ) { error++; break; }
+      error += run_visual( paths[which], directory, which, models[m], &options );
+      error += fuse_host_release_all() != FUSE_HOST_OPERATION_OK;
       error += fixture_eject_tape();
     }
   }
-  settings_current.tape_traps = traps;
-  settings_current.accelerate_loader = acceleration;
-  settings_current.emulation_speed = speed;
-  settings_current.late_timings = late;
-  settings_current.frame_rate = rate;
+  error += fixture_apply_options( saved_options );
+  fuse_host_free_settings( saved_options );
   if( fixture_select_machine( saved ) ) error++;
   return error;
 }

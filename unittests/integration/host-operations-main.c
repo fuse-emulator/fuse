@@ -431,6 +431,25 @@ check_runtime_settings( void )
   fuse_host_free_settings( candidate );
 }
 
+static int
+check_floatingbus_fixture( int (*run)( void ) )
+{
+  settings_info *before, *after;
+  int errors;
+
+  assert( fuse_host_copy_settings( &before ) == FUSE_HOST_OPERATION_OK );
+  errors = run();
+  assert( fuse_host_copy_settings( &after ) == FUSE_HOST_OPERATION_OK );
+  assert( after->tape_traps == before->tape_traps );
+  assert( after->accelerate_loader == before->accelerate_loader );
+  assert( after->emulation_speed == before->emulation_speed );
+  assert( after->late_timings == before->late_timings );
+  assert( after->frame_rate == before->frame_rate );
+  fuse_host_free_settings( after );
+  fuse_host_free_settings( before );
+  return errors;
+}
+
 int
 host_operations_test( int argc, char **argv )
 {
@@ -490,9 +509,9 @@ host_operations_test( int argc, char **argv )
           ( strcmp( argv[1], "tape-recording" ) && strcmp( argv[1], "legacy-tape-recording" ) &&
             strcmp( argv[1], "tape-info" ) ? 1 : 0 ) );
   if( !strcmp( argv[1], "floatingbus-fixtures" ) ) {
-    int errors = floatingbus_original_unittest();
-    errors += floatingbus_visual_unittest();
-    errors += floatingbus_performance_fixtures();
+    int errors = check_floatingbus_fixture( floatingbus_original_unittest );
+    errors += check_floatingbus_fixture( floatingbus_visual_unittest );
+    errors += check_floatingbus_fixture( floatingbus_performance_fixtures );
     assert( !errors );
   } else if( !strcmp( argv[1], "filesystem" ) ) {
     filesystem_tests();
