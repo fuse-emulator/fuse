@@ -678,6 +678,19 @@ check-snapshot-file: unittests/legacyenginelinktest unittests/legacyenginesource
 	  test -z "$$(find . -type f -print)"; \
 	  echo 'Host/legacy snapshot saves, formats, IO failures, pause and cleanup passed for both consumers'
 
+LIFECYCLE_CHECK_TARGETS += check-floatingbus-host
+.PHONY: check-floatingbus-host
+check-floatingbus-host: unittests/legacyenginelinktest
+	@set -e; root="$(abs_top_builddir)/unittests"; \
+	  src="$(abs_top_srcdir)"; \
+	  tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' 0 1 2 3 15; \
+	  cd "$$tmp"; export HOME=. XDG_CONFIG_HOME=. USERPROFILE=. WINDIR=. APPDATA=.; \
+	  mkdir perf; \
+	  FUSE_TEST_SRCDIR="$$src" FUSE_TEST_FLOATING_PERF_OUTPUT="$$tmp/perf" \
+	  FUSE_TEST_FLOATING_VISUAL_OUTPUT="$${FUSE_TEST_FLOATING_VISUAL_OUTPUT:-$(abs_top_builddir)/unittests/floatingbus-output}" \
+	    "$$root/legacyenginelinktest$(EXEEXT)" --host-operations-test floatingbus-fixtures "$$src/roms"; \
+	  test "$$(find perf -name '*.szx' | wc -l | tr -d ' ')" = 6
+
 check-host-operations: unittests/legacyenginelinktest unittests/legacyenginesourcetest
 	@set -e; root="$(abs_top_builddir)/unittests"; \
 	  roms="$(abs_top_srcdir)/roms"; \

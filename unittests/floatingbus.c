@@ -37,6 +37,7 @@
 #define PATH_SEP '/'
 #endif
 
+#include "fuse-host-media.h"
 #include "display.h"
 #include "event.h"
 #include "keyboard.h"
@@ -209,6 +210,31 @@ floatingbus_differential_unittest( void )
   return error;
 }
 
+/* Fixture workflows run from the READY host integration runner. Opcode-level
+   timing observations remain internal; machine/media/capture use the API. */
+static int
+fixture_select_machine( libspectrum_machine model )
+{
+  return fuse_host_select_machine( machine_get_id( model ) ) != FUSE_HOST_OPERATION_OK;
+}
+
+static int
+fixture_open_tape( const char *path )
+{
+  fuse_open_request request;
+  return fuse_host_open_file( path, &request ) != FUSE_HOST_OPERATION_OK || request.id;
+}
+
+static int
+fixture_eject_tape( void )
+{
+  fuse_media_decision_id request;
+  fuse_host_operation_result result = fuse_host_request_tape_eject( &request );
+  if( result == FUSE_HOST_OPERATION_NEEDS_DECISION )
+    result = fuse_host_answer_tape_eject( request, FUSE_MEDIA_DECISION_DISCARD, NULL );
+  return result != FUSE_HOST_OPERATION_OK;
+}
+
 /* The benchmark programs never read I/O, so their CPU/memory behavior is
    independent of floating-bus values. Identical SZX files feed both binaries.
    Slow code/data are outside the display file to avoid dirty-screen work. */
@@ -228,7 +254,7 @@ floatingbus_performance_fixtures( void )
   if( !directory ) return 0;
   for( m = 0; m < 3; m++ ) {
     for( slow = 0; slow < 2; slow++ ) {
-      if( machine_select( models[m] ) ) { error++; continue; }
+      if( fixture_select_machine( models[m] ) ) { error++; continue; }
       code = slow ? 0x6100 : 0x9000;
       data = slow ? 0x7a00 : 0xa000;
       /* LD HL,data; loop: INC (HL); JR loop. */
@@ -243,10 +269,11 @@ floatingbus_performance_fixtures( void )
       z80.halted = 0;
       n = snprintf( filename, sizeof(filename), "%s/%s-%s.szx", directory,
                     machine_current->id, slow ? "slow" : "fast" );
-      if( n < 0 || n >= sizeof(filename) || snapshot_write( filename ) ) error++;
+      if( n < 0 || n >= sizeof(filename) ||
+          fuse_host_save_snapshot_file( filename ) != FUSE_HOST_OPERATION_OK ) error++;
     }
   }
-  if( machine_select( saved ) ) error++;
+  if( fixture_select_machine( saved ) ) error++;
   return error;
 }
 
@@ -437,7 +464,7 @@ floatingbus_original_unittest( void )
   for( m = 0; m < 3; m++ ) {
     settings_current.tape_traps = traps;
     settings_current.accelerate_loader = acceleration;
-    if( machine_select( models[m] ) || tape_open( path, 1 ) ) { r++; break; }
+    if( fixture_select_machine( models[m] ) || fixture_open_tape( path ) ) { r++; break; }
     keyboard_release_all();
     for( stage = 0; stage < 5; stage++ ) {
       if( stage == 1 ) {
@@ -472,20 +499,22 @@ floatingbus_original_unittest( void )
       }
       n = snprintf( filename, sizeof(filename), "%s/hikaru-%s-%d.scr",
                     directory, machine_current->id, stage );
-      if( n < 0 || n >= sizeof(filename) || screenshot_scr_write( filename ) ) r++;
+      if( n < 0 || n >= sizeof(filename) ||
+          fuse_host_save_screenshot( FUSE_SCREENSHOT_SCR, filename, NULL ) !=
+            FUSE_HOST_OPERATION_OK ) r++;
       printf( "Hikaru model=%d stage=%d PC=%04x IFF=%d/%d IM=%d "
               "SP=%04x frames=%u screen=%s\n",
               models[m], stage, PC, IFF1, IFF2, IM, SP,
               spectrum_get_frame_count() - frame, filename );
     }
     keyboard_release_all();
-    ui_tape_close();
+    r += fixture_eject_tape();
   }
   settings_current.tape_traps = traps;
   settings_current.accelerate_loader = acceleration;
   settings_current.emulation_speed = speed;
   settings_current.late_timings = late;
-  if( machine_select( saved ) ) r++;
+  if( fixture_select_machine( saved ) ) r++;
   return r;
 }
 
@@ -503,7 +532,7 @@ run_visual( const char *path, const char *directory, int woody,
   FILE *csv;
 
   program_end = woody ? 0x9d61 : 0x9c66;
-  if( machine_select( machine ) || tape_open( path, 1 ) ) return 1;
+  if( fixture_select_machine( machine ) || fixture_open_tape( path ) ) return 1;
   keyboard_release_all();
   if( run_frames( 2400 ) ) return 1;
   settings_current.tape_traps = settings_current.accelerate_loader = 0;
@@ -511,7 +540,8 @@ run_visual( const char *path, const char *directory, int woody,
   n = snprintf( filename, sizeof(filename), "%s/%s-%s-before.png", directory,
                 woody ? "woody" : "universal", machine_current->id );
   if( n < 0 || n >= sizeof(filename) ) return 1;
-  if( screenshot_write( filename, SCALER_NORMAL ) ) return 1;
+  if( fuse_host_save_screenshot( FUSE_SCREENSHOT_PNG, filename, "normal" ) !=
+      FUSE_HOST_OPERATION_OK ) return 1;
   if( woody ) {
     display_colours( rows, upper, blue_border );
     /* The reference's striped upper field is a post-keypress effect. */
@@ -525,7 +555,8 @@ run_visual( const char *path, const char *directory, int woody,
 
   n = snprintf( filename, sizeof(filename), "%s/%s-%s.szx", directory,
                 woody ? "woody" : "universal", machine_current->id );
-  if( n < 0 || n >= sizeof(filename) || snapshot_write( filename ) ) return 1;
+  if( n < 0 || n >= sizeof(filename) ||
+      fuse_host_save_snapshot_file( filename ) != FUSE_HOST_OPERATION_OK ) return 1;
   n = snprintf( filename, sizeof(filename), "%s/%s-%s.csv", directory,
                 woody ? "woody" : "universal", machine_current->id );
   if( n < 0 || n >= sizeof(filename) ) return 1;
@@ -577,7 +608,8 @@ run_visual( const char *path, const char *directory, int woody,
     n = snprintf( filename, sizeof(filename), "%s/%s-%s-%03d.png", directory,
                   woody ? "woody" : "universal", machine_current->id, frame );
     if( n < 0 || n >= sizeof(filename) ||
-        screenshot_write( filename, SCALER_NORMAL ) ) { error++; break; }
+        fuse_host_save_screenshot( FUSE_SCREENSHOT_PNG, filename, "normal" ) !=
+          FUSE_HOST_OPERATION_OK ) { error++; break; }
   }
   if( ferror( csv ) ) error++;
   if( fclose( csv ) ) error++;
@@ -629,7 +661,7 @@ floatingbus_visual_unittest( void )
       settings_current.accelerate_loader = acceleration;
       error += run_visual( paths[which], directory, which, models[m] );
       keyboard_release_all();
-      ui_tape_close();
+      error += fixture_eject_tape();
     }
   }
   settings_current.tape_traps = traps;
@@ -637,7 +669,7 @@ floatingbus_visual_unittest( void )
   settings_current.emulation_speed = speed;
   settings_current.late_timings = late;
   settings_current.frame_rate = rate;
-  if( machine_select( saved ) ) error++;
+  if( fixture_select_machine( saved ) ) error++;
   return error;
 }
 #else

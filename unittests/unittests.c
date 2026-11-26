@@ -5377,9 +5377,8 @@ unittests_run( void )
   r += floating_bus_merge_test();
   r += retained_bus_test();
   r += floatingbus_differential_unittest();
-  r += floatingbus_original_unittest();
-  r += floatingbus_visual_unittest();
-  r += floatingbus_performance_fixtures();
+  /* Fixture workflows run separately through check-floatingbus-host, where
+     the engine is READY and host operations are permitted. */
   r += retained_bus_benchmark();
   r += snapshot_copy_from_releases_keyboard_test();
   r += snapshot_copy_from_releases_joystick_test();

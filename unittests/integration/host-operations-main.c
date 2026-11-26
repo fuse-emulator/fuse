@@ -18,6 +18,7 @@
 
 #include "host-operations.h"
 #include "fuse-host-settings.h"
+#include "unittests/unittests.h"
 
 struct host_test_rom_provider provider;
 
@@ -488,7 +489,12 @@ host_operations_test( int argc, char **argv )
   assert( settings_current.tape_traps ==
           ( strcmp( argv[1], "tape-recording" ) && strcmp( argv[1], "legacy-tape-recording" ) &&
             strcmp( argv[1], "tape-info" ) ? 1 : 0 ) );
-  if( !strcmp( argv[1], "filesystem" ) ) {
+  if( !strcmp( argv[1], "floatingbus-fixtures" ) ) {
+    int errors = floatingbus_original_unittest();
+    errors += floatingbus_visual_unittest();
+    errors += floatingbus_performance_fixtures();
+    assert( !errors );
+  } else if( !strcmp( argv[1], "filesystem" ) ) {
     filesystem_tests();
   } else if( !strcmp( argv[1], "runtime-settings" ) ) {
     check_runtime_settings();
