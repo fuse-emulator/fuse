@@ -723,117 +723,8 @@ tape_record_lifecycle_unittest( void )
 /* Execute the real CPU/event paths, with a bounded deadline and a DI/HALT
    return stub. Poll events only bound observation latency; they do not
    manufacture tape edges or replace normal frame processing. */
-static int
-run_rom_tape_routine( libspectrum_word pc )
-{
-  static int poll_event = -1;
-  unsigned int steps;
-  libspectrum_dword first_frame = spectrum_get_frame_count();
-  if( poll_event == -1 ) poll_event = event_register( NULL, "ROM tape test poll" );
-  writebyte_internal( 0x9000, 0xf3 ); /* DI */
-  writebyte_internal( 0x9001, 0x76 ); /* HALT */
-  SP = 0xaffc;
-  writebyte_internal( SP, 0x00 );
-  writebyte_internal( SP + 1, 0x90 );
-  PC = pc;
-  z80.halted = z80.iff1 = z80.iff2 = 0;
-  for( steps = 0; steps < 5000000 &&
-                  spectrum_get_frame_count() - first_frame < 1200; steps++ ) {
-    event_add( tstates + 512, poll_event );
-    z80_do_opcodes();
-    event_do_events();
-    event_remove_type( poll_event );
-    if( z80.halted && PC == 0x9001 ) return 0;
-  }
-  printf( "ROM tape routine %04x timed out at PC=%04x tstates=%u BC=%04x HL=%04x RZX=%d/%d\n",
-          pc, PC, tstates, BC, HL, rzx_playback, rzx_recording );
-  return 1;
-}
-
-static int
-tape_record_rom_roundtrip_unittest( void )
-{
-  static const libspectrum_byte payload[] = {
-    0x00, 0xff, 0x55, 0xaa, 0x01, 0x80, 0xfe, 0x7f,
-    0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x10
-  };
-  libspectrum_snap *saved_snapshot = libspectrum_snap_alloc();
-  libspectrum_tape *saved_tape = tape, *captured = NULL, *loaded = NULL;
-  libspectrum_byte *buffer = NULL;
-  size_t length, i;
-  int saved_traps = settings_current.tape_traps;
-  int saved_acceleration = settings_current.accelerate_loader;
-  int saved_detection = settings_current.detect_loader;
-  int saved_fastload = settings_current.fastload;
-  int saved_modified = tape_modified;
-  int error = snapshot_copy_to( saved_snapshot ), model;
-  settings_current.tape_traps = settings_current.accelerate_loader = 0;
-  settings_current.detect_loader = settings_current.fastload = 0;
-  for( model = 0; model < 2 && !error; model++ ) {
-    error = machine_select( model ? LIBSPECTRUM_MACHINE_128 : LIBSPECTRUM_MACHINE_48 );
-    if( error ) break;
-    if( model ) writeport_internal( 0x7ffd, 0x10 ); /* 128K's 48 BASIC ROM */
-    captured = libspectrum_tape_alloc();
-    loaded = libspectrum_tape_alloc();
-    tape = captured;
-    tape_record_set_tape( captured );
-    for( i = 0; i < sizeof( payload ); i++ )
-      writebyte_internal( 0x8000 + i, payload[i] );
-    IX = 0x8000;
-    DE = sizeof( payload );
-    IY = 0x5c3a;
-    AF = 0xff00;
-    tape_record_start();
-    error |= run_rom_tape_routine( 0x04c2 ); /* SA-BYTES */
-    error |= tape_record_stop();
-    /* Capturing real MIC transitions must not have inserted a ROM data
-       block through a trap. */
-    if( !error ) {
-      libspectrum_tape_block *block = libspectrum_tape_current_block( captured );
-      error |= !block;
-      if( block ) error |= libspectrum_tape_block_type( block ) !=
-                           LIBSPECTRUM_TAPE_BLOCK_PULSE_SEQUENCE;
-    }
-    length = 0;
-    buffer = NULL;
-    if( !error ) error = libspectrum_tape_write( &buffer, &length, captured,
-                                                LIBSPECTRUM_ID_TAPE_PZX );
-    if( !error ) error = libspectrum_tape_read( loaded, buffer, length,
-                                               LIBSPECTRUM_ID_TAPE_PZX, NULL );
-    libspectrum_free( buffer );
-    buffer = NULL;
-    tape = loaded;
-    tape_record_set_tape( loaded );
-    for( i = 0; i < sizeof( payload ); i++ ) writebyte_internal( 0x8000 + i, 0 );
-    IX = 0x8000;
-    DE = sizeof( payload );
-    AF = 0xff01; /* expected flag FF, carry set selects LOAD rather than VERIFY */
-    if( !error ) error = tape_play( 0 );
-    if( !error ) error = run_rom_tape_routine( 0x0556 ); /* LD-BYTES */
-    if( !error ) {
-      error |= !( F & 1 ) || DE != 0 || IX != 0x8000 + sizeof( payload );
-      for( i = 0; i < sizeof( payload ); i++ )
-        error |= readbyte_internal( 0x8000 + i ) != payload[i];
-    }
-    tape_stop();
-    libspectrum_tape_free( captured );
-    libspectrum_tape_free( loaded );
-    captured = loaded = NULL;
-    tape = saved_tape;
-    tape_record_set_tape( tape );
-  }
-  tape = saved_tape;
-  tape_record_set_tape( tape );
-  error |= snapshot_copy_from( saved_snapshot );
-  libspectrum_snap_free( saved_snapshot );
-  settings_current.tape_traps = saved_traps;
-  settings_current.accelerate_loader = saved_acceleration;
-  settings_current.detect_loader = saved_detection;
-  settings_current.fastload = saved_fastload;
-  tape_modified = saved_modified;
-  if( error ) printf( "ROM SAVE/PZX/LOAD round trip failed\n" );
-  return error;
-}
+/* The ROM SAVE/PZX/LOAD roundtrip runs in the READY-state host runner's
+   rom-tape-roundtrip scenario, with RAM-backed media and public frame turns. */
 
 static int
 tape_record_rzx_exclusion_unittest( void )
@@ -1113,7 +1004,6 @@ tape_unittest( void )
   if( !error ) error = tape_record_unittest();
   if( !error ) error = tape_record_lifecycle_unittest();
   if( !error ) error = tape_record_rzx_exclusion_unittest();
-  if( !error ) error = tape_record_rom_roundtrip_unittest();
   if( !error ) error = tape_edge_unittest();
   if( !error ) error = tape_select_internal_unittest();
 

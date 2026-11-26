@@ -494,7 +494,8 @@ host_operations_test( int argc, char **argv )
   if( !strcmp( argv[1], "filesystem" ) || !strcmp( argv[1], "filesystem-oracle" ) )
     assert( !fuse_host_config_set_auto_load( config, 0 ) );
   if( !strcmp( argv[1], "filesystem" ) ) filesystem_prepare();
-  if( !strcmp( argv[1], "tape-navigation" ) ) tape_navigation_prepare();
+  if( !strcmp( argv[1], "tape-navigation" ) || !strcmp( argv[1], "rom-tape-roundtrip" ) )
+    tape_memory_prepare();
   assert( fuse_host_config_set_joystick( config, 3, 0 ) );
   assert( fuse_host_config_set_joystick( config, 0, 8 ) );
   assert( !fuse_host_config_set_joystick( config, FUSE_HOST_JOYSTICK_1, JOYSTICK_TYPE_KEMPSTON ) );
@@ -524,6 +525,8 @@ host_operations_test( int argc, char **argv )
     check_tape_info();
   } else if( !strcmp( argv[1], "tape-navigation" ) ) {
     check_tape_navigation();
+  } else if( !strcmp( argv[1], "rom-tape-roundtrip" ) ) {
+    check_rom_tape_roundtrip();
   } else if( !strcmp( argv[1], "tape-deck" ) || !strcmp( argv[1], "legacy-tape-deck" ) ) {
     check_tape_deck( !strcmp( argv[1], "tape-deck" ) );
   } else if( !strcmp( argv[1], "tape-recording" ) || !strcmp( argv[1], "legacy-tape-recording" ) ) {
@@ -654,7 +657,8 @@ host_operations_test( int argc, char **argv )
   assert( provider.acquired == provider.released );
   fuse_shutdown(); fuse_shutdown();
   if( !strcmp( argv[1], "filesystem" ) ) filesystem_finish();
-  if( !strcmp( argv[1], "tape-navigation" ) ) tape_navigation_finish();
+  if( !strcmp( argv[1], "tape-navigation" ) || !strcmp( argv[1], "rom-tape-roundtrip" ) )
+    tape_memory_finish();
   assert( fuse_host_reset( FUSE_HOST_RESET_SOFT ) == FUSE_HOST_OPERATION_NOT_READY );
   assert( !fuse_host_resources_active() );
   check_disk_info_blocked( FUSE_HOST_OPERATION_NOT_READY );

@@ -18,6 +18,8 @@
 
 #include "host-operations.h"
 #include "memory-filesystem.h"
+#include "fuse-host-settings.h"
+#include "fuse-host-debugger.h"
 
 static int
 manual_tape_toggle( void ) { return tape_toggle_play( 0 ); }
@@ -194,23 +196,23 @@ check_tape_info( void )
   assert( eject_tape_discarding_changes() == OK );
 }
 
-static memory_filesystem navigation_filesystem;
+static memory_filesystem tape_filesystem;
 
 void
-tape_navigation_prepare( void )
+tape_memory_prepare( void )
 {
-  assert( !memory_filesystem_install( &navigation_filesystem ) );
+  assert( !memory_filesystem_install( &tape_filesystem ) );
 }
 
 void
-tape_navigation_finish( void )
+tape_memory_finish( void )
 {
   memory_file *file;
-  assert( navigation_filesystem.opens == navigation_filesystem.closes );
-  assert( navigation_filesystem.reads && navigation_filesystem.writes );
-  for( file = navigation_filesystem.files; file; file = file->next )
+  assert( tape_filesystem.opens == tape_filesystem.closes );
+  assert( tape_filesystem.reads && tape_filesystem.writes );
+  for( file = tape_filesystem.files; file; file = file->next )
     assert( !file->handles );
-  memory_filesystem_free( &navigation_filesystem );
+  memory_filesystem_free( &tape_filesystem );
 }
 
 static void
@@ -252,7 +254,7 @@ check_tape_navigation( void )
   assert( !memory_write( handle, fixture, sizeof( fixture ), &written ) );
   assert( written == sizeof( fixture ) && !memory_close( handle ) );
   /* Also exercise the host's complete-read/write loops. */
-  navigation_filesystem.chunk = 3;
+  tape_filesystem.chunk = 3;
   assert( insert_tape_without_decision( "navigation.tzx" ) == OK );
   check_navigation_state( 1, 0, 0 );
   assert( fuse_host_select_tape_block( 1 ) == OK );
@@ -292,7 +294,123 @@ check_tape_navigation( void )
   check_navigation_state( 1, 1, 0 );
   assert( eject_tape_discarding_changes() == OK );
   check_navigation_state( 0, -1, 0 );
-  assert( navigation_filesystem.opens == navigation_filesystem.closes );
+  assert( tape_filesystem.opens == tape_filesystem.closes );
+}
+
+static void
+rom_tape_set_register( const char *name, unsigned int value )
+{
+  char command[64];
+  snprintf( command, sizeof( command ), "set z80:%s 0x%x", name, value );
+  assert( fuse_host_debugger_command( command, NULL ) == OK );
+}
+
+static void
+rom_tape_set_byte( unsigned int address, unsigned int value )
+{
+  char command[64];
+  snprintf( command, sizeof( command ), "set 0x%x 0x%x", address, value );
+  assert( fuse_host_debugger_command( command, NULL ) == OK );
+}
+
+/* Enter and return stopped. The temporary breakpoint catches RET before any
+   sentinel instruction executes; no HALT flag or test poll event is needed. */
+static processor
+run_rom_tape_routine( libspectrum_word pc )
+{
+  unsigned int frame;
+  processor registers;
+  fuse_run_result result;
+
+  rom_tape_set_register( "sp", 0xaffc );
+  rom_tape_set_byte( 0xaffc, 0x00 );
+  rom_tape_set_byte( 0xaffd, 0x90 );
+  rom_tape_set_register( "pc", pc );
+  rom_tape_set_register( "iff1", 0 );
+  rom_tape_set_register( "iff2", 0 );
+  assert( fuse_host_debugger_command( "tbreak 0x9000", NULL ) == OK );
+  assert( fuse_host_debugger_continue() == OK );
+  for( frame = 0; frame < 1200; frame++ ) {
+    result = fuse_run_frame();
+    if( result == FUSE_RUN_DEBUGGER_STOPPED ) {
+      assert( fuse_host_debugger_copy_registers( &registers ) == OK );
+      assert( registers.pc.w == 0x9000 );
+      return registers;
+    }
+    assert( result == FUSE_RUN_COMPLETED );
+  }
+  fprintf( stderr, "ROM tape routine %04x timed out after 1200 frames\n", pc );
+  assert( 0 );
+  return registers;
+}
+
+void
+check_rom_tape_roundtrip( void )
+{
+  static const libspectrum_byte payload[] = {
+    0x00, 0xff, 0x55, 0xaa, 0x01, 0x80, 0xfe, 0x7f,
+    0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x10
+  };
+  settings_info *options;
+  fuse_tape_info *info;
+  libspectrum_tape *captured;
+  libspectrum_tape_block *block;
+  memory_file *exported;
+  libspectrum_byte loaded[sizeof( payload )];
+  processor registers;
+  size_t i;
+  int model;
+
+  assert( fuse_host_copy_settings( &options ) == OK );
+  options->tape_traps = options->accelerate_loader = 0;
+  options->detect_loader = options->fastload = 0;
+  assert( fuse_host_apply_settings( options, 0 ) == OK );
+  fuse_host_free_settings( options );
+  for( model = 0; model < 2; model++ ) {
+    assert( fuse_host_select_machine( model ? "128" : "48" ) == OK );
+    assert( fuse_host_debugger_break() == OK );
+    assert( fuse_run_frame() == FUSE_RUN_DEBUGGER_STOPPED );
+    if( model ) /* 128K's 48 BASIC ROM */
+      assert( fuse_host_debugger_command( "out 0x7ffd 0x10", NULL ) == OK );
+    for( i = 0; i < sizeof( payload ); i++ )
+      rom_tape_set_byte( 0x8000 + i, payload[i] );
+    rom_tape_set_register( "ix", 0x8000 );
+    rom_tape_set_register( "de", sizeof( payload ) );
+    rom_tape_set_register( "iy", 0x5c3a );
+    rom_tape_set_register( "af", 0xff00 );
+    assert( fuse_host_start_tape_recording() == OK );
+    run_rom_tape_routine( 0x04c2 ); /* SA-BYTES: capture genuine MIC edges */
+    assert( fuse_host_stop_tape_recording() == OK );
+    assert( fuse_host_copy_tape_info( &info ) == OK );
+    assert( info->present && info->modified && !info->recording );
+    fuse_tape_info_free( info );
+    assert( fuse_host_save_tape_file( "rom-save.pzx" ) == OK );
+    exported = memory_find( "rom-save.pzx" ); assert( exported );
+    assert( !exported->handles );
+    captured = libspectrum_tape_alloc(); assert( captured );
+    assert( !libspectrum_tape_read( captured, exported->data, exported->length,
+                                    LIBSPECTRUM_ID_TAPE_PZX, NULL ) );
+    /* No trap-generated ROM data block may substitute for captured pulses. */
+    block = libspectrum_tape_current_block( captured );
+    assert( block && libspectrum_tape_block_type( block ) ==
+                    LIBSPECTRUM_TAPE_BLOCK_PULSE_SEQUENCE );
+    libspectrum_tape_free( captured );
+    assert( eject_tape_discarding_changes() == OK );
+    assert( insert_tape_without_decision( "rom-save.pzx" ) == OK );
+    for( i = 0; i < sizeof( payload ); i++ ) rom_tape_set_byte( 0x8000 + i, 0 );
+    rom_tape_set_register( "ix", 0x8000 );
+    rom_tape_set_register( "de", sizeof( payload ) );
+    rom_tape_set_register( "af", 0xff01 ); /* FF flag, carry selects LOAD */
+    assert( fuse_host_toggle_tape_play() == OK );
+    registers = run_rom_tape_routine( 0x0556 ); /* LD-BYTES */
+    assert( ( registers.af.b.l & 1 ) && !registers.de.w &&
+            registers.ix.w == 0x8000 + sizeof( payload ) );
+    assert( fuse_host_copy_memory( 0x8000, sizeof( loaded ), loaded ) == OK );
+    assert( !memcmp( loaded, payload, sizeof( payload ) ) );
+    assert( fuse_host_stop_tape() == OK );
+    assert( eject_tape_discarding_changes() == OK );
+    assert( fuse_host_debugger_continue() == OK );
+  }
 }
 
 void
