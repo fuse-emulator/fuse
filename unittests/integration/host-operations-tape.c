@@ -413,8 +413,112 @@ check_rom_tape_roundtrip( void )
   }
 }
 
+static void
+check_deck_state( int block, int playing, int recording, int modified,
+                  size_t blocks )
+{
+  fuse_tape_info *info;
+  assert( fuse_host_copy_tape_info( &info ) == OK );
+  if( info->block_count != blocks )
+    fprintf( stderr, "Deck blocks: expected %lu, got %lu (block=%d playing=%d recording=%d modified=%d)\n",
+             (unsigned long)blocks, (unsigned long)info->block_count,
+             info->current_block, info->playing, info->recording, info->modified );
+  assert( info->present == ( blocks != 0 ) && info->block_count == blocks );
+  assert( info->current_block == block && info->playing == playing );
+  assert( info->recording == recording && info->modified == modified );
+  fuse_tape_info_free( info );
+}
+
+/* User-visible deck workflow: all engine access goes through host APIs.
+   Backend fault injection replaces reliance on native directory failures. */
 void
-check_tape_deck( int host )
+check_tape_deck( void )
+{
+  static const unsigned char bytes[] = { 2, 0, 0xff, 0xff, 2, 0, 0, 0 };
+  void *handle;
+  size_t written, recorded_blocks, reopened_blocks;
+  fuse_tape_info *info;
+  settings_info *options;
+
+  handle = memory_open( "deck.tap", COMPAT_FILE_WRITE ); assert( handle );
+  assert( !memory_write( handle, bytes, sizeof( bytes ), &written ) );
+  assert( written == sizeof( bytes ) && !memory_close( handle ) );
+  tape_filesystem.chunk = 3;
+  assert( fuse_host_stop_tape() == OK );
+  assert( fuse_host_rewind_tape() == OK );
+  assert( eject_tape_discarding_changes() == OK );
+  assert( fuse_host_toggle_tape_play() == FUSE_HOST_OPERATION_MEDIA_ERROR );
+  assert( fuse_host_select_tape_block( -1 ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_host_save_tape_file( NULL ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  assert( fuse_host_save_tape_file( "" ) == FUSE_HOST_OPERATION_INVALID_ARGUMENT );
+  check_deck_state( -1, 0, 0, 0, 0 );
+  assert( insert_tape_without_decision( "deck.tap" ) == OK );
+  assert( fuse_host_toggle_tape_play() == OK );
+  check_deck_state( 0, 1, 0, 0, 2 );
+  assert( fuse_host_select_tape_block( 1 ) == OK );
+  check_deck_state( 1, 1, 0, 0, 2 );
+  assert( fuse_host_select_tape_block( 99 ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
+  check_deck_state( 1, 1, 0, 0, 2 );
+  assert( fuse_host_rewind_tape() == OK );
+  check_deck_state( 0, 1, 0, 0, 2 );
+  assert( fuse_host_toggle_tape_play() == OK );
+  check_deck_state( 0, 0, 0, 0, 2 );
+  assert( fuse_host_toggle_tape_play() == OK );
+  assert( fuse_run_tstates( 4000 ) == FUSE_RUN_COMPLETED );
+  tape_filesystem.fail_write = 1;
+  assert( fuse_host_save_tape_file( "failed-copy.tzx" ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
+  tape_filesystem.fail_write = 0;
+  check_deck_state( 0, 1, 0, 0, 2 );
+  assert( fuse_host_save_tape_file( "deck-copy.tzx" ) == OK );
+  check_deck_state( 0, 1, 0, 0, 2 );
+  assert( fuse_host_stop_tape() == OK );
+  assert( fuse_host_stop_tape() == OK );
+  check_deck_state( 0, 0, 0, 0, 2 );
+
+  /* Explicit pulse recording requires the traps-disabled host workflow. */
+  assert( fuse_host_copy_settings( &options ) == OK );
+  options->tape_traps = 0;
+  assert( fuse_host_apply_settings( options, 0 ) == OK );
+  fuse_host_free_settings( options );
+  assert( fuse_host_start_tape_recording() == OK );
+  assert( fuse_host_stop_tape() == OK ); /* Playback Stop is not Recording Stop. */
+  check_deck_state( 0, 0, 1, 0, 2 );
+  assert( fuse_run_tstates( 37 ) == FUSE_RUN_COMPLETED );
+  tape_filesystem.fail_write = 1;
+  assert( fuse_host_save_tape_file( "failed-recording.pzx" ) ==
+          FUSE_HOST_OPERATION_MEDIA_ERROR );
+  tape_filesystem.fail_write = 0;
+  assert( fuse_host_copy_tape_info( &info ) == OK );
+  assert( info->present && !info->playing && !info->recording && info->modified );
+  recorded_blocks = info->block_count;
+  assert( recorded_blocks > 2 );
+  fuse_tape_info_free( info );
+  assert( fuse_host_select_tape_block( recorded_blocks - 1 ) == OK );
+  assert( fuse_host_save_tape_file( "deck-recorded.pzx" ) == OK );
+  check_deck_state( recorded_blocks - 1, 0, 0, 0, recorded_blocks );
+  assert( fuse_host_start_tape_recording() == OK );
+  assert( fuse_run_tstates( 11 ) == FUSE_RUN_COMPLETED );
+  assert( eject_tape_discarding_changes() == OK );
+  check_deck_state( -1, 0, 0, 0, 0 );
+  assert( insert_tape_without_decision( "deck-recorded.pzx" ) == OK );
+  assert( fuse_host_select_tape_block( recorded_blocks - 1 ) == OK );
+  /* PZX expands ROM blocks into pulse/data/pause rows on import. */
+  assert( fuse_host_copy_tape_info( &info ) == OK );
+  assert( info->block_count >= recorded_blocks );
+  reopened_blocks = info->block_count;
+  fuse_tape_info_free( info );
+  check_deck_state( recorded_blocks - 1, 0, 0, 0, reopened_blocks );
+  assert( eject_tape_discarding_changes() == OK );
+  assert( insert_tape_without_decision( "deck-copy.tzx" ) == OK );
+  check_deck_state( 0, 0, 0, 0, 2 );
+  assert( eject_tape_discarding_changes() == OK );
+  check_deck_state( -1, 0, 0, 0, 0 );
+}
+
+/* Deliberately internal: preserve exact edge scheduling, phantom-typist
+   interaction, pulse durations and host-versus-legacy implementation parity. */
+void
+check_tape_deck_internal( int host )
 {
   unsigned char bytes[] = { 2, 0, 0xff, 0xff, 2, 0, 0, 0 };
   libspectrum_tape_block *block;

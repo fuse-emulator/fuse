@@ -456,8 +456,11 @@ host_operations_test( int argc, char **argv )
   fuse_host_config *config;
   fuse_host_resources resources = { &provider, acquire_rom };
   libspectrum_dword clock;
-  int callback;
+  int callback, memory_tape;
   assert( argc == 3 ); provider.directory = argv[2];
+  memory_tape = !strcmp( argv[1], "tape-navigation" ) ||
+                !strcmp( argv[1], "rom-tape-roundtrip" ) ||
+                !strcmp( argv[1], "tape-deck" );
   provider.custom = !strcmp( argv[1], "open-custom" );
   provider.synthetic_beta = !strcmp( argv[1], "disk-save-beta" );
   provider.synthetic_buttons = !strcmp( argv[1], "machine-buttons" ) ||
@@ -494,8 +497,7 @@ host_operations_test( int argc, char **argv )
   if( !strcmp( argv[1], "filesystem" ) || !strcmp( argv[1], "filesystem-oracle" ) )
     assert( !fuse_host_config_set_auto_load( config, 0 ) );
   if( !strcmp( argv[1], "filesystem" ) ) filesystem_prepare();
-  if( !strcmp( argv[1], "tape-navigation" ) || !strcmp( argv[1], "rom-tape-roundtrip" ) )
-    tape_memory_prepare();
+  if( memory_tape ) tape_memory_prepare();
   assert( fuse_host_config_set_joystick( config, 3, 0 ) );
   assert( fuse_host_config_set_joystick( config, 0, 8 ) );
   assert( !fuse_host_config_set_joystick( config, FUSE_HOST_JOYSTICK_1, JOYSTICK_TYPE_KEMPSTON ) );
@@ -527,8 +529,11 @@ host_operations_test( int argc, char **argv )
     check_tape_navigation();
   } else if( !strcmp( argv[1], "rom-tape-roundtrip" ) ) {
     check_rom_tape_roundtrip();
-  } else if( !strcmp( argv[1], "tape-deck" ) || !strcmp( argv[1], "legacy-tape-deck" ) ) {
-    check_tape_deck( !strcmp( argv[1], "tape-deck" ) );
+  } else if( !strcmp( argv[1], "tape-deck" ) ) {
+    check_tape_deck();
+  } else if( !strcmp( argv[1], "tape-deck-internal" ) ||
+             !strcmp( argv[1], "legacy-tape-deck-internal" ) ) {
+    check_tape_deck_internal( !strcmp( argv[1], "tape-deck-internal" ) );
   } else if( !strcmp( argv[1], "tape-recording" ) || !strcmp( argv[1], "legacy-tape-recording" ) ) {
     check_tape_recording( !strcmp( argv[1], "tape-recording" ) );
   } else if( !strcmp( argv[1], "snapshot-roundtrip" ) ) {
@@ -657,8 +662,7 @@ host_operations_test( int argc, char **argv )
   assert( provider.acquired == provider.released );
   fuse_shutdown(); fuse_shutdown();
   if( !strcmp( argv[1], "filesystem" ) ) filesystem_finish();
-  if( !strcmp( argv[1], "tape-navigation" ) || !strcmp( argv[1], "rom-tape-roundtrip" ) )
-    tape_memory_finish();
+  if( memory_tape ) tape_memory_finish();
   assert( fuse_host_reset( FUSE_HOST_RESET_SOFT ) == FUSE_HOST_OPERATION_NOT_READY );
   assert( !fuse_host_resources_active() );
   check_disk_info_blocked( FUSE_HOST_OPERATION_NOT_READY );

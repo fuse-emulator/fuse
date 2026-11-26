@@ -74,7 +74,8 @@ extern fuse_disk_drive_info *retained_disk_info;
 extern fuse_tape_info *retained_tape_info;
 
 void check_tape_info( void );
-void check_tape_deck( int host );
+void check_tape_deck( void );
+void check_tape_deck_internal( int host );
 void check_tape_navigation( void );
 void tape_memory_prepare( void );
 void tape_memory_finish( void );
