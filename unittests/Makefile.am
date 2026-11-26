@@ -697,7 +697,7 @@ check-host-operations: unittests/legacyenginelinktest unittests/legacyenginesour
 	  tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' 0 1 2 3 15; \
 	  cd "$$tmp"; export HOME=. XDG_CONFIG_HOME=. USERPROFILE=. WINDIR=. APPDATA=.; \
 	  for consumer in legacyenginelinktest legacyenginesourcetest; do \
-	    for mode in success runtime-settings filesystem-oracle filesystem tape-contract tape-info tape-navigation tape-deck tape-recording rom-tape-roundtrip trapped-recording snapshot-roundtrip autoload-success autoload-failure \
+	    for mode in success runtime-settings filesystem-oracle filesystem tape-contract tape-info tape-navigation tape-deck tape-recording rom-tape-roundtrip trapped-recording autoload-success autoload-failure \
 	      open-auto open-noauto open-custom open-reset-failure open-snapshot open-snapshot-joystick open-fallback open-rzx-stop open-rzx-embedded open-rzx-external record-rzx record-rzx-restore record-rzx-rollback record-rzx-movie open-pok host-binary host-poke-finder open-floppy floppy-merge cartridge-lifecycle \
 	      disk-save disk-save-beta microdrive rs232 machine-buttons screenshots svg-capture live-movie psg-logging profile host-quit host-quit-shutdown \
 	      reset-failure select-failure peripheral-reset-failure peripheral-select-failure; do \

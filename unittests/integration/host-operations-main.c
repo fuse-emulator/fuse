@@ -523,7 +523,9 @@ host_operations_test( int argc, char **argv )
   } else if( !strcmp( argv[1], "runtime-settings" ) ) {
     check_runtime_settings();
   } else if( !strcmp( argv[1], "filesystem-oracle" ) ) {
+    int acquired = provider.acquired;
     filesystem_write_oracle();
+    assert( provider.acquired == acquired ); /* Save must not request ROMs. */
   } else if( !strcmp( argv[1], "tape-info" ) ) {
     check_tape_info();
   } else if( !strcmp( argv[1], "tape-navigation" ) ) {
@@ -540,8 +542,6 @@ host_operations_test( int argc, char **argv )
   } else if( !strcmp( argv[1], "tape-recording-internal" ) ||
              !strcmp( argv[1], "legacy-tape-recording-internal" ) ) {
     check_tape_recording_internal( !strcmp( argv[1], "tape-recording-internal" ) );
-  } else if( !strcmp( argv[1], "snapshot-roundtrip" ) ) {
-    check_snapshot_roundtrip();
   } else if( !strcmp( argv[1], "trapped-recording" ) ) {
     check_trap_recording();
   } else if( !strcmp( argv[1], "recording-readback" ) ) {

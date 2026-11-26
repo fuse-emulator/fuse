@@ -83,7 +83,6 @@ void check_rom_tape_roundtrip( void );
 void check_tape_recording( void );
 void check_tape_recording_internal( int host );
 void check_trap_recording( void );
-void check_snapshot_roundtrip( void );
 void check_tape_workflow( void );
 void check_tape_autoload( int fail );
 int fail_autoload_reset( int hard_reset, libspectrum_snap *snap );

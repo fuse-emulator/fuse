@@ -753,23 +753,6 @@ check_trap_recording( void )
   assert( !remove( "automatic.tap" ) );
 }
 
-void
-check_snapshot_roundtrip( void )
-{
-  int acquired = provider.acquired;
-  z80.pc.w = 0x8000; z80.sp.w = 0x9000;
-  writebyte_internal( 0x8100, 0x5a );
-  assert( fuse_host_save_snapshot_file( "host-state.szx" ) == OK );
-  assert( provider.acquired == acquired );
-  assert( fuse_host_reset( FUSE_HOST_RESET_HARD ) == OK );
-  z80.pc.w = 0; writebyte_internal( 0x8100, 0 );
-  assert( fuse_host_open_file( "host-state.szx",
-                               &(fuse_open_request){ 0 } ) == OK );
-  assert( machine_current->machine == LIBSPECTRUM_MACHINE_48 );
-  assert( z80.pc.w == 0x8000 && z80.sp.w == 0x9000 && readbyte_internal( 0x8100 ) == 0x5a );
-  assert( !remove( "host-state.szx" ) );
-}
-
 static compat_file_test_hooks tape_file_io;
 static int tape_file_closes;
 
