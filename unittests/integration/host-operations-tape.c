@@ -17,6 +17,7 @@
 */
 
 #include "host-operations.h"
+#include "memory-filesystem.h"
 
 static int
 manual_tape_toggle( void ) { return tape_toggle_play( 0 ); }
@@ -191,6 +192,107 @@ check_tape_info( void )
   assert( b->present && !b->recording && b->modified && b->block_count == 1 && b->current_block == 0 );
   fuse_tape_info_free( b );
   assert( eject_tape_discarding_changes() == OK );
+}
+
+static memory_filesystem navigation_filesystem;
+
+void
+tape_navigation_prepare( void )
+{
+  assert( !memory_filesystem_install( &navigation_filesystem ) );
+}
+
+void
+tape_navigation_finish( void )
+{
+  memory_file *file;
+  assert( navigation_filesystem.opens == navigation_filesystem.closes );
+  assert( navigation_filesystem.reads && navigation_filesystem.writes );
+  for( file = navigation_filesystem.files; file; file = file->next )
+    assert( !file->handles );
+  memory_filesystem_free( &navigation_filesystem );
+}
+
+static void
+check_navigation_state( int present, int block, int playing )
+{
+  fuse_tape_info *info;
+  assert( fuse_host_copy_tape_info( &info ) == OK );
+  assert( info->present == present && info->current_block == block );
+  assert( info->playing == playing && !info->recording && !info->modified );
+  assert( info->block_count == ( present ? 2 : 0 ) );
+  fuse_tape_info_free( info );
+}
+
+/* User-visible half of tape_select_internal_unittest. Seed media in RAM,
+   never replace the engine's tape global or inspect its playback flags. */
+void
+check_tape_navigation( void )
+{
+  static const unsigned char fixture[] = {
+    'Z', 'X', 'T', 'a', 'p', 'e', '!', 0x1a, 1, 20,
+    0x10, 0xe8, 0x03, 2, 0, 0x80, 0x80, /* ROM, 1000 ms pause */
+    0x20, 1, 0                           /* 1 ms pause block */
+  };
+  memory_file *exported;
+  void *handle;
+  size_t written;
+  libspectrum_tape *read_back;
+  libspectrum_tape_block *block;
+  libspectrum_tape_iterator iterator;
+
+  assert( fuse_host_select_machine( "48" ) == OK );
+  assert( eject_tape_discarding_changes() == OK );
+  check_navigation_state( 0, -1, 0 );
+  assert( fuse_host_rewind_tape() == OK );
+  assert( fuse_host_select_tape_block( 0 ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
+  check_navigation_state( 0, -1, 0 );
+
+  handle = memory_open( "navigation.tzx", COMPAT_FILE_WRITE ); assert( handle );
+  assert( !memory_write( handle, fixture, sizeof( fixture ), &written ) );
+  assert( written == sizeof( fixture ) && !memory_close( handle ) );
+  /* Also exercise the host's complete-read/write loops. */
+  navigation_filesystem.chunk = 3;
+  assert( insert_tape_without_decision( "navigation.tzx" ) == OK );
+  check_navigation_state( 1, 0, 0 );
+  assert( fuse_host_select_tape_block( 1 ) == OK );
+  check_navigation_state( 1, 1, 0 );
+  assert( fuse_host_select_tape_block( 5 ) == FUSE_HOST_OPERATION_MEDIA_ERROR );
+  check_navigation_state( 1, 1, 0 );
+  assert( fuse_host_rewind_tape() == OK );
+  check_navigation_state( 1, 0, 0 );
+  assert( fuse_host_toggle_tape_play() == OK );
+  check_navigation_state( 1, 0, 1 );
+  assert( fuse_run_tstates( 4000 ) == FUSE_RUN_COMPLETED );
+  assert( fuse_host_stop_tape() == OK );
+  check_navigation_state( 1, 0, 0 );
+
+  /* No extension: the default export format must still be TZX. */
+  assert( fuse_host_save_tape_file( "navigation-copy" ) == OK );
+  check_navigation_state( 1, 0, 0 );
+  exported = memory_find( "navigation-copy" ); assert( exported );
+  assert( !exported->handles && exported->length >= 8 );
+  assert( !memcmp( exported->data, "ZXTape!\x1a", 8 ) );
+  read_back = libspectrum_tape_alloc(); assert( read_back );
+  assert( !libspectrum_tape_read( read_back, exported->data, exported->length,
+                                  LIBSPECTRUM_ID_UNKNOWN, NULL ) );
+  assert( libspectrum_tape_count( read_back ) == 2 );
+  block = libspectrum_tape_iterator_init( &iterator, read_back );
+  assert( block && libspectrum_tape_block_type( block ) == LIBSPECTRUM_TAPE_BLOCK_ROM );
+  assert( libspectrum_tape_block_data_length( block ) == 2 );
+  assert( !memcmp( libspectrum_tape_block_data( block ), fixture + 15, 2 ) );
+  block = libspectrum_tape_iterator_next( &iterator );
+  assert( block && libspectrum_tape_block_type( block ) == LIBSPECTRUM_TAPE_BLOCK_PAUSE );
+  libspectrum_tape_free( read_back );
+
+  assert( eject_tape_discarding_changes() == OK );
+  assert( insert_tape_without_decision( "navigation-copy" ) == OK );
+  check_navigation_state( 1, 0, 0 );
+  assert( fuse_host_select_tape_block( 1 ) == OK );
+  check_navigation_state( 1, 1, 0 );
+  assert( eject_tape_discarding_changes() == OK );
+  check_navigation_state( 0, -1, 0 );
+  assert( navigation_filesystem.opens == navigation_filesystem.closes );
 }
 
 void
