@@ -23,6 +23,7 @@
 if UI_WII
 
 FUSE_UI_SOURCES += $(ui_wii_files)
+FUSE_UI_BACKEND_CFILES += $(ui_wii_cfiles)
 
 BUILT_SOURCES += $(ui_wii_built)
 
@@ -31,16 +32,18 @@ endif
 
 CLEANFILES += $(ui_wii_built)
 
-ui_wii_files = \
-                ui/wii/keysyms.c \
-                ui/wii/wiidisplay.c \
+ui_wii_files = $(ui_wii_cfiles) \
                 ui/wii/wiidisplay.h \
-                ui/wii/wiijoystick.c \
-                ui/wii/wiikeyboard.c \
                 ui/wii/wiikeyboard.h \
                 ui/wii/wiikeysyms.h \
+                ui/wii/wiimouse.h
+
+ui_wii_cfiles = \
+                ui/wii/keysyms.c \
+                ui/wii/wiidisplay.c \
+                ui/wii/wiijoystick.c \
+                ui/wii/wiikeyboard.c \
                 ui/wii/wiimouse.c \
-                ui/wii/wiimouse.h \
                 ui/wii/wiiui.c
 
 ui_wii_built = ui/wii/keysyms.c

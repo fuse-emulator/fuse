@@ -29,17 +29,59 @@ check_PROGRAMS =
 
 # Configured common engine; the final executable supplies UI hooks.
 noinst_LTLIBRARIES = libfuse.la
-FUSE_UI_SOURCES = ui.c menu.c uimedia.c settings-legacy.c settings-file.c
+# Keep replaceable common services separate from the selected backend.
+FUSE_UI_ENTRY_CFILES = ui.c
+FUSE_UI_MENU_CFILES = menu.c
+FUSE_UI_MEDIA_CFILES = uimedia.c
+FUSE_UI_SETTINGS_CFILES = settings-legacy.c settings-file.c
+FUSE_UI_COMMON_CFILES = $(FUSE_UI_ENTRY_CFILES) $(FUSE_UI_MENU_CFILES) \
+                       $(FUSE_UI_MEDIA_CFILES) $(FUSE_UI_SETTINGS_CFILES)
+FUSE_UI_BACKEND_CFILES =
+FUSE_UI_CFILES = $(FUSE_UI_COMMON_CFILES) $(FUSE_UI_BACKEND_CFILES)
+FUSE_UI_SOURCES = $(FUSE_UI_COMMON_CFILES)
+FUSE_UI_ENTRY_OBJECTS = $(FUSE_UI_ENTRY_CFILES:.c=.$(OBJEXT))
+FUSE_UI_MENU_OBJECTS = $(FUSE_UI_MENU_CFILES:.c=.$(OBJEXT))
+FUSE_UI_MEDIA_OBJECTS = $(FUSE_UI_MEDIA_CFILES:.c=.$(OBJEXT))
+FUSE_UI_SETTINGS_OBJECTS = $(FUSE_UI_SETTINGS_CFILES:.c=.$(OBJEXT))
+FUSE_UI_BACKEND_OBJECTS = $(FUSE_UI_BACKEND_CFILES:.c=.$(OBJEXT))
 settings-legacy.$(OBJEXT) settings-file.$(OBJEXT): settings.c settings.h
 EXTRA_fuse_SOURCES =
 FUSE_UI_LIBS = $(GTK_LIBS) $(X_LIBS)
 FUSE_UI_LINK = $(FUSE_UI_OBJECTS) $(FUSE_UI_LIBS)
-fuse_SOURCES = fuse-main.c $(FUSE_UI_SOURCES)
-FUSE_UI_C_SOURCES = $(filter %.c,$(FUSE_UI_SOURCES))
-FUSE_UI_OBJECTS = $(FUSE_UI_C_SOURCES:.c=.$(OBJEXT))
+fuse_SOURCES = fuse-main.c
+if UI_GTK
+# Automake owns the toolkit-specific compilation; engine flags stay toolkit-free.
+noinst_LTLIBRARIES += libfuse-ui.la
+libfuse_ui_la_SOURCES = $(FUSE_UI_SOURCES)
+libfuse_ui_la_CPPFLAGS = $(AM_CPPFLAGS) $(GTK_CFLAGS)
+libfuse_ui_la-settings-legacy.lo libfuse_ui_la-settings-file.lo: settings.c settings.h
+FUSE_UI_OBJECTS = $(libfuse_ui_la_OBJECTS)
+FUSE_UI_ADAPTER_OBJECTS = $(FUSE_UI_OBJECTS)
+else
+fuse_SOURCES += $(FUSE_UI_SOURCES)
+FUSE_UI_OBJECTS = $(FUSE_UI_CFILES:.c=.$(OBJEXT))
+FUSE_UI_ADAPTER_OBJECTS =
+endif
 FUSE_APP_LIBS =
-fuse_LDADD = libfuse.la $(FUSE_UI_LIBS) $(FUSE_APP_LIBS)
-fuse_DEPENDENCIES = libfuse.la
+fuse_LDADD = $(FUSE_UI_ADAPTER_OBJECTS) libfuse.la $(FUSE_UI_LIBS) $(FUSE_APP_LIBS)
+fuse_DEPENDENCIES = libfuse.la $(FUSE_UI_ADAPTER_OBJECTS)
+
+if ENABLE_LUA_HOST
+bin_PROGRAMS += fuse-lua
+fuse_lua_SOURCES = \
+  automation/lua-host.c \
+  automation/lua-host-internal.h \
+  automation/lua-common.c \
+  automation/lua-bindings.c \
+  automation/lua-resources.c \
+  automation/lua-run.c \
+  automation/lua-results.c \
+  automation/lua-options.c \
+  $(FUSE_UI_SOURCES)
+fuse_lua_CPPFLAGS = $(AM_CPPFLAGS) $(LUA_CFLAGS)
+fuse_lua_LDADD = libfuse.la $(FUSE_UI_LIBS) $(FUSE_APP_LIBS) $(LUA_LIBS)
+fuse_lua_DEPENDENCIES = libfuse.la
+endif
 
 libfuse_la_SOURCES = display.c \
 	display_border.c \
@@ -128,7 +170,7 @@ EXTRA_libfuse_la_SOURCES =
 BUILT_SOURCES = options.h settings.c settings.h
 
 # Rebuild even sources without config.h when the assertion policy changes.
-$(fuse_OBJECTS) $(libfuse_la_OBJECTS) $(FUSE_UI_OBJECTS) $(SOUND_LIBADD) $(TIMER_LIBADD): config.h
+$(fuse_OBJECTS) $(fuse_lua_OBJECTS) $(libfuse_la_OBJECTS) $(FUSE_UI_OBJECTS) $(SOUND_LIBADD) $(TIMER_LIBADD): config.h
 
 settings.c: settings.pl settings.dat ui/options.dat
 	$(AM_V_GEN)$(PERL) -I$(srcdir)/perl $(srcdir)/settings.pl $(srcdir)/settings.dat $(srcdir)/ui/options.dat > $@.tmp && mv $@.tmp $@

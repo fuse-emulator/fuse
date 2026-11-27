@@ -26,6 +26,9 @@
 #include <zlib.h>
 
 #include "automation.h"
+#ifdef ENABLE_LUA_HOST
+#include "host-services.h"
+#endif
 #include "artifacts.h"
 #include "json.h"
 #include "result_settings.h"
@@ -392,6 +395,9 @@ automation_record_external_snapshot( const utils_file *file )
 void
 automation_rzx_started( int embedded_snapshot )
 {
+#ifdef ENABLE_LUA_HOST
+  host_services_rzx_started();
+#endif
   result.snapshot_source =
     embedded_snapshot ? AUTOMATION_RZX_SNAPSHOT_EMBEDDED :
     AUTOMATION_RZX_SNAPSHOT_EXTERNAL;
@@ -402,6 +408,9 @@ automation_rzx_started( int embedded_snapshot )
 static void
 rzx_finish( automation_termination_type termination )
 {
+#ifdef ENABLE_LUA_HOST
+  host_services_rzx_finished( termination );
+#endif
   if( !automation_active() || !scenario.until_rzx_end )
     return;
 
@@ -436,6 +445,9 @@ automation_rzx_snapshot_error( void )
 void
 automation_rzx_aborted( void )
 {
+#ifdef ENABLE_LUA_HOST
+  host_services_rzx_finished( AUTOMATION_TERMINATION_RZX_ABORTED );
+#endif
   if( result.termination == AUTOMATION_TERMINATION_DEADLINE )
     rzx_finish( AUTOMATION_TERMINATION_RZX_ABORTED );
 }

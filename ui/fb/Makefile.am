@@ -23,6 +23,7 @@
 if UI_FB
 
 FUSE_UI_SOURCES += $(ui_fb_files)
+FUSE_UI_BACKEND_CFILES += $(ui_fb_cfiles)
 
 BUILT_SOURCES += $(ui_fb_built)
 
@@ -31,14 +32,16 @@ endif
 
 CLEANFILES += $(ui_fb_built)
 
-ui_fb_files = \
-              ui/fb/fbdisplay.c \
+ui_fb_files = $(ui_fb_cfiles) \
               ui/fb/fbdisplay.h \
+              ui/fb/fbkeyboard.h \
+              ui/fb/fbmouse.h
+
+ui_fb_cfiles = \
+              ui/fb/fbdisplay.c \
               ui/fb/fbjoystick.c \
               ui/fb/fbkeyboard.c \
-              ui/fb/fbkeyboard.h \
               ui/fb/fbmouse.c \
-              ui/fb/fbmouse.h \
               ui/fb/fbui.c \
               ui/fb/keysyms.c
 

@@ -331,6 +331,13 @@ write_error_json( automation_json *json, const char *name, const char *stage,
 }
 
 void
+automation_artifacts_screen_error( const char *message )
+{
+  screen_written = 0;
+  screen_error = message;
+}
+
+void
 automation_artifacts_write_json( automation_json *json )
 {
   write_screen_json( json );

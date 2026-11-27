@@ -18,30 +18,34 @@
 if UI_SDL2
 
 FUSE_UI_SOURCES += $(ui_sdl2_files)
+FUSE_UI_BACKEND_CFILES += $(ui_sdl2_cfiles)
 
 endif
 
 if SDL2_JOYSTICK
 FUSE_UI_SOURCES += ui/sdl2/sdl2_joystick_internal.c
+FUSE_UI_BACKEND_CFILES += ui/sdl2/sdl2_joystick_internal.c
 endif
 
-ui_sdl2_files = \
+ui_sdl2_files = $(ui_sdl2_cfiles) \
+                ui/sdl2/sdl2_display_internal.h \
+                ui/sdl2/sdl2_scaler_state.h \
+                ui/sdl2/sdl2_display.h \
+                ui/sdl2/sdl2_joystick_internal.h \
+                ui/sdl2/sdl2_joystick.h \
+                ui/sdl2/sdl2_keyboard.h \
+                ui/sdl2/sdl2_mouse_internal.h \
+                ui/sdl2/sdl2_events.h \
+                ui/sdl2/sdl2_ui.h
+
+ui_sdl2_cfiles = \
                 ui/display_timing.c \
                 ui/sdl2/sdl2_display_internal.c \
-                ui/sdl2/sdl2_display_internal.h \
                 ui/sdl2/sdl2_scaler_state.c \
-                ui/sdl2/sdl2_scaler_state.h \
                 ui/sdl2/sdl2_display.c \
-                ui/sdl2/sdl2_display.h \
                 ui/sdl2/sdl2_joystick_internal.c \
-                ui/sdl2/sdl2_joystick_internal.h \
                 ui/sdl2/sdl2_joystick.c \
-                ui/sdl2/sdl2_joystick.h \
                 ui/sdl2/sdl2_keyboard.c \
-                ui/sdl2/sdl2_keyboard.h \
                 ui/sdl2/sdl2_mouse_internal.c \
-                ui/sdl2/sdl2_mouse_internal.h \
                 ui/sdl2/sdl2_events.c \
-                ui/sdl2/sdl2_events.h \
-                ui/sdl2/sdl2_ui.c \
-                ui/sdl2/sdl2_ui.h
+                ui/sdl2/sdl2_ui.c

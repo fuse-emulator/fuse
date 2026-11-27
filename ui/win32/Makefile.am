@@ -24,6 +24,7 @@ if UI_WIN32
 
 fuse_SOURCES += ui/win32/win32main.c
 FUSE_UI_SOURCES += $(ui_win32_files)
+FUSE_UI_BACKEND_CFILES += $(ui_win32_cfiles)
 
 BUILT_SOURCES += $(ui_win32_built)
 
@@ -34,41 +35,43 @@ endif
 
 CLEANFILES += $(ui_win32_built)
 
-ui_win32_files = \
-                 ui/win32/about.c \
+ui_win32_files = $(ui_win32_cfiles) \
                  ui/win32/about.h \
-                 ui/win32/binary.c \
                  ui/win32/binary.h \
-                 ui/win32/browse.c \
                  ui/win32/browse.h \
+                 ui/win32/debugger.h \
+                 ui/win32/hyperlinks.h \
+                 ui/win32/memorybrowser.h \
+                 ui/win32/picture.h \
+                 ui/win32/pokefinder.h \
+                 ui/win32/pokemem.h \
+                 ui/win32/rollback.h \
+                 ui/win32/roms.h \
+                 ui/win32/select_template.h \
+                 ui/win32/win32internals.h \
+                 ui/win32/win32joystick.h
+
+ui_win32_cfiles = \
+                 ui/win32/about.c \
+                 ui/win32/binary.c \
+                 ui/win32/browse.c \
                  ui/win32/confirm.c \
                  ui/win32/debugger.c \
-                 ui/win32/debugger.h \
                  ui/win32/fileselector.c \
                  ui/display_timing.c \
                  ui/win32/hyperlinks.c \
-                 ui/win32/hyperlinks.h \
                  ui/win32/keysyms.c \
                  ui/win32/memorybrowser.c \
-                 ui/win32/memorybrowser.h \
                  ui/win32/menu_data.c \
                  ui/win32/options.c \
                  ui/win32/picture.c \
-                 ui/win32/picture.h \
                  ui/win32/pokefinder.c \
-                 ui/win32/pokefinder.h \
                  ui/win32/pokemem.c \
-                 ui/win32/pokemem.h \
                  ui/win32/rollback.c \
-                 ui/win32/rollback.h \
                  ui/win32/roms.c \
-                 ui/win32/roms.h \
-                 ui/win32/select_template.h \
                  ui/win32/statusbar.c \
                  ui/win32/win32display.c \
-                 ui/win32/win32internals.h \
                  ui/win32/win32joystick.c \
-                 ui/win32/win32joystick.h \
                  ui/win32/win32keyboard.c \
                  ui/win32/win32mouse.c \
                  ui/win32/win32ui.c

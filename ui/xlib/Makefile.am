@@ -23,6 +23,7 @@
 if UI_X
 
 FUSE_UI_SOURCES += $(ui_xlib_files)
+FUSE_UI_BACKEND_CFILES += $(ui_xlib_cfiles)
 
 BUILT_SOURCES += $(ui_xlib_built)
 
@@ -33,16 +34,18 @@ EXTRA_fuse_SOURCES += $(ui_xlib_files)
 
 CLEANFILES += $(ui_xlib_built)
 
-ui_xlib_files = \
+ui_xlib_files = $(ui_xlib_cfiles) \
+                ui/xlib/xdisplay.h \
+                ui/xlib/xkeyboard.h \
+                ui/xlib/xui.h
+
+ui_xlib_cfiles = \
                 ui/xlib/keysyms.c \
                 ui/xlib/xdisplay.c \
-                ui/xlib/xdisplay.h \
                 ui/xlib/xerror.c \
                 ui/xlib/xjoystick.c \
                 ui/xlib/xkeyboard.c \
-                ui/xlib/xkeyboard.h \
-                ui/xlib/xui.c \
-                ui/xlib/xui.h
+                ui/xlib/xui.c
 
 ui_xlib_built = \
                  ui/xlib/keysyms.c \

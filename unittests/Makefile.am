@@ -26,6 +26,12 @@ EXTRA_DIST += unittests/fixtures/floatingbus/README.md \
 	unittests/fixtures/floatingbus/.gitignore
 
 LIFECYCLE_CHECK_TARGETS = check-startup-manager
+if ENABLE_LUA_HOST
+LIFECYCLE_CHECK_TARGETS += check-lua-host
+.PHONY: check-lua-host
+check-lua-host: fuse-lua$(EXEEXT) fuse$(EXEEXT)
+	python3 $(srcdir)/unittests/lua_host.py ./fuse-lua$(EXEEXT) ./fuse$(EXEEXT) $(abs_top_srcdir)/roms
+endif
 .PHONY: $(LIFECYCLE_CHECK_TARGETS) check-legacy-engine-link check-startup-ownership
 
 # Per-test CPPFLAGS give shared sources distinct non-Libtool object names.
@@ -300,7 +306,8 @@ $(unittests_legacyenginesourcetest_OBJECTS): config.h
 # normal engine archive supplies the real tape implementation and teardown.
 check_PROGRAMS += unittests/tapesaveuitest
 unittests_tapesaveuitest_SOURCES = unittests/tapesaveuitest.c unittests/tapesaveui.c
-TAPE_TEST_UI_OBJECTS = $(filter-out ui.$(OBJEXT),$(FUSE_UI_OBJECTS))
+TAPE_TEST_UI_OBJECTS = $(FUSE_UI_MENU_OBJECTS) $(FUSE_UI_MEDIA_OBJECTS) \
+                       $(FUSE_UI_SETTINGS_OBJECTS) $(FUSE_UI_BACKEND_OBJECTS)
 unittests_tapesaveuitest_LDADD = libfuse.la $(TAPE_TEST_UI_OBJECTS) $(FUSE_UI_LIBS)
 unittests_tapesaveuitest_DEPENDENCIES = libfuse.la $(TAPE_TEST_UI_OBJECTS)
 LIFECYCLE_CHECK_TARGETS += check-tape-save-ui
@@ -328,7 +335,8 @@ check-tape-recording: unittests/taperecordtest
 check_PROGRAMS += unittests/floppysaveuitest unittests/floppysavelegacytest
 unittests_floppysaveuitest_SOURCES = unittests/floppysaveuitest.c unittests/floppysaveui.c
 unittests_floppysaveuitest_CPPFLAGS = $(AM_CPPFLAGS)
-FLOPPY_TEST_UI_OBJECTS = $(filter-out uimedia.$(OBJEXT),$(FUSE_UI_OBJECTS))
+FLOPPY_TEST_UI_OBJECTS = $(FUSE_UI_ENTRY_OBJECTS) $(FUSE_UI_MENU_OBJECTS) \
+                         $(FUSE_UI_SETTINGS_OBJECTS) $(FUSE_UI_BACKEND_OBJECTS)
 unittests_floppysaveuitest_LDADD = libfuse.la $(FLOPPY_TEST_UI_OBJECTS) $(FUSE_UI_LIBS)
 unittests_floppysaveuitest_DEPENDENCIES = libfuse.la $(FLOPPY_TEST_UI_OBJECTS)
 unittests_floppysavelegacytest_SOURCES = $(unittests_floppysaveuitest_SOURCES)
@@ -366,7 +374,8 @@ unittests_nullhostcodec_CPPFLAGS = $(AM_CPPFLAGS) -DNULL_HOST_SETTINGS_CODEC
 unittests_nullhostcodec_LDADD = libfuse.la $(NULL_HOST_UI_OBJECTS) settings-file.$(OBJEXT) $(FUSE_UI_LIBS)
 unittests_nullhostcodec_DEPENDENCIES = libfuse.la $(NULL_HOST_UI_OBJECTS) settings-file.$(OBJEXT)
 unittests_nullhostlink_SOURCES = unittests/integration/null-host.c
-NULL_HOST_UI_OBJECTS = $(filter-out settings-legacy.$(OBJEXT) settings-file.$(OBJEXT),$(FUSE_UI_OBJECTS))
+NULL_HOST_UI_OBJECTS = $(FUSE_UI_ENTRY_OBJECTS) $(FUSE_UI_MENU_OBJECTS) \
+                       $(FUSE_UI_MEDIA_OBJECTS) $(FUSE_UI_BACKEND_OBJECTS)
 unittests_nullhostlink_LDADD = libfuse.la $(NULL_HOST_UI_OBJECTS) $(FUSE_UI_LIBS)
 unittests_nullhostlink_DEPENDENCIES = libfuse.la $(NULL_HOST_UI_OBJECTS)
 unittests_nullhostsource_SOURCES = unittests/integration/null-host.c $(libfuse_la_SOURCES)
@@ -374,6 +383,7 @@ unittests_nullhostsource_CPPFLAGS = $(AM_CPPFLAGS)
 unittests_nullhostsource_LDADD = $(libfuse_la_LIBADD) $(NULL_HOST_UI_OBJECTS) $(FUSE_UI_LIBS)
 unittests_nullhostsource_DEPENDENCIES = $(libfuse_la_DEPENDENCIES) $(NULL_HOST_UI_OBJECTS)
 $(unittests_nullhostsource_OBJECTS): config.h
+
 LIFECYCLE_CHECK_TARGETS += check-null-host
 .PHONY: check-null-host
 
@@ -883,7 +893,7 @@ $(AUDIO_TEST_BINARIES): $(fuse_OBJECTS) $(fuse_DEPENDENCIES) $(libfuse_la_OBJECT
 	    *) objects="$$objects $$object" ;; esac; \
 	  done; \
 	  interval=$@; interval=$${interval#unittests/fuse-audio-}; \
-	  $(fuse_LINK) $(fuse_OBJECTS) $$objects unittests/audio-cut-$$interval.lo $(libfuse_la_LIBADD) $(FUSE_UI_LIBS) $(FUSE_APP_LIBS) $(LIBS)
+	  $(fuse_LINK) $(fuse_OBJECTS) $(FUSE_UI_ADAPTER_OBJECTS) $$objects unittests/audio-cut-$$interval.lo $(libfuse_la_LIBADD) $(FUSE_UI_LIBS) $(FUSE_APP_LIBS) $(LIBS)
 
 check-sound-engine-equivalence: fuse$(EXEEXT) $(AUDIO_TEST_BINARIES)
 	python3 $(srcdir)/unittests/audio-frame-equivalence.py \

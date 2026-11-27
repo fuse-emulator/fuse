@@ -217,6 +217,39 @@ AC_COMPILE_IFELSE(
 CPPFLAGS="$ac_save_CPPFLAGS"
 AC_SUBST(LIBSPEC_HAVE_ZLIB)
 
+dnl Optional, intrinsically headless Lua application.
+AC_ARG_WITH([lua],
+  AS_HELP_STRING([--with-lua], [build the headless fuse-lua application]),
+  [lua_host=$withval], [lua_host=no])
+AS_IF([test "$lua_host" != yes && test "$lua_host" != no],
+  [AC_MSG_ERROR([--with-lua accepts yes or no])])
+AC_ARG_VAR([LUA_PKG_CONFIG], [pkg-config module for Lua 5.4 or 5.5])
+AS_IF([test "$lua_host" = yes], [
+  AS_IF([test "$with_gtk" = yes || test "$with_sdl" = yes ||
+         test "$with_win32" = yes || test "$with_fb" = yes ||
+         test "$with_wii" = yes],
+    [AC_MSG_ERROR([the Lua application requires the headless frontend])])
+  AS_IF([test -n "$with_audio_driver" && test "$with_audio_driver" != null &&
+         test "$with_audio_driver" != auto],
+    [AC_MSG_ERROR([the Lua application uses virtual audio, not a device driver])])
+  with_audio_driver=null
+  AS_IF([test -z "$LUA_PKG_CONFIG"], [
+    for module in lua5.5 lua-5.5 lua55 lua5.4 lua-5.4 lua54 lua; do
+      if $PKG_CONFIG --exists "$module >= 5.4 $module < 5.6"; then
+        LUA_PKG_CONFIG=$module
+        break
+      fi
+    done
+  ])
+  AS_IF([test -z "$LUA_PKG_CONFIG"],
+    [AC_MSG_ERROR([Lua 5.4 or 5.5 development files are required for --with-lua])])
+  PKG_CHECK_MODULES([LUA], [$LUA_PKG_CONFIG >= 5.4 $LUA_PKG_CONFIG < 5.6])
+  AC_DEFINE([ENABLE_LUA_HOST], [1], [Build the headless Lua application])
+  AC_DEFINE([UI_NULL], [1], [Defined if null UI is in use])
+  UI=null
+])
+AM_CONDITIONAL([ENABLE_LUA_HOST], [test "$lua_host" = yes])
+
 dnl Select a user interface
 
 dnl Try various UI options; set the `ui' variable when we've got one
@@ -241,6 +274,7 @@ case "$host_os" in
     ;;
 esac
 fi
+if test "$lua_host" = yes; then win32=no; fi
 AC_MSG_RESULT($win32)
 
 if test "$win32" = yes; then
@@ -841,6 +875,12 @@ AC_ARG_ENABLE([automation],
   AS_HELP_STRING([--enable-automation],
                  [enable development automation interface]),
   [automation=$enableval], [automation=no])
+if test "$lua_host" = yes; then
+  if test "$enable_automation" = no; then
+    AC_MSG_ERROR([--with-lua requires the shared automation serializers])
+  fi
+  automation=yes
+fi
 if test "$automation" = yes; then
   if test "$zlib" != yes; then
     AC_MSG_ERROR([development automation requires zlib])

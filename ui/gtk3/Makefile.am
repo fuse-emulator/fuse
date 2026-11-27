@@ -25,8 +25,7 @@
 if UI_GTK
 
 FUSE_UI_SOURCES += $(ui_gtk_files)
-
-$(FUSE_UI_OBJECTS) fuse-main.$(OBJEXT): AM_CPPFLAGS += $(GTK_CFLAGS)
+FUSE_UI_BACKEND_CFILES += $(ui_gtk_cfiles)
 
 BUILT_SOURCES += $(ui_gtk_built)
 
@@ -50,7 +49,11 @@ gtkui_built_resource_files = \
 
 CLEANFILES += $(ui_gtk_built) ui/gtk3/options.stamp
 
-ui_gtk_files = \
+ui_gtk_files = $(ui_gtk_cfiles) \
+               ui/gtk3/gtkinternals.h \
+               ui/gtk3/resources.h
+
+ui_gtk_cfiles = \
                ui/gtk3/binary.c \
                ui/gtk3/browse.c \
                ui/gtk3/confirm.c \
@@ -59,7 +62,6 @@ ui_gtk_files = \
                ui/display_timing.c \
                ui/gtk3/filter_options.c \
                ui/gtk3/gtkdisplay.c \
-               ui/gtk3/gtkinternals.h \
                ui/gtk3/gtkjoystick.c \
                ui/gtk3/gtkkeyboard.c \
                ui/gtk3/gtkmouse.c \
@@ -71,7 +73,6 @@ ui_gtk_files = \
                ui/gtk3/pokefinder.c \
                ui/gtk3/pokemem.c \
                ui/gtk3/resources.c \
-               ui/gtk3/resources.h \
                ui/gtk3/rollback.c \
                ui/gtk3/roms.c \
                ui/gtk3/statusbar.c \

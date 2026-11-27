@@ -51,8 +51,8 @@ Unix, Linux, BSD, etc.
 
 Required:
 
-* X, SDL2 or framebuffer support. If you have GTK, you'll get
-  a (much) nicer user interface under X.
+* For graphical builds, X, SDL2 or framebuffer support. If you have GTK,
+  you'll get a (much) nicer user interface under X.
 * libspectrum: this is available from
   https://fuse-emulator.sourceforge.net/libspectrum.php
 
@@ -61,6 +61,7 @@ Optional:
 * Other libraries will give you some extended functionality:
   * libgcrypt: the ability to digitally sign input recordings (note that
     Fuse requires version 1.1.42 or later).
+  * Lua 5.4 or 5.5: the optional headless Lua automation host (see below)
   * libpng: the ability to save screenshots
   * libxml2: the ability to load and save Fuse's current configuration
   * zlib: support for compressed RZX files
@@ -91,6 +92,24 @@ pay their execution cost. For development, configure with `--enable-assertions'
 to enable these checks. Changing this option rebuilds the emulator objects.
 Assertion-based unit tests keep their checks enabled in either configuration;
 compile-time static assertions are unaffected.
+
+Headless Lua automation
+-----------------------
+
+Configure with `--with-lua' and run `make' to build `fuse-lua', an optional
+headless host for scripted execution, input, inspection and media operations,
+with JSON results and optional PNG screenshots and synthesized WAV audio.
+This selects headless display, audio and timing services automatically;
+normal builds do not require Lua.
+
+For example, from the source directory:
+
+  mkdir -p /tmp/fuse-evidence
+  ./fuse-lua --script examples/lua/boot.lua --output /tmp/fuse-evidence -- "$PWD/roms"
+
+Use `--script -' to read a script from piped or redirected stdin.
+Without `--script', `fuse-lua' also accepts existing `--automation-*' invocations.
+See `hacking/lua-host.md' for the API, execution limits and script permissions.
 
 Closing comments
 ----------------

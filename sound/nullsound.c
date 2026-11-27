@@ -20,6 +20,9 @@
 #include "config.h"
 #include "sound.h"
 
+#ifdef ENABLE_LUA_HOST
+#include "automation/host-services.h"
+#endif
 #ifdef ENABLE_AUTOMATION
 #include "automation/artifacts.h"
 #include "automation/automation.h"
@@ -30,6 +33,14 @@ static int sample_rate, channels;
 int
 sound_lowlevel_init( const char *device, int *freqptr, int *stereoptr )
 {
+#ifdef ENABLE_LUA_HOST
+  if( host_services_audio_enabled() ) {
+    sample_rate = *freqptr;
+    channels = *stereoptr == SOUND_STEREO_AY_NONE ? 1 : 2;
+    host_services_audio_init( sample_rate, channels );
+    return 0;
+  }
+#endif
 #ifdef ENABLE_AUTOMATION
   if( automation_capture_audio_enabled() ) {
     sample_rate = *freqptr;
@@ -49,6 +60,9 @@ sound_lowlevel_end( void )
 void
 sound_lowlevel_frame( libspectrum_signed_word *data, int len )
 {
+#ifdef ENABLE_LUA_HOST
+  host_services_audio( data, len, sample_rate, channels );
+#endif
 #ifdef ENABLE_AUTOMATION
   automation_capture_pcm( data, len, sample_rate, channels );
 #endif

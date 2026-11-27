@@ -35,6 +35,9 @@ void automation_artifacts_capture_pcm( const libspectrum_signed_word *samples,
 void automation_artifacts_audio_initialized( int sample_rate, int channels );
 int automation_artifacts_write( const char *directory, int capture_screen,
                                 int capture_audio );
+/* Report a requested image that cannot safely be encoded after an engine
+   failure. The message is borrowed through finalization. */
+void automation_artifacts_screen_error( const char *message );
 void automation_artifacts_write_json( automation_json *json );
 void automation_artifacts_end( void );
 

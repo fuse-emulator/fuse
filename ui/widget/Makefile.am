@@ -23,6 +23,7 @@
 if USE_WIDGET
 
 FUSE_UI_SOURCES += $(ui_widget_files)
+FUSE_UI_BACKEND_CFILES += $(ui_widget_cfiles)
 
 BUILT_SOURCES += $(ui_widget_built)
 
@@ -30,12 +31,18 @@ pkgdata_DATA += ui/widget/fuse.font
 
 else
 FUSE_UI_SOURCES += ui/no_widget.c
+FUSE_UI_BACKEND_CFILES += ui/no_widget.c
 endif
 
 
 CLEANFILES += $(ui_widget_built)
 
-ui_widget_files = \
+ui_widget_files = $(ui_widget_cfiles) \
+                  ui/widget/utf8.h \
+                  ui/widget/widget_internals.h \
+                  ui/widget/widget.h
+
+ui_widget_cfiles = \
                   ui/widget/about.c \
                   ui/widget/binary.c \
                   ui/widget/browse.c \
@@ -54,10 +61,7 @@ ui_widget_files = \
                   ui/widget/select.c \
                   ui/widget/text.c \
                   ui/widget/utf8.c \
-                  ui/widget/utf8.h \
-                  ui/widget/widget_internals.h \
-                  ui/widget/widget.c \
-                  ui/widget/widget.h
+                  ui/widget/widget.c
 
 ui_widget_built = \
                   ui/widget/fuse.font \
