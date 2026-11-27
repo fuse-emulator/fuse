@@ -207,6 +207,9 @@ lua_host_start( lua_State *L )
   fuse_host_resources resources = { h, acquire_rom };
   fuse_init_result result;
   startup_options options;
+  static const host_services_policy capture_policy = {
+    128u * 1024u * 1024u, 1
+  };
   if( h->closed ) return lua_host_fail( L, "emulator host is shutting down" );
   if( h->attempted ) return lua_host_fail( L,
                                            "only one fuse.start attempt is allowed per process" );
@@ -218,7 +221,7 @@ lua_host_start( lua_State *L )
     return lua_host_fail( L, "invalid host configuration" );
   }
   h->attempted = 1;
-  host_services_begin( h->screen, h->audio );
+  host_services_begin( h->screen, h->audio, &capture_policy );
   result = fuse_host_prepare( config, &resources );
   fuse_host_config_free( config );
   if( result != FUSE_INIT_READY ) {

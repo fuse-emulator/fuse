@@ -23,10 +23,8 @@
 
 #include "config.h"
 
-#ifdef ENABLE_LUA_HOST
-#include "automation/host-services.h"
-#endif
 #ifdef ENABLE_AUTOMATION
+#include "automation/host-services.h"
 #include "automation/automation.h"
 #endif
 #include <string.h>
@@ -228,13 +226,8 @@ ui_query_message( const char *message )
 int
 ui_statusbar_update( ui_statusbar_item item, ui_statusbar_state state )
 {
-#ifdef ENABLE_LUA_HOST
-  if( item == UI_STATUSBAR_ITEM_DISK &&
-      ( state == UI_STATUSBAR_STATE_ACTIVE || state == UI_STATUSBAR_STATE_INACTIVE ) )
-    host_services_disk_changed( state == UI_STATUSBAR_STATE_ACTIVE );
-#endif
 #ifdef ENABLE_AUTOMATION
-  if( automation_active() && item == UI_STATUSBAR_ITEM_DISK &&
+  if( item == UI_STATUSBAR_ITEM_DISK &&
       ( state == UI_STATUSBAR_STATE_ACTIVE ||
         state == UI_STATUSBAR_STATE_INACTIVE ) )
     automation_disk_motor_changed( state == UI_STATUSBAR_STATE_ACTIVE,
@@ -283,13 +276,8 @@ uidisplay_end( void )
 void
 uidisplay_frame_end( void )
 {
-#ifdef ENABLE_LUA_HOST
-  host_services_screen( framebuffer, framebuffer_width, framebuffer_height );
-#endif
 #ifdef ENABLE_AUTOMATION
-  if( automation_capture_screen_enabled() )
-    automation_capture_screen( framebuffer, framebuffer_width,
-                               framebuffer_height );
+  host_services_screen( framebuffer, framebuffer_width, framebuffer_height );
 #endif
 }
 
@@ -303,15 +291,9 @@ uidisplay_hotswap_gfx_mode( void )
 int
 uidisplay_init( int width, int height )
 {
-#ifdef ENABLE_LUA_HOST
-  host_services_screen_geometry();
-#endif
 #ifdef ENABLE_AUTOMATION
-  if( automation_capture_screen_enabled()
-#ifdef ENABLE_LUA_HOST
-      || host_services_screen_enabled()
-#endif
-      ) {
+  host_services_screen_geometry();
+  if( host_services_screen_enabled() ) {
     for( scaler_type scaler = 0; scaler < SCALER_NUM; scaler++ )
       scaler_register( scaler );
     framebuffer_width = width;

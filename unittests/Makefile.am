@@ -26,6 +26,15 @@ EXTRA_DIST += unittests/fixtures/floatingbus/README.md \
 	unittests/fixtures/floatingbus/.gitignore
 
 LIFECYCLE_CHECK_TARGETS = check-startup-manager
+if ENABLE_AUTOMATION
+check_PROGRAMS += unittests/hostservicestest
+unittests_hostservicestest_SOURCES = unittests/hostservices.c automation/host-services.c
+unittests_hostservicestest_CPPFLAGS = $(AM_CPPFLAGS)
+LIFECYCLE_CHECK_TARGETS += check-host-services
+.PHONY: check-host-services
+check-host-services: unittests/hostservicestest
+	./unittests/hostservicestest$(EXEEXT)
+endif
 if ENABLE_LUA_HOST
 LIFECYCLE_CHECK_TARGETS += check-lua-host
 .PHONY: check-lua-host

@@ -16,10 +16,6 @@ EXTRA_libfuse_la_SOURCES += \
 	     automation/host-services.c \
 	     automation/host-services.h
 
-if ENABLE_LUA_HOST
-libfuse_la_SOURCES += automation/host-services.c automation/host-services.h
-endif
-
 if ENABLE_AUTOMATION
 libfuse_la_SOURCES += \
 	automation/artifacts.c \
@@ -31,5 +27,7 @@ libfuse_la_SOURCES += \
 	automation/result_settings.c \
 	automation/result_settings.h \
 	automation/state.c \
-	automation/state.h
+	automation/state.h \
+	automation/host-services.c \
+	automation/host-services.h
 endif

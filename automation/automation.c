@@ -26,9 +26,7 @@
 #include <zlib.h>
 
 #include "automation.h"
-#ifdef ENABLE_LUA_HOST
 #include "host-services.h"
-#endif
 #include "artifacts.h"
 #include "json.h"
 #include "result_settings.h"
@@ -206,6 +204,7 @@ int
 automation_validate_scenario( void )
 {
   int conditions = scenario.success.present || scenario.failure.present;
+  static const host_services_policy capture_policy = { 0, 0 };
 
   if( !scenario.output_directory && !scenario.maximum_frames && !conditions &&
       !scenario.failure.ignore && !scenario.until_rzx_end &&
@@ -226,6 +225,10 @@ automation_validate_scenario( void )
     return 1;
   }
 
+  /* Settings validation precedes display/audio/timer startup. Make capture
+     capabilities available now, but do not collect output until execution. */
+  host_services_begin( scenario.capture_screen, scenario.capture_audio,
+                       &capture_policy );
   return 0;
 }
 
@@ -251,6 +254,7 @@ automation_arm( unsigned long frame_count )
   first_frame = frame_count;
   result.frames_completed = 0;
   armed = 1;
+  host_services_arm();
   sample_event_scheduled = 0;
   if( scenario.sample_tstates )
     sample_event_type = event_register( NULL, "Automation sample offset" );
@@ -370,6 +374,7 @@ automation_record_disk( const utils_file *file, const char *controller,
 void
 automation_disk_motor_changed( int on, unsigned long frame_count )
 {
+  host_services_disk_changed( on );
   if( !armed || !scenario.until_disk_idle ) return;
 
   on = !!on;
@@ -395,9 +400,7 @@ automation_record_external_snapshot( const utils_file *file )
 void
 automation_rzx_started( int embedded_snapshot )
 {
-#ifdef ENABLE_LUA_HOST
   host_services_rzx_started();
-#endif
   result.snapshot_source =
     embedded_snapshot ? AUTOMATION_RZX_SNAPSHOT_EMBEDDED :
     AUTOMATION_RZX_SNAPSHOT_EXTERNAL;
@@ -408,9 +411,7 @@ automation_rzx_started( int embedded_snapshot )
 static void
 rzx_finish( automation_termination_type termination )
 {
-#ifdef ENABLE_LUA_HOST
   host_services_rzx_finished( termination );
-#endif
   if( !automation_active() || !scenario.until_rzx_end )
     return;
 
@@ -445,27 +446,9 @@ automation_rzx_snapshot_error( void )
 void
 automation_rzx_aborted( void )
 {
-#ifdef ENABLE_LUA_HOST
   host_services_rzx_finished( AUTOMATION_TERMINATION_RZX_ABORTED );
-#endif
   if( result.termination == AUTOMATION_TERMINATION_DEADLINE )
     rzx_finish( AUTOMATION_TERMINATION_RZX_ABORTED );
-}
-
-void
-automation_capture_screen( const libspectrum_byte *pixels, size_t width,
-                           size_t height )
-{
-  if( armed && scenario.capture_screen )
-    automation_artifacts_capture_screen( pixels, width, height );
-}
-
-void
-automation_capture_pcm( const libspectrum_signed_word *samples, int count,
-                        int sample_rate, int channels )
-{
-  if( armed && scenario.capture_audio )
-    automation_artifacts_capture_pcm( samples, count, sample_rate, channels );
 }
 
 void
@@ -708,7 +691,7 @@ automation_end( void )
   diagnostics_count = 0;
   scenario.output_directory = NULL;
   tape_name = disk_name = disk_controller = rzx_name = snapshot_name = NULL;
-  automation_artifacts_end();
+  host_services_end();
 }
 
 #endif

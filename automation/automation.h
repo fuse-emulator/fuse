@@ -101,10 +101,6 @@ void automation_rzx_snapshot_error( void );
 void automation_rzx_aborted( void );
 
 void automation_diagnostic( ui_error_level severity, const char *message );
-void automation_capture_screen( const libspectrum_byte *pixels,
-                                size_t width, size_t height );
-void automation_capture_pcm( const libspectrum_signed_word *samples, int count,
-                             int sample_rate, int channels );
 int automation_write_result( void );
 
 void automation_end( void );

@@ -17,29 +17,17 @@
 */
 #include "config.h"
 
-#include "automation/automation.h"
-#ifdef ENABLE_LUA_HOST
 #include "automation/host-services.h"
-#endif
 #include "compat.h"
 #include "timer/timer.h"
 
 static double virtual_time;
 static int was_active;
 
-static int
-virtual_timer_active( void )
-{
-#ifdef ENABLE_LUA_HOST
-  if( host_services_active() ) return 1;
-#endif
-  return automation_active();
-}
-
 double
 timer_get_time( void )
 {
-  if( virtual_timer_active() ) {
+  if( host_services_active() ) {
     if( !was_active ) {
       virtual_time = 0.0;
       was_active = 1;
@@ -53,7 +41,7 @@ timer_get_time( void )
 void
 timer_sleep( int ms )
 {
-  if( virtual_timer_active() ) {
+  if( host_services_active() ) {
     if( !was_active ) {
       virtual_time = 0.0;
       was_active = 1;

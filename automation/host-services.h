@@ -21,7 +21,16 @@
 #include "libspectrum.h"
 #include "automation.h"
 
-void host_services_begin( int screen, int audio );
+/* Capture policy belongs to the session, not its command language. A zero
+   byte limit permits an unbounded stream; format changes can be admitted for
+   compatibility with existing one-shot capture. */
+typedef struct host_services_policy {
+  size_t pcm_limit_bytes;
+  int reject_audio_format_changes;
+} host_services_policy;
+
+void host_services_begin( int screen, int audio,
+                          const host_services_policy *policy );
 void host_services_arm( void );
 void host_services_end( void );
 int host_services_active( void );

@@ -27,9 +27,10 @@ static automation_termination_type rzx_outcome;
 static size_t pcm_bytes;
 static const char *error;
 static int resource_limit;
+static host_services_policy capture_policy;
 
 void
-host_services_begin( int screen, int audio )
+host_services_begin( int screen, int audio, const host_services_policy *policy )
 {
   active = 1;
   armed = 0;
@@ -41,6 +42,7 @@ host_services_begin( int screen, int audio )
   pcm_bytes = 0;
   error = NULL;
   resource_limit = 0;
+  capture_policy = *policy;
 }
 
 void
@@ -52,7 +54,9 @@ host_services_arm( void )
 void
 host_services_end( void )
 {
+  if( !active ) return;
   active = armed = screen_enabled = audio_enabled = 0;
+  automation_artifacts_end();
 }
 
 int
@@ -109,8 +113,9 @@ host_services_screen( const libspectrum_byte *pixels, size_t w, size_t h )
 void
 host_services_audio_init( int rate, int channels )
 {
-  if( !host_services_audio_enabled() ) return;
-  if( audio_rate && ( rate != audio_rate || channels != audio_channels ) ) {
+  if( !host_services_audio_enabled() || error ) return;
+  if( capture_policy.reject_audio_format_changes && audio_rate &&
+      ( rate != audio_rate || channels != audio_channels ) ) {
     error = "audio format changed during capture";
     return; /* Keep the already captured stream's original format. */
   }
@@ -126,8 +131,9 @@ host_services_audio( const libspectrum_signed_word *pcm, int count,
   size_t bytes;
   if( !active || !armed || !audio_enabled || count <= 0 || error ) return;
   bytes = (size_t)count * sizeof( *pcm );
-  if( bytes > 128u * 1024u * 1024u - pcm_bytes ) {
-    error = "PCM capture exceeded 128 MiB";
+  if( capture_policy.pcm_limit_bytes &&
+      bytes > capture_policy.pcm_limit_bytes - pcm_bytes ) {
+    error = "PCM capture byte limit exceeded";
     resource_limit = 1;
     return;
   }
