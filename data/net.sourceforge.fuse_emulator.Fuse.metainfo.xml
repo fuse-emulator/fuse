@@ -17,6 +17,18 @@
     <category>Emulator</category>
   </categories>
   <releases>
+    <release date="2026-11-27" version="1.10.2">
+      <description>
+        <ul>
+          <li>Implemented floating bus behaviour for the Spectrum +2A and +3</li>
+          <li>Improved EDSK disk handling and preserved tapes after failed saves</li>
+          <li>Added joystick vertical axis inversion and independent printer connection controls</li>
+          <li>Added EmuZWin snapshot support</li>
+          <li>Fixed Timex screenshot capture and improved startup failure cleanup</li>
+          <li>Various other minor bug fixes and improvements</li>
+        </ul>
+      </description>
+    </release>
     <release date="2026-10-30" version="1.10.1">
       <description>
         <ul>

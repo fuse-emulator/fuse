@@ -1,3 +1,54 @@
+2026-11-27  Philip Kendall  <philip-fuse@shadowmagic.org.uk>
+
+        * Fuse 1.10.2 released.
+
+        * New features:
+          * Add optional per-joystick vertical axis inversion (Fredrick
+            Meunier).
+          * Add an optional headless Lua automation host with bounded
+            execution, debugger, input, settings and media controls, structured
+            results and screen and audio capture (Fredrick Meunier).
+          * Separate emulation core from UI frontends for more flexible UIs
+            and easier Fuse embedding (Fredrick Meunier).
+
+        * Emulation core improvements:
+          * Support EmuZWin snapshots (XJ and Fredrick Meunier).
+          * Bound EDSK sector reads and reconstruct oversized tracks using
+            sector offsets (fixes bug #473) (Gergely Szasz and Fredrick
+            Meunier).
+          * Track floppy motor state independently of inserted media
+            (Fredrick Meunier).
+          * Avoid repeated loader pattern detection while tape acceleration
+            is active (patch #530) (Fredrick Meunier).
+          * Reject truncated UDI headers and release temporary disk metadata
+            after read failures (Fredrick Meunier).
+          * Propagate machine reset failures during tape autoload (Fredrick
+            Meunier).
+
+        * Machine specific improvements:
+          * Implement floating bus behaviour for the Spectrum +2A and +3
+            (fixes bug #360) (thanks, Woody, Nicholas Naime, Sergio Baldoví
+            and Rob Pearmain) (Fredrick Meunier).
+          * Fix screenshot RGB buffer sizing for Timex displays (Fredrick
+            Meunier).
+
+        * UI improvements:
+          * SDL2: refresh keyboard input at emulated keyboard matrix reads
+            (Fredrick Meunier).
+          * SDL2: preserve configured AY stereo separation (Fredrick
+            Meunier).
+          * ALSA: preserve mono AY synthesis on stereo-only audio devices
+            (thanks, 4thRock) (Fredrick Meunier).
+          * Win32: fix audio buffer ownership and cleanup after
+            initialisation failures (Fredrick Meunier).
+          * Restrict subframe audio delivery to backends that support it
+            (thanks, Guesser) (Fredrick Meunier).
+          * Separate ZX Printer and serial/parallel printer connection
+            controls (fixes bug #277) (thanks, Stuart Brady) (Fredrick
+            Meunier).
+
+        * Various other minor bugfixes.
+
 2026-10-31  Fredrick Meunier  <fredm@spamcop.net>
 
         * Fuse 1.10.1 released.

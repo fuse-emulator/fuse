@@ -19,12 +19,12 @@ dnl
 dnl E-mail: philip-fuse@shadowmagic.org.uk
 
 dnl Package version
-m4_define([fuse_version], [1.10.1])
+m4_define([fuse_version], [1.10.2])
 
 dnl Product full version
 m4_define([fuse_major_version], [1])
 m4_define([fuse_minor_version], [10])
-m4_define([fuse_micro_version], [1])
+m4_define([fuse_micro_version], [2])
 m4_define([fuse_nano_version],  [0])
 m4_define([fuse_full_version], [fuse_major_version.fuse_minor_version.fuse_micro_version.fuse_nano_version])
 m4_define([fuse_rc_version], [fuse_major_version,fuse_minor_version,fuse_micro_version,fuse_nano_version])
@@ -160,7 +160,7 @@ if test "$prefix" != "NONE"; then
 fi)
 
 dnl Check that libspectrum is available and that it is new enough
-PKG_CHECK_MODULES([LIBSPECTRUM], [libspectrum >= 1.8.0])
+PKG_CHECK_MODULES([LIBSPECTRUM], [libspectrum >= 1.9.0])
 AC_MSG_CHECKING([for the libspectrum filesystem API])
 fuse_save_CPPFLAGS="$CPPFLAGS"
 fuse_save_LIBS="$LIBS"
