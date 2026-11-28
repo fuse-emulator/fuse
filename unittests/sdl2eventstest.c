@@ -99,10 +99,12 @@ static void normal_events( void )
   assert( sdl2_events_collect( &collector, INPUT_DISPATCH_NORMAL ) == INPUT_REFRESH_SUCCESS );
 }
 
-int main( void )
+int main( int argc, char **argv )
 {
   int i;
   SDL_Event event;
+  (void)argc;
+  (void)argv;
   assert( SDL_Init( SDL_INIT_EVENTS ) == 0 );
   reset();
   assert( read_events() == INPUT_REFRESH_SUCCESS ); /* Empty success. */
