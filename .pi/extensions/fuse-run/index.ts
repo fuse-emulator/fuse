@@ -1,13 +1,21 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { truncateHead, truncateTail } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 
 const parameters = Type.Object({
+	script: Type.Optional(Type.String({ minLength: 1, description: "Lua source to execute with fuse-lua; mutually exclusive with script_file and legacy run options. Full API: hacking/lua-host.md" })),
+	script_file: Type.Optional(Type.String({ minLength: 1, description: "Existing Lua scenario path, relative to the project or absolute (not stdin)" })),
+	script_args: Type.Optional(Type.Array(Type.String(), { description: "Lua arg[1..] values, passed literally after --" })),
+	rom_directory: Type.Optional(Type.String({ description: "ROM directory for Lua scripts; default: roms" })),
+	instruction_limit: Type.Optional(Type.Integer({ minimum: 1, description: "Lua instruction quota (host default: 10000000)" })),
+	max_total_frames: Type.Optional(Type.Integer({ minimum: 1, description: "Lua total frame budget (host default: 1000000)" })),
+	timeout_seconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 2147483, description: "Wall-clock process timeout; default: 120 seconds. Killing cannot finalize evidence." })),
+
 	executable: Type.Optional(
-		Type.String({ description: "Fuse executable path (defaults to ./fuse in the project)" }),
+		Type.String({ description: "Executable path (defaults to ./fuse-lua for scripts, ./fuse otherwise)" }),
 	),
 	machine: Type.Optional(Type.String({ description: "Fuse machine identifier, for example 48 or 128" })),
 	input_file: Type.Optional(
@@ -44,6 +52,21 @@ const parameters = Type.Object({
 type Params = Static<typeof parameters>;
 
 function validate(params: Params): void {
+	const luaRun = params.script !== undefined || params.script_file !== undefined;
+	if (params.script !== undefined && params.script_file !== undefined) {
+		throw new Error("script and script_file are mutually exclusive");
+	}
+	if (params.script_file === "-") throw new Error("Use script for inline source, not script_file='-'");
+	if (luaRun) {
+		for (const key of ["machine", "input_file", "frame_count", "max_frames", "success_pc", "failure_pc",
+			"failure_ignore_count", "run_until_rzx_complete", "run_until_disk_idle", "disk_idle_frames"] as const) {
+			if (params[key] !== undefined) throw new Error(`${key} is a legacy run option; configure it inside the Lua script`);
+		}
+		return;
+	}
+	for (const key of ["script_args", "rom_directory", "instruction_limit", "max_total_frames"] as const) {
+		if (params[key] !== undefined) throw new Error(`${key} requires script or script_file`);
+	}
 	const pcRun = params.success_pc !== undefined;
 	const rzxRun = params.run_until_rzx_complete === true;
 	const diskRun = params.run_until_disk_idle === true;
@@ -101,20 +124,33 @@ export default function (pi: ExtensionAPI) {
 		name: "fuse_run",
 		label: "Fuse Run",
 		description:
-			"Run one bounded scenario through Fuse's development --automation-* CLI, parse its authoritative result.json, and return requested evidence. Use frame_count for ordinary runs; use max_frames with success_pc, run_until_rzx_complete, or run_until_disk_idle.",
+			"Run a bounded Fuse scenario and return authoritative result.json and evidence. Use script (Lua source) or script_file for multi-phase runs, keyboard input, memory/register inspection, media, snapshots and RZX recording through fuse-lua; see hacking/lua-host.md for the full API. Script options cannot mix with legacy run options. Otherwise use frame_count, or max_frames with success_pc/run_until_rzx_complete/run_until_disk_idle. Scripts are trusted local code, not sandboxed. Default wall timeout: 120s. JSON/logs are truncated at 2000 lines or 50KB each; full JSON remains on disk.",
 		promptSnippet: "Run a bounded Fuse automation scenario and return result.json plus requested evidence",
 		parameters,
 
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 			validate(params);
 
+			const luaRun = params.script !== undefined || params.script_file !== undefined;
 			const outputDirectory = await mkdtemp(join(tmpdir(), "fuse-run-"));
 			const executable = params.executable
 				? isAbsolute(params.executable)
 					? params.executable
 					: resolve(ctx.cwd, params.executable)
-				: join(ctx.cwd, "fuse");
-			const args = ["--automation-output", outputDirectory];
+				: join(ctx.cwd, luaRun ? "fuse-lua" : "fuse");
+			const args: string[] = [];
+			if (luaRun) {
+				let scriptPath = params.script_file === undefined ? join(outputDirectory, "scenario.lua") : resolve(ctx.cwd, params.script_file);
+				if (params.script !== undefined) await writeFile(scriptPath, params.script, "utf8");
+				args.push("--script", scriptPath, "--output", outputDirectory);
+				if (params.rom_directory !== undefined) args.push("--rom-directory", params.rom_directory);
+				if (params.instruction_limit !== undefined) args.push("--instruction-limit", String(params.instruction_limit));
+				if (params.max_total_frames !== undefined) args.push("--max-total-frames", String(params.max_total_frames));
+				if (params.capture_screen) args.push("--capture-screen");
+				if (params.capture_audio) args.push("--capture-audio");
+				args.push("--", ...(params.script_args ?? []));
+			} else {
+			args.push("--automation-output", outputDirectory);
 
 			if (params.machine !== undefined) args.push("--machine", params.machine);
 			if (params.frame_count !== undefined) args.push("--automation-frames", String(params.frame_count));
@@ -139,7 +175,11 @@ export default function (pi: ExtensionAPI) {
 				else args.push("--", params.input_file);
 			}
 
-			const process = await pi.exec(executable, args, { cwd: ctx.cwd, signal });
+			}
+
+			const process = await pi.exec(executable, args, {
+				cwd: ctx.cwd, signal, timeout: (params.timeout_seconds ?? 120) * 1000,
+			});
 			const resultPath = join(outputDirectory, "result.json");
 			let result: unknown;
 			try {
@@ -147,16 +187,16 @@ export default function (pi: ExtensionAPI) {
 			} catch (error) {
 				const reason = error instanceof Error ? error.message : String(error);
 				throw new Error(
-					`Fuse exited with status ${process.code}, but result.json could not be read: ${reason}.${automationBuildHint(process.stdout, process.stderr)} Output directory: ${outputDirectory}${diagnosticOutput(process.stdout, process.stderr)}`,
+					`Fuse exited with status ${process.code}, but result.json could not be read: ${reason}.${luaRun ? " Build the Lua host with ./configure --with-lua && make. See hacking/lua-host.md." : automationBuildHint(process.stdout, process.stderr)}${process.killed ? " Process was killed (timeout, cancellation or output limit); results may not have been finalized." : ""} Output directory: ${outputDirectory}${diagnosticOutput(process.stdout, process.stderr)}`,
 				);
 			}
 
 			const artifactPaths: { screen?: string; audio?: string } = {};
 			const artifacts = (result as { artifacts?: Record<string, { status?: string; path?: string }> }).artifacts;
-			if (params.capture_screen && artifacts?.screen?.status === "ok" && artifacts.screen.path) {
+			if (artifacts?.screen?.status === "ok" && artifacts.screen.path) {
 				artifactPaths.screen = join(outputDirectory, artifacts.screen.path);
 			}
-			if (params.capture_audio && artifacts?.audio?.status === "ok" && artifacts.audio.path) {
+			if (artifacts?.audio?.status === "ok" && artifacts.audio.path) {
 				artifactPaths.audio = join(outputDirectory, artifacts.audio.path);
 			}
 
