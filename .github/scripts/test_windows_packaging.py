@@ -21,7 +21,7 @@ class DllStagingTests(unittest.TestCase):
         self.base = Path(self.temp.name)
         self.root = self.base / "distribution"
         self.root.mkdir()
-        self.prefix = self.base / "mingw32"
+        self.prefix = self.base / "ucrt64"
         self.bin = self.prefix / "bin"
         self.bin.mkdir(parents=True)
         tools = self.base / "tools"
@@ -69,6 +69,21 @@ class DllStagingTests(unittest.TestCase):
             with self.subTest(runtime=runtime):
                 (self.root / "fuse.exe").write_text("DLL Name: " + runtime + "\n")
                 self.assertNotEqual(self.run_staging().returncode, 0)
+
+    def test_expected_architecture(self):
+        self.env["WIN32_DLL_EXPECT_FORMAT"] = "pei-x86-64"
+        (self.root / "fuse.exe").write_text("file format pei-x86-64\nDLL Name: first.dll\n")
+        (self.bin / "first.dll").write_text("file format pei-x86-64\n")
+        result = self.run_staging()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_wrong_architecture_dependency_fails(self):
+        self.env["WIN32_DLL_EXPECT_FORMAT"] = "pei-x86-64"
+        (self.root / "fuse.exe").write_text("file format pei-x86-64\nDLL Name: first.dll\n")
+        (self.bin / "first.dll").write_text("file format pei-i386\n")
+        result = self.run_staging()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Wrong binary format", result.stderr)
 
     def test_bad_binary_fails(self):
         (self.root / "fuse.exe").write_text("INVALID")

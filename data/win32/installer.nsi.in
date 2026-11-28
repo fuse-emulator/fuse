@@ -32,6 +32,7 @@
 !include "MUI2.nsh"
 !include "Sections.nsh"
 !include "Util.nsh"
+!include "x64.nsh"
 
 ;--------------------------------
 ;General
@@ -40,7 +41,11 @@ Name "${DISPLAY_NAME}"
 outFile "${SETUP_FILE}"
 Caption "${DISPLAY_NAME}"
  
+!if "@host_cpu@" == "x86_64"
+installDir "$PROGRAMFILES64\Fuse"
+!else
 installDir "$PROGRAMFILES\Fuse"
+!endif
 
 ; [Additional Installer Settings ]
 XPStyle on
@@ -315,6 +320,12 @@ Section "-Register Application"
 SectionEnd
 
 Function .onInit
+!if "@host_cpu@" == "x86_64"
+  ${IfNot} ${RunningX64}
+    MessageBox MB_OK|MB_ICONSTOP "This build of Fuse requires 64-bit Windows."
+    Abort
+  ${EndIf}
+!endif
   ; Select extensions not associated with other applications
   ${SelectUnregisteredExt} ".pzx" ${SEC_PZX}
   ${SelectUnregisteredExt} ".rzx" ${SEC_RZX}

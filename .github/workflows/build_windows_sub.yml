@@ -1,4 +1,4 @@
-# Reusable workflow for native 32-bit Windows builds with MSYS2 MINGW32.
+# Reusable workflow for native 64-bit Windows builds with MSYS2 UCRT64.
 name: Fuse App For Windows
 run-name: Build Fuse App for Windows / ${{ github.actor }} /
 
@@ -44,7 +44,7 @@ on:
 
 jobs:
   build:
-    name: Build App (MSYS2 MINGW32)
+    name: Build App (MSYS2 UCRT64)
     runs-on: windows-latest
     timeout-minutes: 30
     defaults:
@@ -53,6 +53,7 @@ jobs:
     env:
       CPPFLAGS: -I/opt/fuse/include
       LDFLAGS: -L/opt/fuse/lib
+      WIN32_DLL_EXPECT_FORMAT: pei-x86-64
 
     steps:
       # Keep helpers at the workflow revision even when building an older Fuse ref.
@@ -65,7 +66,6 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/fuse-windows-helpers"
           cp data/win32/check_win32_dll_deps.sh .github/scripts/collect_windows_notices.sh \
-            .github/scripts/install_windows_crypto.sh .github/scripts/windows-mingw32-crypto.sha256 \
             "$RUNNER_TEMP/fuse-windows-helpers/"
 
       - name: Check out requested Fuse revision
@@ -75,18 +75,18 @@ jobs:
           ref: ${{ inputs.fuse_ref }}
           persist-credentials: false
 
-      - name: Install MSYS2 build tools and native 32-bit dependencies
+      - name: Install MSYS2 build tools and native 64-bit dependencies
         uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
         with:
-          msystem: MINGW32
+          msystem: UCRT64
           update: true
           cache: true
           install: >-
             autoconf-wrapper automake-wrapper libtool make git bison flex dos2unix
             man2html zip curl
-            mingw-w64-i686-gcc mingw-w64-i686-pkgconf
-            mingw-w64-i686-bzip2 mingw-w64-i686-zlib
-            mingw-w64-i686-libpng
+            mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-bzip2 mingw-w64-ucrt-x86_64-zlib
+            mingw-w64-ucrt-x86_64-libpng mingw-w64-ucrt-x86_64-libgcrypt
             ${{ inputs.dependencies }}
 
       # NSIS is a host tool; it need not match the target executable's bitness.
@@ -117,21 +117,17 @@ jobs:
       - name: Download libspectrum and runtime DLLs
         uses: actions/download-artifact@v8
         with:
-          name: libspectrum-installed-windows-fuse-app
+          name: libspectrum-installed-windows-ucrt64-fuse-app
           path: libspectrum
 
       - name: Install libspectrum and verify matching dependency versions
         run: |
           mkdir -p /opt/fuse
           tar -xvf libspectrum/libspectrum-installed-windows.tar -C /opt/fuse
-          if [ -d /opt/fuse/share/fuse/packages ]; then
-            helpers="$(cygpath -u "$RUNNER_TEMP")/fuse-windows-helpers"
-            bash "$helpers/install_windows_crypto.sh" /opt/fuse/share/fuse/packages
-          fi
           # Independently updated runners must not silently mix runtime versions.
           while read -r package version; do
             case "$package" in
-              mingw-w64-i686-*)
+              mingw-w64-ucrt-x86_64-*)
                 installed="$(pacman -Q "$package")"
                 test "$installed" = "$package $version" || {
                   echo "MSYS2 package drift: expected $package $version, got $installed; rebuild both jobs." >&2
@@ -223,7 +219,7 @@ jobs:
         if: ${{ inputs.upload_artifacts }}
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ steps.stage.outputs.directory }}
+          name: ${{ steps.stage.outputs.directory }}-ucrt64
           if-no-files-found: error
           path: |
             ${{ steps.stage.outputs.directory }}.zip

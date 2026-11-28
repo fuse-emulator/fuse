@@ -14,7 +14,7 @@ Comment:
   as a whole unless otherwise explicitly stated in the file.
   .
   This program is built using MinGW-w64 together with additional runtime
-  libraries from the MSYS2 MINGW32 build environment. Third-party notices are
+  libraries from the MSYS2 UCRT64 build environment. Third-party notices are
   stored in the 3rd-party directory.
 
 Files: libspectrum-*.dll

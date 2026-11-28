@@ -8,7 +8,7 @@ documentation, read fuse.html.
 Requirements
 ------------
 
-A supported 32-bit or 64-bit Windows system for the bundled 32-bit build.
+Windows 10 or later (64-bit) for the bundled UCRT64 build.
 
 Libraries
 ---------

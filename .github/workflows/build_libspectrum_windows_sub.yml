@@ -22,7 +22,7 @@ on:
 
 jobs:
   build:
-    name: Build & Test (MSYS2 MINGW32)
+    name: Build & Test (MSYS2 UCRT64)
     runs-on: windows-latest
     timeout-minutes: 30
     defaults:
@@ -33,6 +33,7 @@ jobs:
       LIBSPECTRUM_GIT_URL: https://github.com/fuse-emulator/libspectrum
       CPPFLAGS: -I/opt/fuse/include
       LDFLAGS: -L/opt/fuse/lib
+      WIN32_DLL_EXPECT_FORMAT: pei-x86-64
 
     steps:
       # Use the workflow revision's packaging helpers, not the selected library ref.
@@ -40,32 +41,17 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install MSYS2 build tools and native 32-bit dependencies
+      - name: Install MSYS2 build tools and native 64-bit dependencies
         uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
         with:
-          msystem: MINGW32
+          msystem: UCRT64
           update: true
           cache: true
           install: >-
             autoconf-wrapper automake-wrapper libtool make git curl
-            mingw-w64-i686-gcc mingw-w64-i686-pkgconf
-            mingw-w64-i686-bzip2 mingw-w64-i686-zlib
-
-      - name: Cache pinned cryptographic package downloads
-        if: ${{ inputs.use_libgcrypt }}
-        uses: actions/cache@v6
-        with:
-          path: ${{ runner.temp }}/fuse-mingw32-crypto
-          key: msys2-mingw32-crypto-v1-${{ hashFiles('.github/scripts/windows-mingw32-crypto.sha256') }}
-
-      - name: Install pinned MSYS2 cryptographic libraries
-        if: ${{ inputs.use_libgcrypt }}
-        run: |
-          cache="$(cygpath -u "$RUNNER_TEMP")/fuse-mingw32-crypto"
-          # Recheck hashes and signatures on cache hits as well as fresh downloads.
-          bash .github/scripts/install_windows_crypto.sh "$cache"
-          mkdir -p /opt/fuse/share/fuse/packages
-          cp "$cache/"*.pkg.tar.zst "$cache/"*.pkg.tar.zst.sig /opt/fuse/share/fuse/packages/
+            mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-bzip2 mingw-w64-ucrt-x86_64-zlib
+            ${{ inputs.use_libgcrypt && 'mingw-w64-ucrt-x86_64-libgcrypt' || '' }}
 
       - name: Clone selected libspectrum revision
         env:
@@ -116,5 +102,5 @@ jobs:
       - name: Upload library, runtime DLLs and package manifest
         uses: actions/upload-artifact@v7
         with:
-          name: libspectrum-installed-windows-${{ inputs.key }}
+          name: libspectrum-installed-windows-ucrt64-${{ inputs.key }}
           path: libspectrum-installed-windows.tar
