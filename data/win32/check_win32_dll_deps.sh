@@ -49,7 +49,7 @@ while [ "$changed" -ne 0 ]; do
     # Inspect outside process substitution so malformed PE files fail the build.
     imports=$(objdump -p "$file")
     if [ -n "${WIN32_DLL_EXPECT_FORMAT:-}" ] &&
-       ! printf '%s\n' "$imports" | grep -Fq "file format $WIN32_DLL_EXPECT_FORMAT"; then
+       ! grep -F "file format $WIN32_DLL_EXPECT_FORMAT" <<< "$imports" > /dev/null; then
       echo "Wrong binary format for ${file}: expected ${WIN32_DLL_EXPECT_FORMAT}" >&2
       exit 1
     fi

@@ -77,6 +77,14 @@ class DllStagingTests(unittest.TestCase):
         result = self.run_staging()
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_large_import_table(self):
+        self.env["WIN32_DLL_EXPECT_FORMAT"] = "pei-x86-64"
+        (self.root / "fuse.exe").write_text(
+            "file format pei-x86-64\n" + "import table padding\n" * 10000
+        )
+        result = self.run_staging()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_wrong_architecture_dependency_fails(self):
         self.env["WIN32_DLL_EXPECT_FORMAT"] = "pei-x86-64"
         (self.root / "fuse.exe").write_text("file format pei-x86-64\nDLL Name: first.dll\n")
